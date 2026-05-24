@@ -1,0 +1,79 @@
+---
+const currentPath = Astro.url.pathname;
+---
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo mono" aria-label="Transcend Software home">
+      Transcend Software
+    </a>
+    <nav class="nav-links" aria-label="Main navigation">
+      <a href="/#services" class={currentPath === "/" ? "active" : ""}>Services</a>
+      <a href="/#work" class={currentPath === "/" ? "active" : ""}>Work</a>
+      <a href="/posts/" class={currentPath.startsWith("/posts") ? "active" : ""}>Posts</a>
+      <a href="/#contact" class={currentPath === "/" ? "active" : ""}>Contact</a>
+    </nav>
+  </div>
+</header>
+
+<style>
+  .nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: oklch(0.12 0.005 85 / 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .nav-inner {
+    max-width: var(--max-width-wide);
+    margin: 0 auto;
+    padding: 0 1.5rem;
+    height: 3.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .nav-logo {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .nav-logo:hover {
+    color: var(--accent);
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 2rem;
+  }
+
+  .nav-links a {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    transition: color 0.15s ease;
+  }
+
+  .nav-links a:hover,
+  .nav-links a.active {
+    color: var(--accent);
+  }
+
+  @media (max-width: 480px) {
+    .nav-links {
+      gap: 1rem;
+    }
+
+    .nav-links a {
+      font-size: 0.75rem;
+    }
+  }
+</style>

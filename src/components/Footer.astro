@@ -1,0 +1,33 @@
+---
+const year = new Date().getFullYear();
+---
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span class="mono">&copy; {year} Transcend Software</span>
+    <span class="footer-sep">&middot;</span>
+    <span class="text-muted mono">v.2026.05</span>
+    <span class="footer-sep">&middot;</span>
+    <span class="text-muted mono">Built with Astro</span>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    padding: 3rem 1.5rem;
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .footer-inner {
+    max-width: var(--max-width-wide);
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .footer-sep {
+    color: var(--text-dim);
+  }
+</style>

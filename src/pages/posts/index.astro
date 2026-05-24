@@ -1,0 +1,64 @@
+---
+import { getCollection } from "astro:content";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { sortPostsByDate, formatDate, formatDateShort } from "../../lib/posts";
+
+const allPosts = sortPostsByDate(await getCollection("posts"));
+const featuredPosts = allPosts.filter((p) => p.data.featured);
+const recentPosts = allPosts.slice(0, 10);
+---
+
+<BaseLayout
+  title="Blog"
+  description="Blog about software engineering by Rasmus at Transcend Software. Sharing opinions, solutions and thoughts on Java, Go, TypeScript, DevOps and AI."
+>
+  <div class="container section" style="padding-top: 8rem;">
+    <p class="section-label">Blog</p>
+    <h2>About software engineering by Rasmus at Transcend Software.</h2>
+    <p class="text-muted content-gap">
+      Sharing opinions, solutions and thoughts.
+    </p>
+
+    <div class="content-gap" style="margin-top: 1rem;">
+      <a href="/rss.xml" class="rss-link">RSS Feed &nearr;</a>
+    </div>
+
+    {
+      featuredPosts.length > 0 && (
+        <div style="margin-top: 3rem;">
+          <h3 class="mono" style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 1rem;">Featured</h3>
+          <ul class="post-list">
+            {featuredPosts.map((post) => (
+              <li class="post-item">
+                <h3><a href={`/posts/${post.slug}`}>{post.data.title}</a></h3>
+                <p class="post-meta">
+                  {formatDate(post.data.date)} &middot; {post.data.tags.map((t: string) => `#${t}`).join(" ")}
+                </p>
+                <p class="post-description">{post.data.description}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )
+    }
+
+    <div style="margin-top: 2.5rem;">
+      <h3 class="mono" style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 1rem;">Recent Posts</h3>
+      <ul class="post-list">
+        {recentPosts.map((post) => (
+          <li class="post-item">
+            <h3><a href={`/posts/${post.slug}`}>{post.data.title}</a></h3>
+            <p class="post-meta">
+              {formatDateShort(post.data.date)} &middot; {post.data.tags.map((t: string) => `#${t}`).join(" ")}
+            </p>
+            <p class="post-description">{post.data.description}</p>
+          </li>
+        ))}
+      </ul>
+    </div>
+
+    <div class="content-gap" style="margin-top: 2rem;">
+      <a href="/tags" class="mono" style="font-size: 0.85rem; color: var(--text-dim);">All tags &rarr;</a>
+    </div>
+  </div>
+</BaseLayout>

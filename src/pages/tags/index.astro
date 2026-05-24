@@ -1,0 +1,35 @@
+---
+import { getCollection } from "astro:content";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+const posts = await getCollection("posts");
+const published = posts.filter((p) => !p.data.draft);
+
+const tagMap = new Map<string, number>();
+for (const post of published) {
+  for (const tag of post.data.tags) {
+    const normalized = tag.toLowerCase();
+    tagMap.set(normalized, (tagMap.get(normalized) || 0) + 1);
+  }
+}
+
+const tags = [...tagMap.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+---
+
+<BaseLayout
+  title="Tags"
+  description="Browse blog posts by tag on Transcend Software."
+>
+  <div class="container section" style="padding-top: 8rem;">
+    <p class="section-label">Tags</p>
+    <h2>Browse by topic.</h2>
+
+    <div class="tag-cloud content-gap" style="margin-top: 2rem;">
+      {tags.map(([tag, count]) => (
+        <a href={`/tags/${tag}`} class="tag-pill">
+          #{tag} <span style="color: var(--text-dim);">({count})</span>
+        </a>
+      ))}
+    </div>
+  </div>
+</BaseLayout>
