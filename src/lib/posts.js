@@ -1,12 +1,10 @@
-import type { CollectionEntry } from "astro:content";
-
-export function sortPostsByDate(posts: CollectionEntry<"posts">[]) {
+export function sortPostsByDate(posts) {
   return posts
     .filter((p) => !p.data.draft)
     .sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
 }
 
-export function formatDate(date: Date): string {
+export function formatDate(date) {
   return date.toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
@@ -14,7 +12,7 @@ export function formatDate(date: Date): string {
   });
 }
 
-export function formatDateShort(date: Date): string {
+export function formatDateShort(date) {
   return date.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
