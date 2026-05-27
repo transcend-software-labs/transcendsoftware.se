@@ -16,6 +16,7 @@ export async function getStaticPaths() {
 const { entry } = Astro.props;
 const { Content } = await entry.render();
 
+const ogImage = `/og/${entry.slug}.png`;
 const publishedTime = entry.data.date
   ? new Date(entry.data.date).toISOString()
   : undefined;
