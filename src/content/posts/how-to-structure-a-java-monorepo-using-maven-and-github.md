@@ -1,9 +1,10 @@
 ---
 title: "How to Structure a Java Monorepo using Maven and Github"
-description: "How to structure a Java monorepo using Maven and Github for optimal CI/CD."
+description: "A practical guide to structuring a Java monorepo using Maven and GitHub Actions. Covers project layout, shared libraries, reusable CI/CD workflows, and how to build only what changed — without a remote artifactory."
 date: 2023-01-01
 tags: ["Java", "Maven", "Github", "Github actions", "Monorepo", "CI", "CD"]
 featured: true
+ogImage: "/maven_github_monorepo.png"
 ---
 
 ## Why Monorepo?

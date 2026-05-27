@@ -15,11 +15,38 @@ export async function getStaticPaths() {
 
 const { entry } = Astro.props;
 const { Content } = await entry.render();
+
+const publishedTime = entry.data.date
+  ? new Date(entry.data.date).toISOString()
+  : undefined;
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": entry.data.title,
+  "description": entry.data.description,
+  "datePublished": publishedTime,
+  ...(entry.data.updated ? { "dateModified": new Date(entry.data.updated).toISOString() } : {}),
+  "author": {
+    "@type": "Person",
+    "name": "Rasmus Kockum",
+    "url": "https://transcendsoftware.se",
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Transcend Software",
+    "url": "https://transcendsoftware.se",
+  },
+};
 ---
 
 <BaseLayout
   title={entry.data.title}
   description={entry.data.description}
+  ogImage={entry.data.ogImage}
+  publishedTime={publishedTime}
+  isArticle={true}
+  jsonLd={jsonLd}
 >
   <article class="container section section-top">
     <header class="post-header">
@@ -43,7 +70,7 @@ const { Content } = await entry.render();
     </div>
 
     <footer class="post-footer">
-      <a href="/posts" class="mono">&larr; All posts</a>
+      <a href="/posts/" class="mono">&larr; All posts</a>
     </footer>
   </article>
 </BaseLayout>
