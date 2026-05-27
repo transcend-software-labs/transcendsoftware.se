@@ -15,7 +15,7 @@ const currentPath = Astro.url.pathname;
     <nav class="nav-links" aria-label="Main navigation">
       <a href="/#services">Services</a>
       <a href="/#work">Work</a>
-      <a href="/posts/" class={currentPath.startsWith("/posts") ? "active" : ""}>Posts</a>
+      <a href="/posts" class={currentPath.startsWith("/posts") ? "active" : ""}>Posts</a>
       <a href="/#contact">Contact</a>
     </nav>
   </div>
