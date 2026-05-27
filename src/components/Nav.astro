@@ -7,6 +7,11 @@ const currentPath = Astro.url.pathname;
     <a href="/" class="nav-logo mono" aria-label="Transcend Software home">
       Transcend Software
     </a>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle-input" />
+    <label for="nav-toggle" class="nav-toggle" aria-label="Toggle navigation">
+      <span class="nav-toggle-bar"></span>
+      <span class="nav-toggle-bar"></span>
+    </label>
     <nav class="nav-links" aria-label="Main navigation">
       <a href="/#services" class={currentPath === "/" ? "active" : ""}>Services</a>
       <a href="/#work" class={currentPath === "/" ? "active" : ""}>Work</a>
@@ -35,6 +40,7 @@ const currentPath = Astro.url.pathname;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    position: relative;
   }
 
   .nav-logo {
@@ -42,6 +48,7 @@ const currentPath = Astro.url.pathname;
     font-weight: 500;
     color: var(--text);
     text-decoration: none;
+    z-index: 101;
   }
 
   .nav-logo:hover {
@@ -65,13 +72,65 @@ const currentPath = Astro.url.pathname;
     color: var(--accent);
   }
 
-  @media (max-width: 480px) {
+  .nav-toggle-input {
+    display: none;
+  }
+
+  .nav-toggle {
+    display: none;
+    flex-direction: column;
+    gap: 5px;
+    cursor: pointer;
+    padding: 0.5rem;
+    z-index: 101;
+  }
+
+  .nav-toggle-bar {
+    display: block;
+    width: 20px;
+    height: 2px;
+    background: var(--text);
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+
+  .nav-toggle-input:checked ~ .nav-toggle .nav-toggle-bar:first-child {
+    transform: translateY(7px) rotate(45deg);
+  }
+
+  .nav-toggle-input:checked ~ .nav-toggle .nav-toggle-bar:last-child {
+    transform: translateY(-7px) rotate(-45deg);
+  }
+
+  @media (max-width: 600px) {
+    .nav-toggle {
+      display: flex;
+    }
+
     .nav-links {
-      gap: 1rem;
+      display: none;
+      position: absolute;
+      top: 3.5rem;
+      left: 0;
+      right: 0;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border-subtle);
+      flex-direction: column;
+      gap: 0;
+      padding: 0.5rem 0;
+    }
+
+    .nav-toggle-input:checked ~ .nav-links {
+      display: flex;
     }
 
     .nav-links a {
-      font-size: 0.75rem;
+      padding: 0.85rem 1.5rem;
+      font-size: 0.85rem;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .nav-links a:last-child {
+      border-bottom: none;
     }
   }
 </style>

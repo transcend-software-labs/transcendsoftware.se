@@ -105,6 +105,28 @@ p + p {
   padding: 6rem 1.5rem;
 }
 
+.section-top {
+  padding: 8rem 1.5rem 6rem 1.5rem;
+}
+
+@media (max-width: 600px) {
+  .section {
+    padding: 3rem 1.25rem;
+  }
+
+  .section-top {
+    padding: 4rem 1.25rem 3rem 1.25rem;
+  }
+
+  h1 { font-size: 2rem; }
+  h2 { font-size: 1.35rem; }
+  h3 { font-size: 1.15rem; }
+
+  .container {
+    padding: 0 1.25rem;
+  }
+}
+
 .section-label {
   font-family: var(--font-mono);
   font-size: 0.75rem;
