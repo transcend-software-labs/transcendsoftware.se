@@ -30,11 +30,11 @@ const { Content } = await entry.render();
       <h1 class="mono" style="font-size: 2rem; margin-top: 0.5rem; margin-bottom: 1rem;">{entry.data.title}</h1>
       <p class="text-muted">{entry.data.description}</p>
       {entry.data.tags.length > 0 && (
-        <p class="content-gap">
+        <div class="tag-row">
           {entry.data.tags.map((tag: string) => (
             <a href={`/tags/${tag.toLowerCase()}`} class="tag-pill">{tag}</a>
           ))}
-        </p>
+        </div>
       )}
     </header>
 
