@@ -5,8 +5,9 @@
   --bg-surface: oklch(0.15 0.005 85);
   --bg-raised: oklch(0.18 0.005 85);
   --text: oklch(0.92 0.005 85);
-  --text-muted: oklch(0.62 0.005 85);
-  --text-dim: oklch(0.42 0.005 85);
+  --text-muted: oklch(0.70 0.005 85);
+  --text-dim: oklch(0.55 0.005 85);
+  --color-available: oklch(0.65 0.14 145);
   --accent: oklch(0.72 0.14 85);
   --accent-muted: oklch(0.55 0.10 85);
   --border: oklch(0.24 0.005 85);
@@ -177,6 +178,7 @@ p + p {
   border-bottom: 1px solid var(--border-subtle);
 }
 
+.post-item h2,
 .post-item h3 {
   font-family: var(--font-mono);
   font-size: 1.15rem;
@@ -184,10 +186,12 @@ p + p {
   margin-bottom: 0.25rem;
 }
 
+.post-item h2 a,
 .post-item h3 a {
   color: var(--text);
 }
 
+.post-item h2 a:hover,
 .post-item h3 a:hover {
   color: var(--accent);
 }

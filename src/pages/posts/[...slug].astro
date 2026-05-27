@@ -22,12 +22,12 @@ const { Content } = await entry.render();
   description={entry.data.description}
 >
   <article class="container section section-top">
-    <header style="margin-bottom: 3rem;">
+    <header class="post-header">
       <p class="post-meta">
         {formatDate(entry.data.date)}
         {entry.data.updated && ` (updated ${formatDate(entry.data.updated)})`}
       </p>
-      <h1 class="mono" style="font-size: 2rem; margin-top: 0.5rem; margin-bottom: 1rem;">{entry.data.title}</h1>
+      <h1 class="post-title mono">{entry.data.title}</h1>
       <p class="text-muted">{entry.data.description}</p>
       {entry.data.tags.length > 0 && (
         <div class="tag-row">
@@ -42,8 +42,36 @@ const { Content } = await entry.render();
       <Content />
     </div>
 
-    <footer style="margin-top: 4rem; padding-top: 2rem; border-top: 1px solid var(--border-subtle);">
-      <a href="/posts" class="mono" style="font-size: 0.85rem; color: var(--text-dim);">&larr; All posts</a>
+    <footer class="post-footer">
+      <a href="/posts" class="mono">&larr; All posts</a>
     </footer>
   </article>
 </BaseLayout>
+
+<style>
+  .post-header {
+    margin-bottom: 3rem;
+  }
+
+  .post-title {
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    margin-top: 0.5rem;
+    margin-bottom: 1rem;
+    letter-spacing: -0.02em;
+  }
+
+  .post-footer {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border-subtle);
+    font-size: 0.85rem;
+  }
+
+  .post-footer a {
+    color: var(--text-dim);
+  }
+
+  .post-footer a:hover {
+    color: var(--accent);
+  }
+</style>

@@ -13,10 +13,10 @@ const currentPath = Astro.url.pathname;
       <span class="nav-toggle-bar"></span>
     </button>
     <nav class="nav-links" aria-label="Main navigation">
-      <a href="/#services" class={currentPath === "/" ? "active" : ""}>Services</a>
-      <a href="/#work" class={currentPath === "/" ? "active" : ""}>Work</a>
+      <a href="/#services">Services</a>
+      <a href="/#work">Work</a>
       <a href="/posts" class={currentPath.startsWith("/posts") ? "active" : ""}>Posts</a>
-      <a href="/#contact" class={currentPath === "/" ? "active" : ""}>Contact</a>
+      <a href="/#contact">Contact</a>
     </nav>
   </div>
 </header>
@@ -24,10 +24,25 @@ const currentPath = Astro.url.pathname;
 <script>
   const toggle = document.getElementById("nav-toggle");
   const links = document.querySelector(".nav-links");
+
+  function closeMenu() {
+    links?.classList.remove("open");
+    toggle?.classList.remove("open");
+    toggle?.setAttribute("aria-expanded", "false");
+  }
+
   toggle?.addEventListener("click", () => {
     const open = links?.classList.toggle("open");
     toggle.classList.toggle("open");
     toggle.setAttribute("aria-expanded", String(open));
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeMenu();
+  });
+
+  links?.addEventListener("click", (e) => {
+    if ((e.target as Element)?.tagName === "A") closeMenu();
   });
 </script>
 
