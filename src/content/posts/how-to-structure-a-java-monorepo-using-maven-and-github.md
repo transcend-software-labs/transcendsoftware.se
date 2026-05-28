@@ -165,4 +165,4 @@ The workflow for service1 would then trigger on any change to lib1 as well.
 
 ## Complete example
 
-A complete example can be found [here](https://github.com/razum90/java-monorepo).
+A complete example can be found [here](https://github.com/razum90/maven-monorepo-example).
