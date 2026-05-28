@@ -44,7 +44,7 @@ const jsonLd = {
 <BaseLayout
   title={entry.data.title}
   description={entry.data.description}
-  ogImage={entry.data.ogImage}
+  ogImage={entry.data.ogImage ?? ogImage}
   publishedTime={publishedTime}
   isArticle={true}
   jsonLd={jsonLd}
