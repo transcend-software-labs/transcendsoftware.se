@@ -6,7 +6,7 @@
   --bg-raised: oklch(0.18 0.005 85);
   --text: oklch(0.92 0.005 85);
   --text-muted: oklch(0.70 0.005 85);
-  --text-dim: oklch(0.55 0.005 85);
+  --text-dim: oklch(0.63 0.005 85);
   --color-available: oklch(0.65 0.14 145);
   --accent: oklch(0.72 0.14 85);
   --accent-muted: oklch(0.55 0.10 85);
@@ -89,6 +89,24 @@ p + p {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -3rem;
+  z-index: 200;
+  padding: 0.5rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  background: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+  top: 0.75rem;
 }
 
 .container {
