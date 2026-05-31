@@ -38,16 +38,16 @@ const resolvedOgImage = ogImage
     <meta property="og:title" content={fullTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonicalUrl} />
-    {ogImage && <meta property="og:image" content={resolvedOgImage} />}
+    <meta property="og:image" content={resolvedOgImage} />
     {isArticle && publishedTime && (
       <meta property="article:published_time" content={publishedTime} />
     )}
 
     <!-- Twitter -->
-    <meta name="twitter:card" content={ogImage ? "summary_large_image" : "summary"} />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={fullTitle} />
     <meta name="twitter:description" content={description} />
-    {ogImage && <meta name="twitter:image" content={resolvedOgImage} />}
+    <meta name="twitter:image" content={resolvedOgImage} />
 
     <!-- JSON-LD -->
     {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}

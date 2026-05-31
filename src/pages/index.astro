@@ -2,16 +2,69 @@
 import BaseLayout from "../layouts/BaseLayout.astro";
 import Hero from "../components/Hero.astro";
 import Services from "../components/Services.astro";
+import Specialisms from "../components/Specialisms.astro";
 import Work from "../components/Work.astro";
+import Writing from "../components/Writing.astro";
 import Contact from "../components/Contact.astro";
+
+const site = "https://transcendsoftware.se";
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Person",
+      "@id": `${site}/#rasmus`,
+      "name": "Rasmus Kockum",
+      "url": site,
+      "jobTitle": "Senior Engineer & Tech Lead",
+      "knowsAbout": [
+        "Java",
+        "Spring Boot",
+        "Go",
+        "React",
+        "Kubernetes",
+        "Terraform",
+        "CI/CD",
+        "Microservices",
+        "Software Architecture",
+        "Cloud Infrastructure",
+        "AI Agents",
+      ],
+      "sameAs": [
+        "https://www.linkedin.com/in/rasmus-kockum-148a19b9/",
+        "https://github.com/razum90",
+      ],
+      "worksFor": { "@id": `${site}/#org` },
+    },
+    {
+      "@type": "ProfessionalService",
+      "@id": `${site}/#org`,
+      "name": "Transcend Software",
+      "url": site,
+      "description":
+        "Senior software engineering and architecture consulting. Java backends, React frontends, cloud infrastructure, CI/CD.",
+      "areaServed": "Worldwide",
+      "founder": { "@id": `${site}/#rasmus` },
+      "knowsLanguage": ["en", "sv"],
+      "address": {
+        "@type": "PostalAddress",
+        "addressCountry": "SE",
+      },
+    },
+  ],
+};
 ---
 
 <BaseLayout
   title="Rasmus Kockum — Senior Engineer &amp; Tech Lead"
   description="Rasmus Kockum at Transcend Software. Senior engineer and tech lead. Java, React, cloud infrastructure, CI/CD. Backend, frontend, and infrastructure."
+  jsonLd={jsonLd}
 >
   <Hero />
   <Services />
+  <Specialisms />
   <Work />
+  <Writing />
   <Contact />
 </BaseLayout>

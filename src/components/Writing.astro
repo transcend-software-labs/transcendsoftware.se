@@ -1,0 +1,95 @@
+---
+import { getCollection } from "astro:content";
+import { sortPostsByDate, formatDate } from "../lib/posts";
+
+const posts = sortPostsByDate(await getCollection("posts")).slice(0, 3);
+---
+
+<section id="writing" class="writing section">
+  <div class="container container-wide">
+    <h2>Selected writing.</h2>
+
+    <ul class="writing-list">
+      {posts.map((post) => (
+        <li class="writing-item">
+          <a href={`/posts/${post.slug}`}>
+            <span class="writing-date mono">{formatDate(post.data.date)}</span>
+            <h3>{post.data.title}</h3>
+            <p>{post.data.description}</p>
+          </a>
+        </li>
+      ))}
+    </ul>
+
+    <p class="writing-more">
+      <a href="/posts" class="mono">All writing &rarr;</a>
+    </p>
+  </div>
+</section>
+
+<style>
+  .writing {
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .writing h2 {
+    margin-bottom: 3rem;
+  }
+
+  .writing-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .writing-item {
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .writing-item:last-child {
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .writing-item a {
+    display: block;
+    padding: 1.5rem 0;
+    color: inherit;
+  }
+
+  .writing-date {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+  }
+
+  .writing-item h3 {
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--text);
+    margin: 0.35rem 0 0.4rem;
+    transition: color 0.15s ease;
+  }
+
+  .writing-item a:hover h3 {
+    color: var(--accent);
+  }
+
+  .writing-item p {
+    color: var(--text-muted);
+    line-height: 1.6;
+    max-width: 60ch;
+  }
+
+  .writing-more {
+    margin-top: 2rem;
+  }
+
+  .writing-more a {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+
+  .writing-more a:hover {
+    color: var(--accent);
+  }
+</style>
