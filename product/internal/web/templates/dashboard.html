@@ -1,0 +1,22 @@
+{{define "dashboard"}}{{template "head" .}}
+<section class="page-head">
+  <h1>Your projects</h1>
+  <a class="btn" href="/projects/new">Start a project</a>
+</section>
+
+{{if .Data}}
+<ul class="project-list">
+  {{range .Data}}
+  <li class="project-row">
+    <a href="/projects/{{.ID}}">
+      <span class="project-name">{{.Name}}</span>
+      <span class="badge badge-{{.Status}}">{{statusLabel .Status}}</span>
+    </a>
+    {{if .PreviewURL}}<a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">preview ↗</a>{{end}}
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<p class="muted empty">No projects yet. <a href="/projects/new">Start your first one →</a></p>
+{{end}}
+{{template "foot" .}}{{end}}

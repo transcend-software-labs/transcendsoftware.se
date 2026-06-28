@@ -1,0 +1,69 @@
+{{define "project"}}{{template "head" .}}
+{{with .Data.Project}}
+<section class="page-head">
+  <div>
+    <a class="muted small" href="/dashboard">← Dashboard</a>
+    <h1>{{.Name}}</h1>
+  </div>
+</section>
+
+{{template "project_status" .}}
+
+{{if eq .Status "needs_input"}}
+<section class="panel">
+  <h2>A few quick questions</h2>
+  <p class="muted small">Answering these helps the agent build the right thing the first time.</p>
+  <ol class="questions">
+    {{range .Questions}}<li>{{.}}</li>{{end}}
+  </ol>
+  <form method="post" action="/projects/{{.ID}}/answer" class="stack">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <textarea name="answers" rows="6" required placeholder="Answer the questions above in your own words."></textarea>
+    <button class="btn" type="submit">Submit &amp; build</button>
+  </form>
+</section>
+{{end}}
+
+<section class="panel">
+  <h2>Your brief</h2>
+  <p class="brief">{{.Brief}}</p>
+  {{if .Answers}}<h3 class="muted small" style="margin-top:1rem">Your answers</h3><p class="brief">{{.Answers}}</p>{{end}}
+</section>
+
+{{if .Plan}}
+<section class="panel">
+  <h2>The plan</h2>
+  <pre class="plan">{{.Plan}}</pre>
+</section>
+{{end}}
+
+{{if .CanReiterate}}
+<section class="panel">
+  <h2>Request a change</h2>
+  <p class="muted small">{{.IterationsLeft}} change{{if ne .IterationsLeft 1}}s{{end}} left.</p>
+  <form method="post" action="/projects/{{.ID}}/reiterate" class="stack">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <textarea name="prompt" rows="4" required
+      placeholder="Make the hero photo bigger and add an opening-hours section."></textarea>
+    <button class="btn" type="submit">Apply change</button>
+  </form>
+</section>
+{{end}}
+{{end}}
+
+{{if .Data.Iterations}}
+<section class="panel">
+  <h2>History</h2>
+  <ol class="iterations">
+    {{range .Data.Iterations}}
+    <li>
+      <span class="badge badge-{{.Status}}">#{{.Number}} · {{statusLabel .Status}}</span>
+      {{if .Prompt}}<p class="muted small">“{{.Prompt}}”</p>{{end}}
+      {{if .PreviewURL}}<a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">preview ↗</a>{{end}}
+      {{if .Log}}<details><summary class="muted small">build log</summary><pre class="log">{{.Log}}</pre></details>{{end}}
+    </li>
+    {{end}}
+  </ol>
+</section>
+{{end}}
+{{template "foot" .}}{{end}}

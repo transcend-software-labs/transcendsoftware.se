@@ -1,0 +1,16 @@
+# Local Postgres for development.
+#   docker compose up -d
+#   make db-migrate
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: pw
+      POSTGRES_DB: rasmusai
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata: {}

@@ -1,0 +1,30 @@
+# Deploy config for the product itself (app.transcendsoftware.se).
+# NOT deployed yet — provided so `fly launch`/`fly deploy` is ready when you are.
+#
+# Secrets (set with `fly secrets set ...`, never commit):
+#   DATABASE_URL, ANTHROPIC_API_KEY, ADMIN_EMAIL,
+#   FLY_API_TOKEN, FLY_SANDBOX_APP, FLY_SANDBOX_IMAGE, OPENCODE_URL
+
+app = "rasmus-ai"
+primary_region = "arn"  # Stockholm (EU)
+
+[build]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/healthz"
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "5s"
+
+[env]
+  ADDR = ":8080"
+  BASE_URL = "https://app.transcendsoftware.se"
+  SECURE_COOKIE = "true"

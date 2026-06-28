@@ -1,0 +1,18 @@
+{{define "new_project"}}{{template "head" .}}
+<section class="form-narrow">
+  <h1>Start a project</h1>
+  <p class="muted">Describe the website you want. The more concrete you are about
+  the business, the pages, and whether you need online ordering, the better.</p>
+  <form method="post" action="/projects" class="stack">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <label>Project name <span class="hint">(optional — we'll suggest one)</span>
+      <input type="text" name="name" placeholder="Äppelmust site">
+    </label>
+    <label>What do you want built?
+      <textarea name="brief" rows="7" required
+        placeholder="A website for my neighbour's apple farm to sell äppelmust. Show the orchard, the product, and how to order. Swedish."></textarea>
+    </label>
+    <button class="btn" type="submit">Build it</button>
+  </form>
+</section>
+{{template "foot" .}}{{end}}

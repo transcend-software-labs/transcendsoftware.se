@@ -1,0 +1,35 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} — Rasmus AI</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="https://unpkg.com/htmx.org@2.0.3" crossorigin="anonymous"></script>
+</head>
+<body>
+{{template "nav" .}}
+<main class="container">
+{{if .Flash}}<div class="flash">{{.Flash}}</div>{{end}}
+{{end}}
+
+{{define "nav"}}<header class="nav">
+  <a class="brand" href="/">Rasmus<span class="accent">AI</span></a>
+  <nav class="navlinks">
+    {{if .User}}
+      <a href="/dashboard">Dashboard</a>
+      {{if .IsAdmin}}<a href="/admin">Review</a>{{end}}
+      <span class="muted">{{.User.Email}}</span>
+      <form method="post" action="/logout" class="inline"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button class="linklike">Log out</button></form>
+    {{else}}
+      <a href="/login">Log in</a>
+      <a href="/signup" class="btn btn-sm">Get started</a>
+    {{end}}
+  </nav>
+</header>
+{{end}}
+
+{{define "foot"}}</main>
+<footer class="foot"><span class="muted">© Transcend Software · Rasmus AI</span></footer>
+</body>
+</html>{{end}}

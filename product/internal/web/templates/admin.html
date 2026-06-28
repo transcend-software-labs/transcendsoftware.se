@@ -1,0 +1,32 @@
+{{define "admin"}}{{template "head" .}}
+<section class="page-head">
+  <h1>Operator review</h1>
+</section>
+<p class="muted small">Projects the safety gate flagged as ambiguous. Approve to build, or decline.</p>
+
+{{if .Data}}
+<ul class="project-list">
+  {{range .Data}}
+  <li class="panel">
+    <h2>{{.Name}}</h2>
+    {{if .RejectReason}}<p class="reason small">Flagged: {{.RejectReason}}</p>{{end}}
+    <p class="brief">{{.Brief}}</p>
+    {{if .Answers}}<p class="brief muted small">Answers: {{.Answers}}</p>{{end}}
+    <div class="admin-actions">
+      <form method="post" action="/admin/projects/{{.ID}}/approve" class="inline">
+        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+        <button class="btn btn-sm" type="submit">Approve &amp; build</button>
+      </form>
+      <form method="post" action="/admin/projects/{{.ID}}/reject" class="inline-actions">
+        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+        <input type="text" name="reason" placeholder="Reason (optional)">
+        <button class="linklike" type="submit">Decline</button>
+      </form>
+    </div>
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<p class="muted empty">Nothing waiting for review.</p>
+{{end}}
+{{template "foot" .}}{{end}}

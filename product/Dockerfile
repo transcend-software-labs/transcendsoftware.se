@@ -1,0 +1,15 @@
+# Build the single static binary (templates + static assets are go:embed'd).
+FROM golang:1.25-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /bin/server ./cmd/server
+
+# Minimal runtime image.
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /bin/server /server
+EXPOSE 8080
+ENV ADDR=":8080"
+USER nonroot:nonroot
+ENTRYPOINT ["/server"]

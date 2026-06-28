@@ -1,0 +1,9 @@
+{{define "project_status"}}<div id="status" class="statusbox status-{{.Status}}"{{if polling .}} hx-get="/projects/{{.ID}}/status" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+  <p class="status-line">{{statusLabel .Status}}{{if polling .}} <span class="spinner"></span>{{end}}</p>
+  {{if eq .Status "preview_ready"}}
+    <p><a class="btn" href="{{.PreviewURL}}" target="_blank" rel="noopener">Open preview ↗</a></p>
+  {{end}}
+  {{if eq .Status "rejected"}}<p class="reason">Declined: {{.RejectReason}}</p>{{end}}
+  {{if eq .Status "failed"}}<p class="reason">Something went wrong: {{.RejectReason}}</p>{{end}}
+  {{if and (eq .Status "screening") (eq .Verdict "escalate")}}<p class="reason">Held for review by Rasmus.</p>{{end}}
+</div>{{end}}
