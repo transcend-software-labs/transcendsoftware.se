@@ -82,13 +82,13 @@ h3 { font-size: 1rem; font-weight: 500; }
 
 /* Buttons */
 .btn {
-  display: inline-block; background: linear-gradient(180deg, var(--accent-2), var(--accent));
-  color: #1a1710; padding: .62rem 1.15rem; border: none; border-radius: var(--radius);
-  font: inherit; font-weight: 500; cursor: pointer;
-  box-shadow: 0 1px 0 rgba(255,255,255,.18) inset, 0 6px 16px rgba(224,169,60,.16);
+  display: inline-block; background: linear-gradient(180deg, #f5cd66, #edba4c);
+  color: #14110a; padding: .62rem 1.15rem; border: none; border-radius: var(--radius);
+  font: inherit; font-weight: 600; cursor: pointer;
+  box-shadow: 0 1px 0 rgba(255,255,255,.25) inset, 0 6px 16px rgba(224,169,60,.16);
   transition: transform .12s var(--ease), box-shadow .2s var(--ease), filter .2s var(--ease);
 }
-.btn:hover { color: #1a1710; transform: translateY(-1px); box-shadow: 0 1px 0 rgba(255,255,255,.22) inset, 0 10px 22px rgba(224,169,60,.26); }
+.btn:hover { color: #14110a; transform: translateY(-1px); box-shadow: 0 1px 0 rgba(255,255,255,.3) inset, 0 10px 22px rgba(224,169,60,.26); }
 .btn:active { transform: translateY(0); filter: brightness(.96); }
 .btn-sm { padding: .38rem .8rem; font-size: .82rem; }
 .btn-lg { padding: .8rem 1.6rem; font-size: 1.05rem; }
