@@ -29,9 +29,9 @@ type Result struct {
 	Log        string
 }
 
-// Builder runs a build pass.
+// Builder runs a build pass. onLog, if non-nil, receives progress lines live.
 type Builder interface {
-	Build(ctx context.Context, req Request) (Result, error)
+	Build(ctx context.Context, req Request, onLog func(string)) (Result, error)
 }
 
 // Sandbox builds inside an isolated, per-task sandbox.
@@ -47,7 +47,7 @@ func NewSandbox(driver opencode.Driver, machines fly.Machines, systemPrompt stri
 }
 
 // Build spawns a sandbox, runs the agent, deploys, and tears the sandbox down.
-func (b *Sandbox) Build(ctx context.Context, req Request) (Result, error) {
+func (b *Sandbox) Build(ctx context.Context, req Request, onLog func(string)) (Result, error) {
 	sb, err := b.Machines.SpawnSandbox(ctx, req.ProjectID)
 	if err != nil {
 		return Result{}, err
@@ -63,7 +63,7 @@ func (b *Sandbox) Build(ctx context.Context, req Request) (Result, error) {
 		Workdir:      "/workspace",
 		SystemPrompt: b.SystemPrompt,
 		Instruction:  instruction,
-	})
+	}, onLog)
 	if err != nil {
 		return Result{Log: res.Log}, err
 	}

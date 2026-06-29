@@ -21,6 +21,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/opencode"
 	"github.com/transcend-software-labs/rasmus-ai/internal/orchestrator"
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
+	"github.com/transcend-software-labs/rasmus-ai/internal/stream"
 	"github.com/transcend-software-labs/rasmus-ai/internal/web"
 )
 
@@ -30,9 +31,10 @@ func newTestServer(t *testing.T) *httptest.Server {
 	fake := llm.NewFake()
 	b := builder.NewSandbox(opencode.NewFake(), fly.NewFake(), "")
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	orch := orchestrator.New(st, fake, fake, fake, b, log)
+	broker := stream.NewBroker(100)
+	orch := orchestrator.New(st, fake, fake, fake, b, broker, log)
 	sessions := auth.NewSessions(time.Hour)
-	srv, err := web.NewServer(config.Config{AdminEmail: "admin@example.com"}, st, sessions, orch, log)
+	srv, err := web.NewServer(config.Config{AdminEmail: "admin@example.com"}, st, sessions, orch, broker, log)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}

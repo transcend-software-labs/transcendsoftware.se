@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
@@ -20,6 +21,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
+	"github.com/transcend-software-labs/rasmus-ai/internal/stream"
 )
 
 // pipelineTimeout bounds a single plan→gate→build pass.
@@ -32,12 +34,13 @@ type Orchestrator struct {
 	planner llm.Planner
 	gate    llm.SafetyGate
 	builder builder.Builder
+	broker  *stream.Broker
 	log     *slog.Logger
 }
 
 // New returns an orchestrator.
-func New(s store.Store, in llm.Intake, p llm.Planner, g llm.SafetyGate, b builder.Builder, log *slog.Logger) *Orchestrator {
-	return &Orchestrator{store: s, intake: in, planner: p, gate: g, builder: b, log: log}
+func New(s store.Store, in llm.Intake, p llm.Planner, g llm.SafetyGate, b builder.Builder, br *stream.Broker, log *slog.Logger) *Orchestrator {
+	return &Orchestrator{store: s, intake: in, planner: p, gate: g, builder: b, broker: br, log: log}
 }
 
 func (o *Orchestrator) async(projectID string, fn func(context.Context) error) {
@@ -207,23 +210,35 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 		return err
 	}
 
+	// Live progress: reset history for this pass, accumulate and publish lines.
+	o.broker.Reset(p.ID)
+	var logBuf strings.Builder
+	onLog := func(line string) {
+		logBuf.WriteString(line)
+		logBuf.WriteByte('\n')
+		o.broker.Publish(p.ID, stream.Event{Type: "log", Data: line})
+	}
+
 	res, err := o.builder.Build(ctx, builder.Request{
 		ProjectID: p.ID,
 		Brief:     p.EffectiveBrief(),
 		Plan:      p.Plan,
 		Prompt:    prompt,
 		RepoURL:   p.RepoURL,
-	})
+	}, onLog)
 	if err != nil {
 		it.Status = project.StatusFailed
-		it.Log = res.Log
+		it.Log = logBuf.String()
 		_ = o.store.UpdateIteration(ctx, it)
 		return err
 	}
 
+	if res.PreviewURL != "" {
+		onLog("Preview ready: " + res.PreviewURL)
+	}
 	it.Status = project.StatusPreviewReady
 	it.PreviewURL = res.PreviewURL
-	it.Log = res.Log
+	it.Log = logBuf.String()
 	if err := o.store.UpdateIteration(ctx, it); err != nil {
 		return err
 	}

@@ -1,12 +1,16 @@
 package web
 
 import (
+	"fmt"
+	"html/template"
+	"io"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/id"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
+	"github.com/transcend-software-labs/rasmus-ai/internal/stream"
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
 )
 
@@ -100,6 +104,55 @@ func (s *Server) handleProjectStatus(w http.ResponseWriter, r *http.Request, u *
 	if err := s.tmpl.ExecuteTemplate(w, "project_status", p); err != nil {
 		s.log.Error("render status", "err", err)
 	}
+}
+
+// handleProjectStream is a Server-Sent Events endpoint that relays live build
+// progress to the browser (consumed by the HTMX SSE extension).
+func (s *Server) handleProjectStream(w http.ResponseWriter, r *http.Request, u *user.User) {
+	p, ok := s.ownedProject(w, r, u)
+	if !ok {
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no") // don't let proxies buffer the stream
+
+	history, ch, cancel := s.broker.Subscribe(p.ID)
+	defer cancel()
+
+	for _, e := range history {
+		writeSSEEvent(w, e)
+	}
+	flusher.Flush()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case e, ok := <-ch:
+			if !ok {
+				return
+			}
+			writeSSEEvent(w, e)
+			flusher.Flush()
+		}
+	}
+}
+
+// writeSSEEvent writes one event as an HTML fragment for an HTMX beforeend swap.
+func writeSSEEvent(w io.Writer, e stream.Event) {
+	html := `<div class="logline">` + template.HTMLEscapeString(e.Data) + `</div>`
+	fmt.Fprintf(w, "event: %s\n", e.Type)
+	for _, line := range strings.Split(html, "\n") {
+		fmt.Fprintf(w, "data: %s\n", line)
+	}
+	fmt.Fprint(w, "\n")
 }
 
 func (s *Server) handleReiterate(w http.ResponseWriter, r *http.Request, u *user.User) {

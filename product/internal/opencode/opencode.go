@@ -30,9 +30,10 @@ type Result struct {
 	SessionID string // opencode session id, for resuming reiterations
 }
 
-// Driver runs a build via opencode.
+// Driver runs a build via opencode. onLog, if non-nil, receives progress lines
+// as they happen (for live streaming to the dashboard).
 type Driver interface {
-	Run(ctx context.Context, spec Spec) (Result, error)
+	Run(ctx context.Context, spec Spec, onLog func(string)) (Result, error)
 }
 
 // Fake is a deterministic Driver for dev mode; it performs no real work.
@@ -41,16 +42,31 @@ type Fake struct{}
 // NewFake returns a dev-mode driver.
 func NewFake() *Fake { return &Fake{} }
 
-func (Fake) Run(ctx context.Context, spec Spec) (Result, error) {
-	// Simulate a short build so the dashboard shows realistic progression.
-	select {
-	case <-time.After(1500 * time.Millisecond):
-	case <-ctx.Done():
-		return Result{}, ctx.Err()
+func (Fake) Run(ctx context.Context, spec Spec, onLog func(string)) (Result, error) {
+	// Simulate a build, emitting progress lines over time so the live log streams.
+	lines := []string{
+		"Spawning isolated sandbox…",
+		"Cloning workspace…",
+		"Agent reading the plan…",
+		"Scaffolding the site…",
+		"Installing dependencies…",
+		"Running the verifier (build + tests)…",
+		"Build passed ✓",
+		"Deploying preview…",
 	}
-	log := "[dev] agent scaffolded the site\n[dev] installed dependencies\n[dev] build passed\n" +
-		"[dev] instruction was:\n" + strings.TrimSpace(spec.Instruction)
-	return Result{Log: log, SessionID: "dev-session"}, nil
+	var all []string
+	for _, ln := range lines {
+		select {
+		case <-time.After(300 * time.Millisecond):
+		case <-ctx.Done():
+			return Result{Log: strings.Join(all, "\n")}, ctx.Err()
+		}
+		all = append(all, ln)
+		if onLog != nil {
+			onLog(ln)
+		}
+	}
+	return Result{Log: strings.Join(all, "\n"), SessionID: "dev-session"}, nil
 }
 
 // HTTP drives a real opencode server at BaseURL. Confirm endpoints against your
@@ -68,16 +84,23 @@ func NewHTTP(baseURL string) *HTTP {
 	}
 }
 
-func (h *HTTP) Run(ctx context.Context, spec Spec) (Result, error) {
+func (h *HTTP) Run(ctx context.Context, spec Spec, onLog func(string)) (Result, error) {
 	// 1) Create a session.
 	sessionID, err := h.createSession(ctx)
 	if err != nil {
 		return Result{}, fmt.Errorf("opencode: create session: %w", err)
 	}
+	if onLog != nil {
+		onLog("opencode session " + sessionID + " started")
+	}
 	// 2) Send the instruction and collect the response.
+	// TODO: switch to the streaming endpoint and call onLog per event.
 	log, err := h.sendMessage(ctx, sessionID, spec.SystemPrompt+"\n\n"+spec.Instruction)
 	if err != nil {
 		return Result{}, fmt.Errorf("opencode: run: %w", err)
+	}
+	if onLog != nil {
+		onLog(log)
 	}
 	return Result{Log: log, SessionID: sessionID}, nil
 }

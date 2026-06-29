@@ -25,6 +25,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/opencode"
 	"github.com/transcend-software-labs/rasmus-ai/internal/orchestrator"
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
+	"github.com/transcend-software-labs/rasmus-ai/internal/stream"
 	"github.com/transcend-software-labs/rasmus-ai/internal/web"
 )
 
@@ -44,10 +45,11 @@ func main() {
 	machines := newMachines(cfg, log)
 
 	build := builder.NewSandbox(driver, machines, llm.PlannerSystemPrompt)
-	orch := orchestrator.New(st, intake, planner, gate, build, log)
+	broker := stream.NewBroker(500)
+	orch := orchestrator.New(st, intake, planner, gate, build, broker, log)
 	sessions := auth.NewSessions(cfg.SessionTTL)
 
-	srv, err := web.NewServer(cfg, st, sessions, orch, log)
+	srv, err := web.NewServer(cfg, st, sessions, orch, broker, log)
 	if err != nil {
 		log.Error("server init", "err", err)
 		os.Exit(1)

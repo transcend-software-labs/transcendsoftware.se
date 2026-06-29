@@ -13,13 +13,14 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/opencode"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
+	"github.com/transcend-software-labs/rasmus-ai/internal/stream"
 )
 
 func newTestOrch(st store.Store) *Orchestrator {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	fake := llm.NewFake()
 	b := builder.NewSandbox(opencode.NewFake(), fly.NewFake(), "")
-	return New(st, fake, fake, fake, b, log)
+	return New(st, fake, fake, fake, b, stream.NewBroker(100), log)
 }
 
 func seedProject(t *testing.T, st store.Store, brief string) string {

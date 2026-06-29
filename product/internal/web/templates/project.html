@@ -9,6 +9,13 @@
 
 {{template "project_status" .}}
 
+{{if eq .Status "building"}}
+<section class="panel">
+  <h2>Live build</h2>
+  <div class="log livelog" hx-ext="sse" sse-connect="/projects/{{.ID}}/stream" sse-swap="log" hx-swap="beforeend"></div>
+</section>
+{{end}}
+
 {{if eq .Status "needs_input"}}
 <section class="panel">
   <h2>A few quick questions</h2>

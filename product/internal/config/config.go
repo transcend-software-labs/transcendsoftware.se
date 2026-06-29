@@ -34,7 +34,7 @@ type Config struct {
 // Load reads configuration from the environment, applying dev-friendly defaults.
 func Load() Config {
 	return Config{
-		Addr:            envOr("ADDR", ":8080"),
+		Addr:            listenAddr(),
 		BaseURL:         envOr("BASE_URL", "http://localhost:8080"),
 		SessionTTL:      30 * 24 * time.Hour,
 		SecureCookie:    os.Getenv("SECURE_COOKIE") == "true",
@@ -52,6 +52,18 @@ func Load() Config {
 // DevMode reports whether the app is running fully in-memory/fake.
 func (c Config) DevMode() bool {
 	return c.DatabaseURL == "" && c.AnthropicAPIKey == "" && c.OpencodeURL == "" && c.FlyAPIToken == ""
+}
+
+// listenAddr resolves the listen address, preferring ADDR, then PORT (which
+// hosting platforms inject), then a default.
+func listenAddr() string {
+	if a := os.Getenv("ADDR"); a != "" {
+		return a
+	}
+	if p := os.Getenv("PORT"); p != "" {
+		return ":" + p
+	}
+	return ":8080"
 }
 
 func envOr(key, def string) string {
