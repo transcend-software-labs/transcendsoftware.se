@@ -103,6 +103,16 @@ h3 { font-size: 1rem; font-weight: 500; }
 .steps strong { color: var(--text); font-weight: 500; }
 .how { margin-top: 3rem; border-top: 1px solid var(--border); padding-top: 2rem; }
 
+/* Credibility strip */
+.about { margin-top: 3rem; border-top: 1px solid var(--border); padding-top: 2rem; }
+.about p { color: var(--muted); max-width: 58ch; margin-bottom: 1.5rem; }
+.about p strong { color: var(--text); font-weight: 500; }
+.proof { list-style: none; display: flex; flex-wrap: wrap; gap: 1.25rem 2.5rem; margin-bottom: 1.25rem; }
+.proof li { display: flex; flex-direction: column; gap: .2rem; }
+.proof-stat { font-size: 1.35rem; font-weight: 600; color: var(--accent); letter-spacing: -.01em; }
+.proof-label { font-size: .82rem; color: var(--muted); max-width: 24ch; }
+.about-link { font-size: .9rem; }
+
 /* Forms */
 .form-narrow { max-width: 26rem; }
 .stack { display: flex; flex-direction: column; gap: 1rem; margin: 1.5rem 0; }
