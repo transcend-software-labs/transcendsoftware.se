@@ -29,6 +29,9 @@ type Store interface {
 	CreateIteration(ctx context.Context, it *project.Iteration) error
 	UpdateIteration(ctx context.Context, it *project.Iteration) error
 	IterationsByProject(ctx context.Context, projectID string) ([]*project.Iteration, error)
+	// ActiveIterations returns build passes currently in the building state
+	// (for the active-builds view and startup recovery).
+	ActiveIterations(ctx context.Context) ([]*project.Iteration, error)
 
 	// Close releases resources (no-op for the in-memory store).
 	Close() error

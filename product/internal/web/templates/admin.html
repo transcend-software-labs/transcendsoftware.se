@@ -2,31 +2,53 @@
 <section class="page-head">
   <h1>Operator review</h1>
 </section>
-<p class="muted small">Projects the safety gate flagged as ambiguous. Approve to build, or decline.</p>
 
-{{if .Data}}
-<ul class="project-list">
-  {{range .Data}}
-  <li class="panel">
-    <h2>{{.Name}}</h2>
-    {{if .RejectReason}}<p class="reason small">Flagged: {{.RejectReason}}</p>{{end}}
-    <p class="brief">{{.Brief}}</p>
-    {{if .Answers}}<p class="brief muted small">Answers: {{.Answers}}</p>{{end}}
-    <div class="admin-actions">
-      <form method="post" action="/admin/projects/{{.ID}}/approve" class="inline">
-        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-        <button class="btn btn-sm" type="submit">Approve &amp; build</button>
-      </form>
-      <form method="post" action="/admin/projects/{{.ID}}/reject" class="inline-actions">
-        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-        <input type="text" name="reason" placeholder="Reason (optional)">
-        <button class="linklike" type="submit">Decline</button>
-      </form>
-    </div>
-  </li>
+<section class="panel">
+  <h2>In progress</h2>
+  {{if .Data.Active}}
+  <ul class="project-list">
+    {{range .Data.Active}}
+    <li class="project-row">
+      <a href="/projects/{{.ProjectID}}">
+        <span class="project-name">{{.ProjectName}}</span>
+        <span class="badge badge-building">building <span class="spinner"></span></span>
+      </a>
+      <span class="muted small">machine {{if .MachineID}}{{.MachineID}}{{else}}—{{end}}</span>
+    </li>
+    {{end}}
+  </ul>
+  {{else}}
+  <p class="muted small">Nothing building right now.</p>
   {{end}}
-</ul>
-{{else}}
-<p class="muted empty">Nothing waiting for review.</p>
-{{end}}
+</section>
+
+<section class="panel">
+  <h2>Needs review</h2>
+  <p class="muted small">Projects the safety gate flagged as ambiguous. Approve to build, or decline.</p>
+  {{if .Data.Escalated}}
+  <ul class="project-list">
+    {{range .Data.Escalated}}
+    <li class="panel">
+      <h3>{{.Name}}</h3>
+      {{if .RejectReason}}<p class="reason small">Flagged: {{.RejectReason}}</p>{{end}}
+      <p class="brief">{{.Brief}}</p>
+      {{if .Answers}}<p class="brief muted small">Answers: {{.Answers}}</p>{{end}}
+      <div class="admin-actions">
+        <form method="post" action="/admin/projects/{{.ID}}/approve" class="inline">
+          <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+          <button class="btn btn-sm" type="submit">Approve &amp; build</button>
+        </form>
+        <form method="post" action="/admin/projects/{{.ID}}/reject" class="inline-actions">
+          <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+          <input type="text" name="reason" placeholder="Reason (optional)">
+          <button class="linklike" type="submit">Decline</button>
+        </form>
+      </div>
+    </li>
+    {{end}}
+  </ul>
+  {{else}}
+  <p class="muted small">Nothing waiting for review.</p>
+  {{end}}
+</section>
 {{template "foot" .}}{{end}}

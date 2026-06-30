@@ -145,6 +145,20 @@ func (m *Memory) UpdateIteration(_ context.Context, it *project.Iteration) error
 	return nil
 }
 
+func (m *Memory) ActiveIterations(_ context.Context) ([]*project.Iteration, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var out []*project.Iteration
+	for _, it := range m.iterations {
+		if it.Status == project.StatusBuilding {
+			cp := *it
+			out = append(out, &cp)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out, nil
+}
+
 func (m *Memory) IterationsByProject(_ context.Context, projectID string) ([]*project.Iteration, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

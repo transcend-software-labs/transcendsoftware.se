@@ -30,9 +30,15 @@ type Result struct {
 	Log        string
 }
 
-// Builder runs a build pass. onLog, if non-nil, receives progress lines live.
+// Hooks observe a build pass.
+type Hooks struct {
+	OnLog     func(string)                 // progress lines, live
+	OnSandbox func(machineID, addr string) // called once the sandbox is spawned
+}
+
+// Builder runs a build pass.
 type Builder interface {
-	Build(ctx context.Context, req Request, onLog func(string)) (Result, error)
+	Build(ctx context.Context, req Request, hooks Hooks) (Result, error)
 }
 
 // Config holds the sandbox builder's settings.
@@ -65,7 +71,7 @@ func NewSandbox(machines fly.Machines, newDriver DriverFactory, cfg Config) *San
 }
 
 // Build spawns a sandbox, runs the agent, deploys, and tears the sandbox down.
-func (b *Sandbox) Build(ctx context.Context, req Request, onLog func(string)) (Result, error) {
+func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, error) {
 	env := map[string]string{}
 	if b.cfg.AnthropicKey != "" {
 		env["ANTHROPIC_API_KEY"] = b.cfg.AnthropicKey
@@ -74,7 +80,7 @@ func (b *Sandbox) Build(ctx context.Context, req Request, onLog func(string)) (R
 		env["REPO_URL"] = req.RepoURL
 	}
 
-	emit(onLog, "Spawning isolated sandbox…")
+	emit(hooks.OnLog, "Spawning isolated sandbox…")
 	sb, err := b.machines.SpawnSandbox(ctx, fly.SpawnSpec{
 		TaskID: req.ProjectID,
 		Port:   b.cfg.OpencodePort,
@@ -84,7 +90,10 @@ func (b *Sandbox) Build(ctx context.Context, req Request, onLog func(string)) (R
 		return Result{}, err
 	}
 	defer func() { _ = b.machines.DestroySandbox(context.WithoutCancel(ctx), sb) }()
-	emit(onLog, "Sandbox ready, starting the agent…")
+	if hooks.OnSandbox != nil {
+		hooks.OnSandbox(sb.MachineID, sb.Addr)
+	}
+	emit(hooks.OnLog, "Sandbox ready, starting the agent…")
 
 	instruction := req.Plan
 	if req.Prompt != "" {
@@ -96,7 +105,7 @@ func (b *Sandbox) Build(ctx context.Context, req Request, onLog func(string)) (R
 		Workdir:      "/workspace",
 		SystemPrompt: b.cfg.SystemPrompt,
 		Instruction:  instruction,
-	}, onLog)
+	}, hooks.OnLog)
 	if err != nil {
 		return Result{Log: res.Log}, err
 	}

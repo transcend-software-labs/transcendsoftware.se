@@ -19,8 +19,9 @@ import (
 func newTestOrch(st store.Store) *Orchestrator {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	fake := llm.NewFake()
-	b := builder.NewSandbox(fly.NewFake(), func(string) opencode.Driver { return opencode.NewFake() }, builder.Config{})
-	return New(st, fake, fake, fake, b, stream.NewBroker(100), log)
+	machines := fly.NewFake()
+	b := builder.NewSandbox(machines, func(string) opencode.Driver { return opencode.NewFake() }, builder.Config{})
+	return New(st, fake, fake, fake, b, machines, stream.NewBroker(100), log)
 }
 
 func seedProject(t *testing.T, st store.Store, brief string) string {
@@ -151,6 +152,39 @@ func TestEscalation_ApproveBuilds(t *testing.T) {
 	got := waitFor(t, st, id, project.StatusPreviewReady)
 	if got.PreviewURL == "" {
 		t.Error("approved escalation should build a preview")
+	}
+}
+
+func TestRecoverInterrupted(t *testing.T) {
+	st := store.NewMemory()
+	orch := newTestOrch(st)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	// A project + build pass left "building" by a previous (crashed) run.
+	p := &project.Project{
+		ID: "p1", UserID: "u1", Name: "x", Brief: "b",
+		Status: project.StatusBuilding, CreatedAt: now, UpdatedAt: now,
+	}
+	_ = st.CreateProject(ctx, p)
+	it := &project.Iteration{
+		ID: "i1", ProjectID: "p1", Number: 1, Status: project.StatusBuilding,
+		MachineID: "m-123", CreatedAt: now,
+	}
+	_ = st.CreateIteration(ctx, it)
+
+	orch.RecoverInterrupted(ctx)
+
+	its, _ := st.IterationsByProject(ctx, "p1")
+	if len(its) != 1 || its[0].Status != project.StatusFailed {
+		t.Errorf("expected interrupted iteration marked failed, got %+v", its)
+	}
+	gotP, _ := st.ProjectByID(ctx, "p1")
+	if gotP.Status != project.StatusFailed {
+		t.Errorf("expected project marked failed, got %q", gotP.Status)
+	}
+	if active, _ := st.ActiveIterations(ctx); len(active) != 0 {
+		t.Errorf("expected no active builds after recovery, got %d", len(active))
 	}
 }
 

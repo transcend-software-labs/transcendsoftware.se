@@ -188,17 +188,28 @@ func scanProject(row rowScanner) (*project.Project, error) {
 }
 
 func (p *Postgres) CreateIteration(ctx context.Context, it *project.Iteration) error {
+	hb := it.HeartbeatAt
+	if hb.IsZero() {
+		hb = it.CreatedAt
+	}
 	_, err := p.pool.Exec(ctx,
-		`INSERT INTO iterations (id, project_id, number, prompt, preview_url, status, log, created_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-		it.ID, it.ProjectID, it.Number, it.Prompt, it.PreviewURL, it.Status, it.Log, it.CreatedAt)
+		`INSERT INTO iterations
+		   (id, project_id, number, prompt, preview_url, status, log, machine_id, heartbeat_at, created_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		it.ID, it.ProjectID, it.Number, it.Prompt, it.PreviewURL, it.Status, it.Log,
+		it.MachineID, hb, it.CreatedAt)
 	return err
 }
 
 func (p *Postgres) UpdateIteration(ctx context.Context, it *project.Iteration) error {
+	hb := it.HeartbeatAt
+	if hb.IsZero() {
+		hb = it.CreatedAt
+	}
 	tag, err := p.pool.Exec(ctx,
-		`UPDATE iterations SET prompt=$2, preview_url=$3, status=$4, log=$5 WHERE id=$1`,
-		it.ID, it.Prompt, it.PreviewURL, it.Status, it.Log)
+		`UPDATE iterations SET prompt=$2, preview_url=$3, status=$4, log=$5,
+		   machine_id=$6, heartbeat_at=$7 WHERE id=$1`,
+		it.ID, it.Prompt, it.PreviewURL, it.Status, it.Log, it.MachineID, hb)
 	if err != nil {
 		return err
 	}
@@ -208,22 +219,50 @@ func (p *Postgres) UpdateIteration(ctx context.Context, it *project.Iteration) e
 	return nil
 }
 
+const iterationColumns = `SELECT id, project_id, number, prompt, preview_url, status,
+	log, machine_id, heartbeat_at, created_at FROM iterations`
+
+func scanIteration(row rowScanner) (*project.Iteration, error) {
+	var it project.Iteration
+	err := row.Scan(&it.ID, &it.ProjectID, &it.Number, &it.Prompt, &it.PreviewURL,
+		&it.Status, &it.Log, &it.MachineID, &it.HeartbeatAt, &it.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &it, nil
+}
+
 func (p *Postgres) IterationsByProject(ctx context.Context, projectID string) ([]*project.Iteration, error) {
-	rows, err := p.pool.Query(ctx,
-		`SELECT id, project_id, number, prompt, preview_url, status, log, created_at
-		 FROM iterations WHERE project_id = $1 ORDER BY number ASC`, projectID)
+	rows, err := p.pool.Query(ctx, iterationColumns+` WHERE project_id = $1 ORDER BY number ASC`, projectID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []*project.Iteration
 	for rows.Next() {
-		var it project.Iteration
-		if err := rows.Scan(&it.ID, &it.ProjectID, &it.Number, &it.Prompt,
-			&it.PreviewURL, &it.Status, &it.Log, &it.CreatedAt); err != nil {
+		it, err := scanIteration(rows)
+		if err != nil {
 			return nil, err
 		}
-		out = append(out, &it)
+		out = append(out, it)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) ActiveIterations(ctx context.Context) ([]*project.Iteration, error) {
+	rows, err := p.pool.Query(ctx, iterationColumns+` WHERE status = $1 ORDER BY created_at DESC`,
+		project.StatusBuilding)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*project.Iteration
+	for rows.Next() {
+		it, err := scanIteration(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, it)
 	}
 	return out, rows.Err()
 }

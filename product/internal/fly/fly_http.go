@@ -109,11 +109,15 @@ func (h *HTTP) waitStarted(ctx context.Context, machineID string) error {
 }
 
 func (h *HTTP) DestroySandbox(ctx context.Context, s *Sandbox) error {
-	if s == nil {
+	if s == nil || s.MachineID == "" {
 		return nil
 	}
+	app := s.AppName
+	if app == "" {
+		app = h.sandboxApp // reaping by machine id only (e.g. startup recovery)
+	}
 	return h.do(ctx, http.MethodDelete,
-		fmt.Sprintf("/apps/%s/machines/%s?force=true", s.AppName, s.MachineID), nil, nil)
+		fmt.Sprintf("/apps/%s/machines/%s?force=true", app, s.MachineID), nil, nil)
 }
 
 // Deploy is intentionally not enabled yet — the single step left switched off.

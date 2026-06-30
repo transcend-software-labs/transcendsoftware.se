@@ -50,7 +50,8 @@ func main() {
 		AnthropicKey: cfg.AnthropicAPIKey, // opencode needs it inside the sandbox
 	})
 	broker := stream.NewBroker(500)
-	orch := orchestrator.New(st, intake, planner, gate, build, broker, log)
+	orch := orchestrator.New(st, intake, planner, gate, build, machines, broker, log)
+	orch.RecoverInterrupted(context.Background()) // reap builds left running by a prior run
 	sessions := auth.NewSessions(cfg.SessionTTL)
 
 	srv, err := web.NewServer(cfg, st, sessions, orch, broker, log)

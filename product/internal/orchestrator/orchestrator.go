@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
+	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
 	"github.com/transcend-software-labs/rasmus-ai/internal/id"
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
@@ -29,18 +30,45 @@ const pipelineTimeout = 45 * time.Minute
 
 // Orchestrator coordinates intake, planning, screening and building.
 type Orchestrator struct {
-	store   store.Store
-	intake  llm.Intake
-	planner llm.Planner
-	gate    llm.SafetyGate
-	builder builder.Builder
-	broker  *stream.Broker
-	log     *slog.Logger
+	store    store.Store
+	intake   llm.Intake
+	planner  llm.Planner
+	gate     llm.SafetyGate
+	builder  builder.Builder
+	machines fly.Machines // for reaping orphaned sandboxes on recovery
+	broker   *stream.Broker
+	log      *slog.Logger
 }
 
 // New returns an orchestrator.
-func New(s store.Store, in llm.Intake, p llm.Planner, g llm.SafetyGate, b builder.Builder, br *stream.Broker, log *slog.Logger) *Orchestrator {
-	return &Orchestrator{store: s, intake: in, planner: p, gate: g, builder: b, broker: br, log: log}
+func New(s store.Store, in llm.Intake, p llm.Planner, g llm.SafetyGate, b builder.Builder, m fly.Machines, br *stream.Broker, log *slog.Logger) *Orchestrator {
+	return &Orchestrator{store: s, intake: in, planner: p, gate: g, builder: b, machines: m, broker: br, log: log}
+}
+
+// RecoverInterrupted handles builds left in the building state by a previous run
+// (e.g. a crash or deploy): it reaps each orphaned sandbox machine and marks the
+// build failed. Call once on startup.
+func (o *Orchestrator) RecoverInterrupted(ctx context.Context) {
+	its, err := o.store.ActiveIterations(ctx)
+	if err != nil {
+		o.log.Error("recover: list active builds", "err", err)
+		return
+	}
+	for _, it := range its {
+		o.log.Warn("recovering interrupted build", "project", it.ProjectID, "machine", it.MachineID)
+		if it.MachineID != "" {
+			if err := o.machines.DestroySandbox(ctx, &fly.Sandbox{MachineID: it.MachineID}); err != nil {
+				o.log.Error("recover: reap machine", "machine", it.MachineID, "err", err)
+			}
+		}
+		it.Status = project.StatusFailed
+		_ = o.store.UpdateIteration(ctx, it)
+		if p, err := o.store.ProjectByID(ctx, it.ProjectID); err == nil && p.Status == project.StatusBuilding {
+			p.Status = project.StatusFailed
+			p.RejectReason = "Build interrupted by a restart."
+			_ = o.save(ctx, p)
+		}
+	}
 }
 
 func (o *Orchestrator) async(projectID string, fn func(context.Context) error) {
@@ -210,13 +238,24 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 		return err
 	}
 
-	// Live progress: reset history for this pass, accumulate and publish lines.
+	// Live progress: reset history, accumulate, publish, and periodically persist
+	// the log + heartbeat so an in-flight build survives a restart.
 	o.broker.Reset(p.ID)
 	var logBuf strings.Builder
+	lines := 0
+	persist := func() {
+		it.Log = logBuf.String()
+		it.HeartbeatAt = time.Now().UTC()
+		_ = o.store.UpdateIteration(ctx, it)
+	}
 	onLog := func(line string) {
 		logBuf.WriteString(line)
 		logBuf.WriteByte('\n')
 		o.broker.Publish(p.ID, stream.Event{Type: "log", Data: line})
+		lines++
+		if lines%8 == 0 {
+			persist() // throttle DB writes
+		}
 	}
 
 	res, err := o.builder.Build(ctx, builder.Request{
@@ -225,7 +264,15 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 		Plan:      p.Plan,
 		Prompt:    prompt,
 		RepoURL:   p.RepoURL,
-	}, onLog)
+	}, builder.Hooks{
+		OnLog: onLog,
+		OnSandbox: func(machineID, _ string) {
+			// Persist the machine id immediately so a restart can reap it.
+			it.MachineID = machineID
+			it.HeartbeatAt = time.Now().UTC()
+			_ = o.store.UpdateIteration(ctx, it)
+		},
+	})
 	if err != nil {
 		it.Status = project.StatusFailed
 		it.Log = logBuf.String()

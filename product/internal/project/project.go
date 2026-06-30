@@ -87,14 +87,16 @@ func (p *Project) IterationsLeft() int {
 
 // Iteration records a single build pass within a project.
 type Iteration struct {
-	ID         string
-	ProjectID  string
-	Number     int    // 1 for the initial build, 2..MaxIterations for reiterations
-	Prompt     string // empty for the initial build; the customer's change request otherwise
-	PreviewURL string
-	Status     Status
-	Log        string // human-readable trace of what the build did
-	CreatedAt  time.Time
+	ID          string
+	ProjectID   string
+	Number      int    // 1 for the initial build, 2..MaxIterations for reiterations
+	Prompt      string // empty for the initial build; the customer's change request otherwise
+	PreviewURL  string
+	Status      Status
+	Log         string    // human-readable trace of what the build did
+	MachineID   string    // Fly Machine running this build (for recovery/reaping)
+	HeartbeatAt time.Time // last time the build reported progress
+	CreatedAt   time.Time
 }
 
 // ErrNotFound is returned by stores when an entity does not exist.

@@ -34,9 +34,13 @@ CREATE TABLE IF NOT EXISTS iterations (
     number      INTEGER NOT NULL,
     prompt      TEXT NOT NULL DEFAULT '',
     preview_url TEXT NOT NULL DEFAULT '',
-    status      TEXT NOT NULL,
-    log         TEXT NOT NULL DEFAULT '',
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    status       TEXT NOT NULL,
+    log          TEXT NOT NULL DEFAULT '',
+    machine_id   TEXT NOT NULL DEFAULT '',     -- Fly Machine running this build (for reaping)
+    heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS iterations_project_id_idx ON iterations (project_id);
+-- Find in-flight builds quickly (active-builds view + startup recovery).
+CREATE INDEX IF NOT EXISTS iterations_building_idx ON iterations (status) WHERE status = 'building';

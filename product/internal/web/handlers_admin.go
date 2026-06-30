@@ -3,18 +3,53 @@ package web
 import (
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
 )
 
-// handleAdmin lists projects the safety gate escalated for operator review.
+// adminView is the data for the operator dashboard.
+type adminView struct {
+	Escalated []*project.Project
+	Active    []activeBuild
+}
+
+// activeBuild is one in-flight build, for the "what are we working on" view.
+type activeBuild struct {
+	ProjectID   string
+	ProjectName string
+	MachineID   string
+	Started     time.Time
+}
+
+// handleAdmin shows escalated projects and the builds currently in flight.
 func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.User) {
-	escalated, err := s.store.EscalatedProjects(r.Context())
+	ctx := r.Context()
+	escalated, err := s.store.EscalatedProjects(ctx)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	s.render(w, http.StatusOK, "admin", s.view(r, "Operator review", escalated))
+	its, err := s.store.ActiveIterations(ctx)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	active := make([]activeBuild, 0, len(its))
+	for _, it := range its {
+		name := it.ProjectID
+		if p, err := s.store.ProjectByID(ctx, it.ProjectID); err == nil {
+			name = p.Name
+		}
+		active = append(active, activeBuild{
+			ProjectID: it.ProjectID, ProjectName: name,
+			MachineID: it.MachineID, Started: it.CreatedAt,
+		})
+	}
+	s.render(w, http.StatusOK, "admin", s.view(r, "Operator review", adminView{
+		Escalated: escalated, Active: active,
+	}))
 }
 
 // handleAdminApprove clears an escalated project to build.

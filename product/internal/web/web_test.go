@@ -29,10 +29,11 @@ func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	st := store.NewMemory()
 	fake := llm.NewFake()
-	b := builder.NewSandbox(fly.NewFake(), func(string) opencode.Driver { return opencode.NewFake() }, builder.Config{})
+	machines := fly.NewFake()
+	b := builder.NewSandbox(machines, func(string) opencode.Driver { return opencode.NewFake() }, builder.Config{})
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	broker := stream.NewBroker(100)
-	orch := orchestrator.New(st, fake, fake, fake, b, broker, log)
+	orch := orchestrator.New(st, fake, fake, fake, b, machines, broker, log)
 	sessions := auth.NewSessions(time.Hour)
 	srv, err := web.NewServer(config.Config{AdminEmail: "admin@example.com"}, st, sessions, orch, broker, log)
 	if err != nil {
