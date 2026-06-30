@@ -1,4 +1,4 @@
--- Initial schema for the Rasmus AI product.
+-- Initial schema for Transcend Forge.
 -- Apply with: psql "$DATABASE_URL" -f migrations/0001_init.sql
 
 CREATE TABLE IF NOT EXISTS users (

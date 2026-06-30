@@ -17,7 +17,7 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		return
 	}
-	s.render(w, http.StatusOK, "landing", s.view(r, "Hire Rasmus AI", nil))
+	s.render(w, http.StatusOK, "landing", s.view(r, "Websites, built & guaranteed", nil))
 }
 
 func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {

@@ -65,8 +65,8 @@ a:hover { color: var(--accent-2); }
 .brand .accent { color: var(--accent); }
 .brand:hover { color: var(--text); }
 .navlinks { display: flex; align-items: center; gap: 1.25rem; font-size: .85rem; }
-.navlinks a { color: var(--muted); }
-.navlinks a:hover { color: var(--accent); }
+.navlinks a:not(.btn) { color: var(--muted); }
+.navlinks a:not(.btn):hover { color: var(--accent); }
 .inline { display: inline; }
 .linklike { background: none; border: none; color: var(--muted); cursor: pointer; font: inherit; transition: color .15s var(--ease); }
 .linklike:hover { color: var(--accent); }
@@ -98,7 +98,7 @@ h3 { font-size: 1rem; font-weight: 500; }
 .hero h1 { font-size: clamp(2rem, 6vw, 3rem); animation: rise .5s var(--ease) both; }
 .hero .lead { animation: rise .5s .08s var(--ease) both; }
 .hero .btn-lg { animation: rise .5s .16s var(--ease) both; }
-.hero .small { animation: rise .5s .24s var(--ease) both; }
+.hero .small { animation: rise .5s .24s var(--ease) both; margin-top: 1rem; }
 .steps { margin: 1rem 0 0 1.1rem; display: flex; flex-direction: column; gap: .6rem; color: var(--muted); }
 .steps strong { color: var(--text); font-weight: 500; }
 .how { margin-top: 3rem; border-top: 1px solid var(--border); padding-top: 2rem; }

@@ -1,4 +1,4 @@
-# Rasmus AI — product
+# Transcend Forge — product
 
 The customer-facing application for `app.transcendsoftware.se`: a landing page,
 login, and a dashboard where a customer describes a website and an autonomous

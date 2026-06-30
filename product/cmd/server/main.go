@@ -1,4 +1,4 @@
-// Command server runs the Rasmus AI product: the public landing page, auth, and
+// Command server runs Transcend Forge: the public landing page, auth, and
 // the customer dashboard, plus the orchestrator that plans, screens and builds
 // projects.
 //
