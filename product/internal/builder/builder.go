@@ -9,6 +9,7 @@ package builder
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
 	"github.com/transcend-software-labs/rasmus-ai/internal/opencode"
@@ -16,11 +17,12 @@ import (
 
 // Request is one build pass.
 type Request struct {
-	ProjectID string
-	Brief     string
-	Plan      string
-	Prompt    string // empty for the initial build; the change request on reiterations
-	RepoURL   string // existing repo on reiterations
+	ProjectID     string
+	Brief         string
+	Plan          string
+	Prompt        string            // empty for the initial build; the change request on reiterations
+	RepoURL       string            // existing repo on reiterations
+	AssetManifest map[string]string // filename → short-lived presigned GET URL
 }
 
 // Result is the outcome of a build pass.
@@ -78,6 +80,13 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 	}
 	if req.RepoURL != "" {
 		env["REPO_URL"] = req.RepoURL
+	}
+	if len(req.AssetManifest) > 0 {
+		// Presigned GET URLs — the entrypoint downloads these into the workspace.
+		// No storage credentials enter the sandbox.
+		if b, err := json.Marshal(req.AssetManifest); err == nil {
+			env["ASSETS_MANIFEST"] = string(b)
+		}
 	}
 
 	emit(hooks.OnLog, "Spawning isolated sandbox…")

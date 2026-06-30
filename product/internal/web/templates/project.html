@@ -37,6 +37,23 @@
   {{if .Answers}}<h3 class="muted small" style="margin-top:1rem">Your answers</h3><p class="brief">{{.Answers}}</p>{{end}}
 </section>
 
+<section class="panel">
+  <h2>Photos &amp; files</h2>
+  <p class="muted small">Upload your real photos, logo, or content (PNG, JPG, GIF, WEBP, PDF — up to 10&nbsp;MB). The agent uses these when building your site.</p>
+  {{if $.Data.Assets}}
+  <ul class="asset-list">
+    {{range $.Data.Assets}}
+    <li><span class="asset-name">{{.Filename}}</span> <span class="muted small">{{.ContentType}}</span></li>
+    {{end}}
+  </ul>
+  {{end}}
+  <form method="post" action="/projects/{{.ID}}/assets" enctype="multipart/form-data" class="upload-form">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" required>
+    <button class="btn btn-sm" type="submit">Upload</button>
+  </form>
+</section>
+
 {{if .Plan}}
 <section class="panel">
   <h2>The plan</h2>

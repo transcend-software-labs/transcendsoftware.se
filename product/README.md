@@ -58,6 +58,14 @@ make db-migrate     # apply migrations/0001_init.sql
 make run-pg
 ```
 
+Asset uploads against local MinIO (S3-compatible, like Tigris in prod):
+
+```sh
+docker compose up -d minio   # MinIO API :9000, console :9001
+STORAGE_ENDPOINT=localhost:9000 STORAGE_ACCESS_KEY=forge \
+  STORAGE_SECRET_KEY=forge-secret STORAGE_BUCKET=forge-assets make run
+```
+
 Test / vet:
 
 ```sh
@@ -80,6 +88,9 @@ mode.** Each variable independently switches one piece from fake to real:
 | `FLY_API_TOKEN`       | use the real Fly Machines client (deploy still gated)      |
 | `FLY_SANDBOX_APP`     | Fly app the per-task sandbox machines run under            |
 | `FLY_SANDBOX_IMAGE`   | OCI image with opencode + toolchains                       |
+| `STORAGE_ENDPOINT`    | S3-compatible object storage for asset uploads — `localhost:9000` (MinIO) or Tigris host; empty → in-memory dev store |
+| `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY` | storage credentials (orchestrator only — never the sandbox) |
+| `STORAGE_BUCKET` / `STORAGE_REGION` / `STORAGE_USE_SSL` | bucket (default `forge-assets`), region, TLS |
 | `ADDR`                | listen address (default `:8080`)                           |
 | `BASE_URL`            | public base URL                                            |
 | `SECURE_COOKIE=true`  | mark the session cookie `Secure` (set behind HTTPS)        |

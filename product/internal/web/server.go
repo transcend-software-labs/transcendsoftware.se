@@ -13,6 +13,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/orchestrator"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
+	"github.com/transcend-software-labs/rasmus-ai/internal/storage"
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
 	"github.com/transcend-software-labs/rasmus-ai/internal/stream"
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
@@ -31,12 +32,13 @@ type Server struct {
 	sessions *auth.Sessions
 	orch     *orchestrator.Orchestrator
 	broker   *stream.Broker
+	storage  storage.Store
 	tmpl     *template.Template
 	log      *slog.Logger
 }
 
 // NewServer wires the HTTP server.
-func NewServer(cfg config.Config, st store.Store, sessions *auth.Sessions, orch *orchestrator.Orchestrator, broker *stream.Broker, log *slog.Logger) (*Server, error) {
+func NewServer(cfg config.Config, st store.Store, sessions *auth.Sessions, orch *orchestrator.Orchestrator, broker *stream.Broker, assets storage.Store, log *slog.Logger) (*Server, error) {
 	tmpl, err := template.New("").Funcs(template.FuncMap{
 		"statusLabel": statusLabel,
 		"polling":     polling,
@@ -44,7 +46,18 @@ func NewServer(cfg config.Config, st store.Store, sessions *auth.Sessions, orch 
 	if err != nil {
 		return nil, err
 	}
-	return &Server{cfg: cfg, store: st, sessions: sessions, orch: orch, broker: broker, tmpl: tmpl, log: log}, nil
+	return &Server{cfg: cfg, store: st, sessions: sessions, orch: orch, broker: broker, storage: assets, tmpl: tmpl, log: log}, nil
+}
+
+// maxUpload caps a single asset upload.
+const maxUpload = 10 << 20 // 10 MB
+
+// limitBody caps the request body size before downstream parsing.
+func limitBody(n int64, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, n)
+		next(w, r)
+	}
 }
 
 // Handler returns the configured router.
@@ -71,6 +84,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /projects/{id}/status", s.requireUser(s.handleProjectStatus))
 	mux.HandleFunc("GET /projects/{id}/stream", s.requireUser(s.handleProjectStream))
 	mux.HandleFunc("POST /projects/{id}/answer", s.requireUser(s.handleAnswer))
+	mux.HandleFunc("POST /projects/{id}/assets", limitBody(maxUpload+(1<<20), s.requireUser(s.handleUploadAsset)))
 	mux.HandleFunc("POST /projects/{id}/reiterate", s.requireUser(s.handleReiterate))
 
 	// Operator/admin views (gated by ADMIN_EMAIL).

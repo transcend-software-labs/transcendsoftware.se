@@ -5,6 +5,8 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -79,6 +81,7 @@ func (s *Server) handleAnswer(w http.ResponseWriter, r *http.Request, u *user.Us
 type projectView struct {
 	Project    *project.Project
 	Iterations []*project.Iteration
+	Assets     []*project.Asset
 }
 
 func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.User) {
@@ -91,7 +94,72 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	s.render(w, http.StatusOK, "project", s.view(r, p.Name, projectView{Project: p, Iterations: its}))
+	assets, err := s.store.AssetsByProject(r.Context(), p.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	s.render(w, http.StatusOK, "project", s.view(r, p.Name, projectView{Project: p, Iterations: its, Assets: assets}))
+}
+
+var allowedAssetTypes = map[string]bool{
+	"image/png":       true,
+	"image/jpeg":      true,
+	"image/gif":       true,
+	"image/webp":      true,
+	"application/pdf": true,
+}
+
+var filenameUnsafe = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
+
+func sanitizeFilename(name string) string {
+	name = filenameUnsafe.ReplaceAllString(filepath.Base(name), "_")
+	if name == "" || name == "." || name == "_" {
+		name = "file"
+	}
+	if len(name) > 100 {
+		name = name[len(name)-100:]
+	}
+	return name
+}
+
+// handleUploadAsset stores a customer-uploaded file (photo, logo, content) in
+// object storage and records its metadata.
+func (s *Server) handleUploadAsset(w http.ResponseWriter, r *http.Request, u *user.User) {
+	p, ok := s.ownedProject(w, r, u)
+	if !ok {
+		return
+	}
+	file, hdr, err := r.FormFile("file")
+	if err != nil {
+		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+		return
+	}
+	defer file.Close()
+
+	ct := hdr.Header.Get("Content-Type")
+	if !allowedAssetTypes[ct] || hdr.Size > maxUpload {
+		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+		return
+	}
+
+	filename := sanitizeFilename(hdr.Filename)
+	key := fmt.Sprintf("projects/%s/assets/%s", p.ID, filename)
+	if err := s.storage.Put(r.Context(), key, ct, file, hdr.Size); err != nil {
+		s.log.Error("asset put", "err", err)
+		http.Error(w, "upload failed", http.StatusInternalServerError)
+		return
+	}
+
+	a := &project.Asset{
+		ID: id.New(), ProjectID: p.ID, Key: key, Filename: filename,
+		ContentType: ct, Size: hdr.Size, CreatedAt: time.Now().UTC(),
+	}
+	if err := s.store.CreateAsset(r.Context(), a); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 }
 
 // handleProjectStatus returns the live status fragment for HTMX polling.

@@ -24,6 +24,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
 	"github.com/transcend-software-labs/rasmus-ai/internal/opencode"
 	"github.com/transcend-software-labs/rasmus-ai/internal/orchestrator"
+	"github.com/transcend-software-labs/rasmus-ai/internal/storage"
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
 	"github.com/transcend-software-labs/rasmus-ai/internal/stream"
 	"github.com/transcend-software-labs/rasmus-ai/internal/web"
@@ -49,12 +50,13 @@ func main() {
 		OpencodePort: cfg.OpencodePort,
 		AnthropicKey: cfg.AnthropicAPIKey, // opencode needs it inside the sandbox
 	})
+	assets := newStorage(cfg, log)
 	broker := stream.NewBroker(500)
-	orch := orchestrator.New(st, intake, planner, gate, build, machines, broker, log)
+	orch := orchestrator.New(st, intake, planner, gate, build, machines, assets, broker, log)
 	orch.RecoverInterrupted(context.Background()) // reap builds left running by a prior run
 	sessions := auth.NewSessions(cfg.SessionTTL)
 
-	srv, err := web.NewServer(cfg, st, sessions, orch, broker, log)
+	srv, err := web.NewServer(cfg, st, sessions, orch, broker, assets, log)
 	if err != nil {
 		log.Error("server init", "err", err)
 		os.Exit(1)
@@ -127,6 +129,27 @@ func driverFactory(cfg config.Config, log *slog.Logger) builder.DriverFactory {
 		log.Info("opencode: fake (dev)")
 		return func(string) opencode.Driver { return opencode.NewFake() }
 	}
+}
+
+func newStorage(cfg config.Config, log *slog.Logger) storage.Store {
+	if !cfg.StorageEnabled() {
+		log.Info("storage: in-memory (dev)")
+		return storage.NewMemory()
+	}
+	log.Info("storage: s3-compatible", "endpoint", cfg.StorageEndpoint, "bucket", cfg.StorageBucket)
+	s, err := storage.NewS3(storage.NewS3Params{
+		Endpoint:  cfg.StorageEndpoint,
+		AccessKey: cfg.StorageAccessKey,
+		SecretKey: cfg.StorageSecretKey,
+		Bucket:    cfg.StorageBucket,
+		Region:    cfg.StorageRegion,
+		UseSSL:    cfg.StorageUseSSL,
+	})
+	if err != nil {
+		log.Error("storage init", "err", err)
+		os.Exit(1)
+	}
+	return s
 }
 
 func newMachines(cfg config.Config, log *slog.Logger) fly.Machines {

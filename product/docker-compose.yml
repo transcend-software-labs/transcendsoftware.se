@@ -12,5 +12,21 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  # S3-compatible object storage for assets (MinIO console on :9001).
+  # Configure the app with: STORAGE_ENDPOINT=localhost:9000
+  #   STORAGE_ACCESS_KEY=forge STORAGE_SECRET_KEY=forge-secret STORAGE_BUCKET=forge-assets
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: forge
+      MINIO_ROOT_PASSWORD: forge-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+
 volumes:
   pgdata: {}
+  miniodata: {}

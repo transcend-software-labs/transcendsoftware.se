@@ -4,11 +4,13 @@
 # Per-task inputs (env vars injected at Machine create):
 #   OPENCODE_PORT  port for the opencode server          (default 4096)
 #   SPEC_URL       URL to fetch the operating spec        (optional)
-#   REPO_URL       git repo to work in for reiterations   (empty = greenfield)
-#   GIT_TOKEN      short-lived, repo-scoped clone token   (optional)
+#   REPO_URL        git repo to work in for reiterations  (empty = greenfield)
+#   GIT_TOKEN       short-lived, repo-scoped clone token   (optional)
+#   ASSETS_MANIFEST JSON {filename: presigned-GET-url} of customer uploads
 #
-# Real deploy credentials are intentionally NOT passed here. The orchestrator
-# performs the deploy outside the sandbox, so a compromised build leaks nothing.
+# Real deploy + storage credentials are intentionally NOT passed here. The
+# orchestrator performs the deploy and hands only short-lived presigned URLs in,
+# so a compromised build leaks nothing.
 
 set -euo pipefail
 
@@ -39,7 +41,21 @@ if [ -n "${SPEC_URL:-}" ]; then
   curl -fsSL "${SPEC_URL}" -o AGENTS.md || log "WARN: could not fetch operating spec"
 fi
 
-# 3) Start opencode; the orchestrator connects over Fly's private network.
+# 3) Stage customer-uploaded assets from their presigned URLs (no creds here).
+if [ -n "${ASSETS_MANIFEST:-}" ]; then
+  log "staging uploaded assets"
+  mkdir -p /workspace/assets
+  echo "${ASSETS_MANIFEST}" | jq -r 'to_entries[] | "\(.key)\t\(.value)"' |
+    while IFS="$(printf '\t')" read -r fname url; do
+      if curl -fsSL "$url" -o "/workspace/assets/${fname}"; then
+        log "  fetched ${fname}"
+      else
+        log "  WARN: failed to fetch ${fname}"
+      fi
+    done
+fi
+
+# 4) Start opencode; the orchestrator connects over Fly's private network.
 #    (Flags may vary by opencode version — confirm against the pinned release.)
 log "starting opencode on :${PORT}"
 exec opencode serve --hostname 0.0.0.0 --port "${PORT}"

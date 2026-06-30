@@ -20,6 +20,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
 	"github.com/transcend-software-labs/rasmus-ai/internal/opencode"
 	"github.com/transcend-software-labs/rasmus-ai/internal/orchestrator"
+	"github.com/transcend-software-labs/rasmus-ai/internal/storage"
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
 	"github.com/transcend-software-labs/rasmus-ai/internal/stream"
 	"github.com/transcend-software-labs/rasmus-ai/internal/web"
@@ -33,9 +34,10 @@ func newTestServer(t *testing.T) *httptest.Server {
 	b := builder.NewSandbox(machines, func(string) opencode.Driver { return opencode.NewFake() }, builder.Config{})
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	broker := stream.NewBroker(100)
-	orch := orchestrator.New(st, fake, fake, fake, b, machines, broker, log)
+	assets := storage.NewMemory()
+	orch := orchestrator.New(st, fake, fake, fake, b, machines, assets, broker, log)
 	sessions := auth.NewSessions(time.Hour)
-	srv, err := web.NewServer(config.Config{AdminEmail: "admin@example.com"}, st, sessions, orch, broker, log)
+	srv, err := web.NewServer(config.Config{AdminEmail: "admin@example.com"}, st, sessions, orch, broker, assets, log)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}

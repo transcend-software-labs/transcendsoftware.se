@@ -187,6 +187,34 @@ func scanProject(row rowScanner) (*project.Project, error) {
 	return &pr, nil
 }
 
+func (p *Postgres) CreateAsset(ctx context.Context, a *project.Asset) error {
+	_, err := p.pool.Exec(ctx,
+		`INSERT INTO assets (id, project_id, object_key, filename, content_type, size, created_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		a.ID, a.ProjectID, a.Key, a.Filename, a.ContentType, a.Size, a.CreatedAt)
+	return err
+}
+
+func (p *Postgres) AssetsByProject(ctx context.Context, projectID string) ([]*project.Asset, error) {
+	rows, err := p.pool.Query(ctx,
+		`SELECT id, project_id, object_key, filename, content_type, size, created_at
+		 FROM assets WHERE project_id = $1 ORDER BY created_at ASC`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*project.Asset
+	for rows.Next() {
+		var a project.Asset
+		if err := rows.Scan(&a.ID, &a.ProjectID, &a.Key, &a.Filename,
+			&a.ContentType, &a.Size, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &a)
+	}
+	return out, rows.Err()
+}
+
 func (p *Postgres) CreateIteration(ctx context.Context, it *project.Iteration) error {
 	hb := it.HeartbeatAt
 	if hb.IsZero() {

@@ -44,3 +44,15 @@ CREATE TABLE IF NOT EXISTS iterations (
 CREATE INDEX IF NOT EXISTS iterations_project_id_idx ON iterations (project_id);
 -- Find in-flight builds quickly (active-builds view + startup recovery).
 CREATE INDEX IF NOT EXISTS iterations_building_idx ON iterations (status) WHERE status = 'building';
+
+CREATE TABLE IF NOT EXISTS assets (
+    id           TEXT PRIMARY KEY,
+    project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    object_key   TEXT NOT NULL,
+    filename     TEXT NOT NULL,
+    content_type TEXT NOT NULL DEFAULT '',
+    size         BIGINT NOT NULL DEFAULT 0,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS assets_project_id_idx ON assets (project_id);

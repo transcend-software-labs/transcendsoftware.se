@@ -30,6 +30,20 @@ type Config struct {
 	FlyAPIToken     string // Fly API token
 	FlySandboxApp   string // Fly app the sandbox machines run under
 	FlySandboxImage string // OCI image with opencode + toolchains
+
+	// Object storage for uploaded assets (empty endpoint → in-memory dev store).
+	// MinIO locally, Fly Tigris in production — both S3-compatible.
+	StorageEndpoint  string // host:port (MinIO) or host (Tigris)
+	StorageAccessKey string
+	StorageSecretKey string
+	StorageBucket    string
+	StorageRegion    string
+	StorageUseSSL    bool
+}
+
+// StorageEnabled reports whether a real S3-compatible backend is configured.
+func (c Config) StorageEnabled() bool {
+	return c.StorageEndpoint != "" && c.StorageAccessKey != "" && c.StorageSecretKey != ""
 }
 
 // Load reads configuration from the environment, applying dev-friendly defaults.
@@ -48,6 +62,13 @@ func Load() Config {
 		FlyAPIToken:     os.Getenv("FLY_API_TOKEN"),
 		FlySandboxApp:   os.Getenv("FLY_SANDBOX_APP"),
 		FlySandboxImage: os.Getenv("FLY_SANDBOX_IMAGE"),
+
+		StorageEndpoint:  os.Getenv("STORAGE_ENDPOINT"),
+		StorageAccessKey: os.Getenv("STORAGE_ACCESS_KEY"),
+		StorageSecretKey: os.Getenv("STORAGE_SECRET_KEY"),
+		StorageBucket:    envOr("STORAGE_BUCKET", "forge-assets"),
+		StorageRegion:    envOr("STORAGE_REGION", "auto"),
+		StorageUseSSL:    os.Getenv("STORAGE_USE_SSL") == "true",
 	}
 }
 

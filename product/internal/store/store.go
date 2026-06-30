@@ -33,6 +33,10 @@ type Store interface {
 	// (for the active-builds view and startup recovery).
 	ActiveIterations(ctx context.Context) ([]*project.Iteration, error)
 
+	// Assets (metadata; bytes live in object storage)
+	CreateAsset(ctx context.Context, a *project.Asset) error
+	AssetsByProject(ctx context.Context, projectID string) ([]*project.Asset, error)
+
 	// Close releases resources (no-op for the in-memory store).
 	Close() error
 }

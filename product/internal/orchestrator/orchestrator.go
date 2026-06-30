@@ -21,6 +21,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/id"
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
+	"github.com/transcend-software-labs/rasmus-ai/internal/storage"
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
 	"github.com/transcend-software-labs/rasmus-ai/internal/stream"
 )
@@ -35,14 +36,34 @@ type Orchestrator struct {
 	planner  llm.Planner
 	gate     llm.SafetyGate
 	builder  builder.Builder
-	machines fly.Machines // for reaping orphaned sandboxes on recovery
+	machines fly.Machines  // for reaping orphaned sandboxes on recovery
+	storage  storage.Store // for presigning asset URLs into builds
 	broker   *stream.Broker
 	log      *slog.Logger
 }
 
 // New returns an orchestrator.
-func New(s store.Store, in llm.Intake, p llm.Planner, g llm.SafetyGate, b builder.Builder, m fly.Machines, br *stream.Broker, log *slog.Logger) *Orchestrator {
-	return &Orchestrator{store: s, intake: in, planner: p, gate: g, builder: b, machines: m, broker: br, log: log}
+func New(s store.Store, in llm.Intake, p llm.Planner, g llm.SafetyGate, b builder.Builder, m fly.Machines, as storage.Store, br *stream.Broker, log *slog.Logger) *Orchestrator {
+	return &Orchestrator{store: s, intake: in, planner: p, gate: g, builder: b, machines: m, storage: as, broker: br, log: log}
+}
+
+// assetManifest builds filename → presigned GET URL for a project's uploaded
+// assets, so the sandbox can fetch them without holding storage credentials.
+func (o *Orchestrator) assetManifest(ctx context.Context, projectID string) map[string]string {
+	assets, err := o.store.AssetsByProject(ctx, projectID)
+	if err != nil || len(assets) == 0 {
+		return nil
+	}
+	m := make(map[string]string, len(assets))
+	for _, a := range assets {
+		url, err := o.storage.PresignGet(ctx, a.Key, time.Hour)
+		if err != nil {
+			o.log.Error("presign asset", "key", a.Key, "err", err)
+			continue
+		}
+		m[a.Filename] = url
+	}
+	return m
 }
 
 // RecoverInterrupted handles builds left in the building state by a previous run
@@ -259,11 +280,12 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 	}
 
 	res, err := o.builder.Build(ctx, builder.Request{
-		ProjectID: p.ID,
-		Brief:     p.EffectiveBrief(),
-		Plan:      p.Plan,
-		Prompt:    prompt,
-		RepoURL:   p.RepoURL,
+		ProjectID:     p.ID,
+		Brief:         p.EffectiveBrief(),
+		Plan:          p.Plan,
+		Prompt:        prompt,
+		RepoURL:       p.RepoURL,
+		AssetManifest: o.assetManifest(ctx, p.ID),
 	}, builder.Hooks{
 		OnLog: onLog,
 		OnSandbox: func(machineID, _ string) {

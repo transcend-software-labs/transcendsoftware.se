@@ -1,0 +1,48 @@
+// Package storage is object storage for customer-uploaded assets (photos, logos,
+// content). The S3 implementation (s3.go) targets any S3-compatible backend —
+// MinIO for local dev, Fly Tigris in production. A Memory implementation keeps
+// the zero-config dev mode runnable without any storage backend.
+//
+// Only the orchestrator holds storage credentials. The sandbox never does: at
+// build time the orchestrator hands the agent short-lived presigned GET URLs.
+package storage
+
+import (
+	"context"
+	"io"
+	"sync"
+	"time"
+)
+
+// Store is object storage for project assets.
+type Store interface {
+	// Put stores an object under key with the given content type.
+	Put(ctx context.Context, key, contentType string, r io.Reader, size int64) error
+	// PresignGet returns a short-lived, read-only URL for the object.
+	PresignGet(ctx context.Context, key string, expiry time.Duration) (string, error)
+}
+
+// Memory is an in-process Store for the zero-config dev mode. Presigned URLs are
+// placeholders — the dev/fake builder never fetches assets.
+type Memory struct {
+	mu      sync.Mutex
+	objects map[string][]byte
+}
+
+// NewMemory returns an empty in-memory object store.
+func NewMemory() *Memory { return &Memory{objects: make(map[string][]byte)} }
+
+func (m *Memory) Put(_ context.Context, key, _ string, r io.Reader, _ int64) error {
+	b, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.objects[key] = b
+	m.mu.Unlock()
+	return nil
+}
+
+func (m *Memory) PresignGet(_ context.Context, key string, _ time.Duration) (string, error) {
+	return "memory://" + key, nil
+}

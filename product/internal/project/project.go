@@ -99,5 +99,17 @@ type Iteration struct {
 	CreatedAt   time.Time
 }
 
+// Asset is a customer-uploaded file (photo, logo, content) for a project. The
+// bytes live in object storage; this is the metadata row.
+type Asset struct {
+	ID          string
+	ProjectID   string
+	Key         string // object-storage key, e.g. projects/<id>/assets/<file>
+	Filename    string
+	ContentType string
+	Size        int64
+	CreatedAt   time.Time
+}
+
 // ErrNotFound is returned by stores when an entity does not exist.
 var ErrNotFound = errors.New("not found")

@@ -17,6 +17,7 @@ type Memory struct {
 	users      map[string]*user.User
 	projects   map[string]*project.Project
 	iterations map[string]*project.Iteration
+	assets     map[string]*project.Asset
 }
 
 // NewMemory returns an empty in-memory store.
@@ -25,6 +26,7 @@ func NewMemory() *Memory {
 		users:      make(map[string]*user.User),
 		projects:   make(map[string]*project.Project),
 		iterations: make(map[string]*project.Iteration),
+		assets:     make(map[string]*project.Asset),
 	}
 }
 
@@ -143,6 +145,28 @@ func (m *Memory) UpdateIteration(_ context.Context, it *project.Iteration) error
 	cp := *it
 	m.iterations[it.ID] = &cp
 	return nil
+}
+
+func (m *Memory) CreateAsset(_ context.Context, a *project.Asset) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cp := *a
+	m.assets[a.ID] = &cp
+	return nil
+}
+
+func (m *Memory) AssetsByProject(_ context.Context, projectID string) ([]*project.Asset, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var out []*project.Asset
+	for _, a := range m.assets {
+		if a.ProjectID == projectID {
+			cp := *a
+			out = append(out, &cp)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out, nil
 }
 
 func (m *Memory) ActiveIterations(_ context.Context) ([]*project.Iteration, error) {

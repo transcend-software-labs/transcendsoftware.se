@@ -12,6 +12,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
 	"github.com/transcend-software-labs/rasmus-ai/internal/opencode"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
+	"github.com/transcend-software-labs/rasmus-ai/internal/storage"
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
 	"github.com/transcend-software-labs/rasmus-ai/internal/stream"
 )
@@ -21,7 +22,7 @@ func newTestOrch(st store.Store) *Orchestrator {
 	fake := llm.NewFake()
 	machines := fly.NewFake()
 	b := builder.NewSandbox(machines, func(string) opencode.Driver { return opencode.NewFake() }, builder.Config{})
-	return New(st, fake, fake, fake, b, machines, stream.NewBroker(100), log)
+	return New(st, fake, fake, fake, b, machines, storage.NewMemory(), stream.NewBroker(100), log)
 }
 
 func seedProject(t *testing.T, st store.Store, brief string) string {
