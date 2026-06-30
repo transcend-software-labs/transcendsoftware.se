@@ -25,8 +25,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       git curl ca-certificates jq \
  && rm -rf /var/lib/apt/lists/*
 
-# pnpm via corepack (bundled with Node) — pin a version in production.
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# pnpm via npm. (Corepack in the base image has stale signing keys and can't
+# verify current pnpm releases.) Pin a version in production.
+RUN npm i -g pnpm
 
 # Go — only needed if the canonical stack builds Go services; drop this layer
 # if your default stack is JS-only.
@@ -37,6 +38,10 @@ ENV PATH="/usr/local/go/bin:/root/.opencode/bin:${PATH}"
 # opencode — the agent engine the orchestrator drives over HTTP.
 # Pin a version in production rather than tracking the install script's latest.
 RUN curl -fsSL https://opencode.ai/install | bash
+
+# Verify the toolchain is installed and on PATH — fails the build early if not.
+RUN node --version && npm --version && pnpm --version && go version \
+ && command -v opencode && command -v git && test -d /ms-playwright
 
 WORKDIR /workspace
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
