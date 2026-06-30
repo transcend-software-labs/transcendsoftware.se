@@ -18,21 +18,33 @@ import (
 	"time"
 )
 
+// SpawnSpec describes one sandbox to create.
+type SpawnSpec struct {
+	TaskID string
+	Port   int               // opencode port (also injected as OPENCODE_PORT)
+	Env    map[string]string // env injected into the machine (e.g. ANTHROPIC_API_KEY, REPO_URL)
+}
+
 // Sandbox is a running per-task microVM.
 type Sandbox struct {
 	MachineID string
 	AppName   string
+	Addr      string // opencode base URL on the private network, e.g. http://[fdaa::3]:4096
 }
 
 // Machines manages ephemeral sandboxes and deploys.
 type Machines interface {
-	// SpawnSandbox creates an isolated microVM for one build task.
-	SpawnSandbox(ctx context.Context, taskID string) (*Sandbox, error)
+	// SpawnSandbox creates an isolated microVM for one build task and returns it
+	// once opencode is reachable at Sandbox.Addr.
+	SpawnSandbox(ctx context.Context, spec SpawnSpec) (*Sandbox, error)
 	// DestroySandbox tears the microVM down.
 	DestroySandbox(ctx context.Context, s *Sandbox) error
 	// Deploy publishes the built site and returns its preview URL.
 	Deploy(ctx context.Context, s *Sandbox, projectID string) (previewURL string, err error)
 }
+
+// DefaultPort is the opencode port used when a spec leaves Port unset.
+const DefaultPort = 4096
 
 // ErrDeployDisabled is returned by the real client's Deploy: the actual Fly
 // deploy is the one step deliberately not yet enabled.
@@ -45,8 +57,9 @@ type Fake struct{}
 // NewFake returns a dev-mode Machines.
 func NewFake() *Fake { return &Fake{} }
 
-func (Fake) SpawnSandbox(ctx context.Context, taskID string) (*Sandbox, error) {
-	return &Sandbox{MachineID: "dev-machine-" + taskID, AppName: "dev-app-" + taskID}, nil
+func (Fake) SpawnSandbox(_ context.Context, spec SpawnSpec) (*Sandbox, error) {
+	// Addr empty → the driver factory uses the fake opencode driver (dev mode).
+	return &Sandbox{MachineID: "dev-machine-" + spec.TaskID, AppName: "dev-app", Addr: ""}, nil
 }
 
 func (Fake) DestroySandbox(_ context.Context, _ *Sandbox) error { return nil }

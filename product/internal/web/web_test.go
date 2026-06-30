@@ -29,7 +29,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	st := store.NewMemory()
 	fake := llm.NewFake()
-	b := builder.NewSandbox(opencode.NewFake(), fly.NewFake(), "")
+	b := builder.NewSandbox(fly.NewFake(), func(string) opencode.Driver { return opencode.NewFake() }, builder.Config{})
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	broker := stream.NewBroker(100)
 	orch := orchestrator.New(st, fake, fake, fake, b, broker, log)

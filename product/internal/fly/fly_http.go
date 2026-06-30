@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -32,27 +33,79 @@ func NewHTTP(token, sandboxApp, sandboxImage string) *HTTP {
 		token:        token,
 		sandboxApp:   sandboxApp,
 		sandboxImage: sandboxImage,
-		client:       &http.Client{Timeout: 60 * time.Second},
+		client:       &http.Client{Timeout: 120 * time.Second}, // covers the machine wait endpoint
 	}
 }
 
-func (h *HTTP) SpawnSandbox(ctx context.Context, taskID string) (*Sandbox, error) {
+func (h *HTTP) SpawnSandbox(ctx context.Context, spec SpawnSpec) (*Sandbox, error) {
+	port := spec.Port
+	if port == 0 {
+		port = DefaultPort
+	}
+	env := map[string]string{}
+	for k, v := range spec.Env {
+		env[k] = v
+	}
+	env["OPENCODE_PORT"] = strconv.Itoa(port)
+
 	payload := map[string]any{
-		"name": "sbx-" + strings.ToLower(taskID),
+		"name":   "sbx-" + strings.ToLower(spec.TaskID),
+		"region": "arn",
 		"config": map[string]any{
 			"image":        h.sandboxImage,
 			"guest":        map[string]any{"cpu_kind": "shared", "cpus": 2, "memory_mb": 2048},
+			"env":          env,
 			"auto_destroy": true,
 		},
 	}
-	var out struct {
-		ID string `json:"id"`
+	var created struct {
+		ID        string `json:"id"`
+		PrivateIP string `json:"private_ip"`
 	}
 	if err := h.do(ctx, http.MethodPost,
-		fmt.Sprintf("/apps/%s/machines", h.sandboxApp), payload, &out); err != nil {
+		fmt.Sprintf("/apps/%s/machines", h.sandboxApp), payload, &created); err != nil {
 		return nil, err
 	}
-	return &Sandbox{MachineID: out.ID, AppName: h.sandboxApp}, nil
+
+	sb := &Sandbox{MachineID: created.ID, AppName: h.sandboxApp}
+
+	// Wait until the machine is started before returning a reachable address.
+	if err := h.waitStarted(ctx, created.ID); err != nil {
+		return sb, err
+	}
+
+	// Reachable over Fly's private 6PN network (orchestrator must be on it).
+	sb.Addr = fmt.Sprintf("http://[%s]:%d", created.PrivateIP, port)
+	return sb, nil
+}
+
+// waitStarted polls the machine until it reaches the started state. (Fly's wait
+// endpoint caps its timeout at 60s; polling handles a cold image pull cleanly.)
+func (h *HTTP) waitStarted(ctx context.Context, machineID string) error {
+	deadline := time.Now().Add(2 * time.Minute)
+	for {
+		var st struct {
+			State string `json:"state"`
+		}
+		if err := h.do(ctx, http.MethodGet,
+			fmt.Sprintf("/apps/%s/machines/%s", h.sandboxApp, machineID), nil, &st); err != nil {
+			return fmt.Errorf("fly: poll machine state: %w", err)
+		}
+		switch st.State {
+		case "started":
+			return nil
+		case "failed", "stopped", "destroyed":
+			return fmt.Errorf("fly: machine entered state %q before starting", st.State)
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("fly: timed out waiting for machine to start (last state %q)", st.State)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
 }
 
 func (h *HTTP) DestroySandbox(ctx context.Context, s *Sandbox) error {

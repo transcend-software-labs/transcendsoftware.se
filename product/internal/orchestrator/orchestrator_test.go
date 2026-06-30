@@ -19,7 +19,7 @@ import (
 func newTestOrch(st store.Store) *Orchestrator {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	fake := llm.NewFake()
-	b := builder.NewSandbox(opencode.NewFake(), fly.NewFake(), "")
+	b := builder.NewSandbox(fly.NewFake(), func(string) opencode.Driver { return opencode.NewFake() }, builder.Config{})
 	return New(st, fake, fake, fake, b, stream.NewBroker(100), log)
 }
 

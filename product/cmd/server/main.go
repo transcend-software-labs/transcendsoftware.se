@@ -41,10 +41,14 @@ func main() {
 	defer st.Close()
 
 	intake, planner, gate := newLLM(cfg, log)
-	driver := newDriver(cfg, log)
 	machines := newMachines(cfg, log)
+	newDriver := driverFactory(cfg, log)
 
-	build := builder.NewSandbox(driver, machines, llm.PlannerSystemPrompt)
+	build := builder.NewSandbox(machines, newDriver, builder.Config{
+		SystemPrompt: llm.PlannerSystemPrompt,
+		OpencodePort: cfg.OpencodePort,
+		AnthropicKey: cfg.AnthropicAPIKey, // opencode needs it inside the sandbox
+	})
 	broker := stream.NewBroker(500)
 	orch := orchestrator.New(st, intake, planner, gate, build, broker, log)
 	sessions := auth.NewSessions(cfg.SessionTTL)
@@ -101,13 +105,27 @@ func newLLM(cfg config.Config, log *slog.Logger) (llm.Intake, llm.Planner, llm.S
 	return a, a, a
 }
 
-func newDriver(cfg config.Config, log *slog.Logger) opencode.Driver {
-	if cfg.OpencodeURL == "" {
+// driverFactory decides how to reach opencode for each build:
+//   - OPENCODE_URL set → a fixed opencode server (e.g. an existing one)
+//   - else FLY token set → per-sandbox opencode over the Fly private network
+//   - else → the dev-mode fake
+func driverFactory(cfg config.Config, log *slog.Logger) builder.DriverFactory {
+	switch {
+	case cfg.OpencodeURL != "":
+		log.Info("opencode: fixed http server", "url", cfg.OpencodeURL)
+		return func(string) opencode.Driver { return opencode.NewHTTP(cfg.OpencodeURL) }
+	case cfg.FlyAPIToken != "":
+		log.Info("opencode: per-sandbox http over Fly private network")
+		return func(addr string) opencode.Driver {
+			if addr == "" {
+				return opencode.NewFake()
+			}
+			return opencode.NewHTTP(addr)
+		}
+	default:
 		log.Info("opencode: fake (dev)")
-		return opencode.NewFake()
+		return func(string) opencode.Driver { return opencode.NewFake() }
 	}
-	log.Info("opencode: http", "url", cfg.OpencodeURL)
-	return opencode.NewHTTP(cfg.OpencodeURL)
 }
 
 func newMachines(cfg config.Config, log *slog.Logger) fly.Machines {

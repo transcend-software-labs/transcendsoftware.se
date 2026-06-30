@@ -29,8 +29,18 @@ What works today:
 - Health check (`/healthz`), graceful shutdown, single static binary
 - Deploy config for the product itself (`Dockerfile`, `fly.toml`) — not deployed
 
-Not yet built (by design): the payment gate, real per-task sandbox provisioning,
-and the real Fly deploy.
+Real build mode (`FLY_API_TOKEN` + `FLY_SANDBOX_APP`/`FLY_SANDBOX_IMAGE` set):
+the orchestrator spawns a per-task Fly Machine from the sandbox image, injects
+env (incl. `ANTHROPIC_API_KEY` so opencode can call Claude — the one credential
+that must be in the sandbox; the deploy token stays out), waits for it to start,
+and drives opencode at its private address. The spawn/destroy path is validated
+against the live Fly API (`internal/fly/integration_test.go`, gated behind
+`FLY_SMOKE=1`). **The orchestrator must run on the Fly private (6PN) network** to
+reach the sandbox.
+
+Not yet built (by design): the payment gate and the real Fly **deploy** (still
+`fly.ErrDeployDisabled`). Live opencode token-level streaming is a refinement
+(the driver currently reports start + final result).
 
 ## Run it
 

@@ -25,7 +25,8 @@ type Config struct {
 	AnthropicModel  string // empty → llm.DefaultModel
 
 	// Execution plane (empty → fake driver/machines):
-	OpencodeURL     string // opencode server base URL
+	OpencodeURL     string // fixed opencode server base URL (overrides per-machine)
+	OpencodePort    int    // port opencode listens on inside each sandbox machine
 	FlyAPIToken     string // Fly API token
 	FlySandboxApp   string // Fly app the sandbox machines run under
 	FlySandboxImage string // OCI image with opencode + toolchains
@@ -43,6 +44,7 @@ func Load() Config {
 		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
 		AnthropicModel:  os.Getenv("ANTHROPIC_MODEL"),
 		OpencodeURL:     os.Getenv("OPENCODE_URL"),
+		OpencodePort:    4096,
 		FlyAPIToken:     os.Getenv("FLY_API_TOKEN"),
 		FlySandboxApp:   os.Getenv("FLY_SANDBOX_APP"),
 		FlySandboxImage: os.Getenv("FLY_SANDBOX_IMAGE"),
