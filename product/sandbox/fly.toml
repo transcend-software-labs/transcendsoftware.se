@@ -1,0 +1,9 @@
+# This app exists only to host the build-sandbox IMAGE in the Fly registry.
+# It runs no service of its own — per-task Machines are spawned from its image
+# by the orchestrator (fly.SpawnSandbox). Build/push with:
+#   fly deploy --build-only --push --remote-only --image-label <tag>
+app = "transcend-forge-sandbox"
+primary_region = "arn"
+
+[build]
+  dockerfile = "Dockerfile"

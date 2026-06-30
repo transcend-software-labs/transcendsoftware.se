@@ -9,10 +9,10 @@
 # the genuinely hard part of getting headless-browser verification working.
 #
 # Build & push (see sandbox/README.md):
-#   fly apps create forge-sandbox          # once
+#   fly apps create transcend-forge-sandbox          # once
 #   fly auth docker
-#   docker build -t registry.fly.io/forge-sandbox:$(date +%Y%m%d) ./sandbox
-#   docker push registry.fly.io/forge-sandbox:<tag>
+#   docker build -t registry.fly.io/transcend-forge-sandbox:$(date +%Y%m%d) ./sandbox
+#   docker push registry.fly.io/transcend-forge-sandbox:<tag>
 
 # Pin to a current Playwright release (bundles Node 20 + Chromium + deps).
 # Bump deliberately; do not track a floating tag in production.

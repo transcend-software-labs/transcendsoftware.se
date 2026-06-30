@@ -26,15 +26,25 @@ is injected at boot. The operating spec is fetched at runtime so editing the
 agent's brain never requires an image rebuild.
 
 ## Build & push (to your Fly registry)
+
+The app `transcend-forge-sandbox` already exists (Transcend Software org). It
+hosts the image only — it runs no service. Build on Fly's remote builder (no
+local 1.5 GB pull), from this directory:
+
 ```sh
-fly apps create forge-sandbox          # once
+fly deploy --build-only --push --remote-only --image-label $(date +%Y%m%d)
+```
+
+Or build locally:
+```sh
 fly auth docker
 TAG=$(date +%Y%m%d)
-docker build -t registry.fly.io/forge-sandbox:$TAG ./sandbox   # run from product/
-docker push registry.fly.io/forge-sandbox:$TAG
+docker build -t registry.fly.io/transcend-forge-sandbox:$TAG .
+docker push registry.fly.io/transcend-forge-sandbox:$TAG
 ```
-Then set `FLY_SANDBOX_APP=forge-sandbox` and
-`FLY_SANDBOX_IMAGE=registry.fly.io/forge-sandbox:$TAG`. `fly.SpawnSandbox` creates
+
+Then set `FLY_SANDBOX_APP=transcend-forge-sandbox` and
+`FLY_SANDBOX_IMAGE=registry.fly.io/transcend-forge-sandbox:$TAG`. `fly.SpawnSandbox` creates
 Machines in `FLY_SANDBOX_APP` from `FLY_SANDBOX_IMAGE`.
 
 Or use the Make targets from `product/`: `make sandbox-build && make sandbox-push`.

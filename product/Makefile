@@ -1,6 +1,6 @@
 DATABASE_URL ?= postgres://postgres:pw@localhost:5432/rasmusai?sslmode=disable
 SANDBOX_TAG ?= $(shell date +%Y%m%d)
-SANDBOX_IMAGE ?= registry.fly.io/forge-sandbox:$(SANDBOX_TAG)
+SANDBOX_IMAGE ?= registry.fly.io/transcend-forge-sandbox:$(SANDBOX_TAG)
 
 .PHONY: run build test vet db-up db-down db-migrate sandbox-build sandbox-push
 
