@@ -1,6 +1,8 @@
 DATABASE_URL ?= postgres://postgres:pw@localhost:5432/rasmusai?sslmode=disable
+SANDBOX_TAG ?= $(shell date +%Y%m%d)
+SANDBOX_IMAGE ?= registry.fly.io/forge-sandbox:$(SANDBOX_TAG)
 
-.PHONY: run build test vet db-up db-down db-migrate
+.PHONY: run build test vet db-up db-down db-migrate sandbox-build sandbox-push
 
 # Run in dev mode (in-memory store, fake planner/gate/builder — no secrets needed).
 run:
@@ -27,3 +29,10 @@ db-down:
 
 db-migrate:
 	psql "$(DATABASE_URL)" -f migrations/0001_init.sql
+
+# Build the per-task build sandbox image (Fly registry). See sandbox/README.md.
+sandbox-build:
+	docker build -t $(SANDBOX_IMAGE) ./sandbox
+
+sandbox-push:
+	docker push $(SANDBOX_IMAGE)
