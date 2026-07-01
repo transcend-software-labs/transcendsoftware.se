@@ -162,10 +162,19 @@ func (s *Server) handleUploadAsset(w http.ResponseWriter, r *http.Request, u *us
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 }
 
-// handleProjectStatus returns the live status fragment for HTMX polling.
+// handleProjectStatus returns the live status fragment for HTMX polling. When the
+// project leaves a polling state (build finished, rejected, needs input, …) it
+// asks HTMX to reload the whole page, so the preview link, plan and reiterate
+// form appear and the now-dead live-build log panel goes away. Polling only runs
+// while a step is in progress, so this reload fires once, at the transition.
 func (s *Server) handleProjectStatus(w http.ResponseWriter, r *http.Request, u *user.User) {
 	p, ok := s.ownedProject(w, r, u)
 	if !ok {
+		return
+	}
+	if !polling(p) {
+		w.Header().Set("HX-Refresh", "true")
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

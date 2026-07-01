@@ -12,7 +12,8 @@
 {{if eq .Status "building"}}
 <section class="panel">
   <h2>Live build</h2>
-  <div class="log livelog" hx-ext="sse" sse-connect="/projects/{{.ID}}/stream" sse-swap="log" hx-swap="beforeend"></div>
+  <div class="log livelog" hx-ext="sse" sse-connect="/projects/{{.ID}}/stream" sse-swap="log" hx-swap="beforeend"
+    hx-on::after-swap="this.scrollTop = this.scrollHeight"></div>
 </section>
 {{end}}
 

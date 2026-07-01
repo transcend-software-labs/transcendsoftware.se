@@ -109,21 +109,31 @@ func TestFullFlow_IntakeToPreview(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	// Poll until preview ready.
+	// Poll the status endpoint. While building it returns the status fragment;
+	// once the build leaves the polling state it asks HTMX to reload the page
+	// (HX-Refresh), which is our signal the flow finished.
 	deadline := time.Now().Add(8 * time.Second)
-	var ready bool
+	var done bool
 	for time.Now().Before(deadline) {
 		r, _ := c.Get(srv.URL + "/projects/" + pid + "/status")
-		b, _ := io.ReadAll(r.Body)
+		refresh := r.Header.Get("HX-Refresh")
 		r.Body.Close()
-		if strings.Contains(string(b), "Preview ready") {
-			ready = true
+		if refresh == "true" {
+			done = true
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	if !ready {
-		t.Fatal("project never reached preview ready")
+	if !done {
+		t.Fatal("project never left the building state")
+	}
+
+	// The full project page should now show the ready preview.
+	r, _ := c.Get(srv.URL + "/projects/" + pid)
+	b, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	if !strings.Contains(string(b), "Preview ready") {
+		t.Fatal("project page does not show preview ready after build")
 	}
 }
 
