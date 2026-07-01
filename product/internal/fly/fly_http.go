@@ -106,7 +106,40 @@ func (h *HTTP) SpawnSandbox(ctx context.Context, spec SpawnSpec) (*Sandbox, erro
 
 	// Reachable over Fly's private 6PN network (orchestrator must be on it).
 	sb.Addr = fmt.Sprintf("http://[%s]:%d", created.PrivateIP, port)
+
+	// The machine is "started" before opencode has bound its port; wait until it
+	// actually accepts connections (else the first request is refused).
+	if err := h.waitOpencodeReady(ctx, sb.Addr); err != nil {
+		return sb, err
+	}
 	return sb, nil
+}
+
+// waitOpencodeReady polls the opencode address until it accepts connections.
+func (h *HTTP) waitOpencodeReady(ctx context.Context, addr string) error {
+	deadline := time.Now().Add(120 * time.Second)
+	client := &http.Client{Timeout: 5 * time.Second}
+	var lastErr error
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, addr+"/", nil)
+		if err != nil {
+			return err
+		}
+		resp, err := client.Do(req)
+		if err == nil {
+			resp.Body.Close()
+			return nil
+		}
+		lastErr = err
+		if time.Now().After(deadline) {
+			return fmt.Errorf("fly: opencode not ready at %s: %w", addr, lastErr)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
 }
 
 // waitStarted polls the machine until it reaches the started state. (Fly's wait
