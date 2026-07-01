@@ -5,7 +5,7 @@
 #   DATABASE_URL, ANTHROPIC_API_KEY, ADMIN_EMAIL,
 #   FLY_API_TOKEN, FLY_SANDBOX_APP, FLY_SANDBOX_IMAGE, OPENCODE_URL
 
-app = "rasmus-ai"
+app = "transcend-forge"
 primary_region = "arn"  # Stockholm (EU)
 
 [build]
