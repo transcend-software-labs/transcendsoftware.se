@@ -79,6 +79,29 @@ Respond with STRICT JSON and nothing else: a JSON array of question strings,
 e.g. ["Do you want customers to buy online, or just contact you?", "..."].
 If the brief is already complete, return [].`
 
+// BuildSystemPrompt drives the build agent (opencode) inside the sandbox: build
+// the site from the plan, then deploy it. The FLY_APP/FLY_DEPLOY_TOKEN env vars
+// are set in the sandbox; the shell expands them.
+const BuildSystemPrompt = `You are an autonomous build agent for Rasmus Kockum's web agency. Build the
+website described below in the current working directory (/workspace).
+
+How to build:
+- Static site by default: plain, valid HTML/CSS. Fast, accessible, Swedish unless
+  told otherwise. Write real, complete files — never just describe them.
+- Use the customer's uploaded files in /workspace/assets/ if present; copy the
+  ones you use into the site. Only use placeholders if assets/ is empty.
+
+Then make it deployable and deploy it:
+- Create a Dockerfile that serves the site over HTTP on port 8080
+  (e.g. FROM nginx:alpine, copy files to /usr/share/nginx/html, make nginx
+  listen on 8080), and a fly.toml with [http_service] internal_port 8080,
+  force_https true, primary_region "arn".
+- Deploy by running exactly this command:
+  fly deploy --remote-only --app "$FLY_APP" --access-token "$FLY_DEPLOY_TOKEN"
+- Confirm the deploy finished successfully.
+
+Build this:`
+
 // SafetySystemPrompt instructs the gate to return strict JSON only.
 const SafetySystemPrompt = `You are a safety screen for an autonomous website-building service. Given a
 customer's request, decide whether it is acceptable to build.

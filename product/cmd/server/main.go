@@ -46,7 +46,7 @@ func main() {
 	newDriver := driverFactory(cfg, log)
 
 	build := builder.NewSandbox(machines, newDriver, builder.Config{
-		SystemPrompt: llm.PlannerSystemPrompt,
+		SystemPrompt: llm.BuildSystemPrompt, // build-and-deploy prompt for the sandbox agent
 		OpencodePort: cfg.OpencodePort,
 		AnthropicKey: cfg.AnthropicAPIKey, // opencode uses this if set
 		LLMBaseURL:   cfg.LLMBaseURL,      // else an OpenAI-compatible model (Moonshot/Kimi)
