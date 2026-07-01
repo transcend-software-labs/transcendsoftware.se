@@ -30,8 +30,11 @@ responsive, no heavy frameworks for a brochure site.
 - **EU data residency by default.** Deploy to an EU region; keep customer data
   in the EU. Say so in the build notes.
 - **Real content only.** Never invent fake photos of a real place or product.
-  If the customer hasn't provided photos, use clearly-labelled placeholders and
-  list them in the handover notes for replacement.
+  The customer's uploaded files (photos, logo, content) are staged in
+  **`/workspace/assets/`** — use those. Copy the ones you use into the site
+  (e.g. `public/`) so they ship with the build. Only fall back to
+  clearly-labelled placeholders when `/workspace/assets/` has nothing relevant,
+  and list those in the handover notes for replacement.
 - **The verifier is the definition of done.** The site must build and its tests
   pass before a preview is surfaced. "Looks done" is not done.
 - **Least privilege.** You do not hold deploy credentials. When ready to deploy,
