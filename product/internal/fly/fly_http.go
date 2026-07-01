@@ -15,26 +15,56 @@ import (
 // machinesAPI is the Fly Machines API base.
 const machinesAPI = "https://api.machines.dev/v1"
 
-// HTTP is a real Machines client. Spawn/Destroy target the Fly Machines API;
-// Deploy returns ErrDeployDisabled until real deploys are switched on.
-//
-// Confirm the sandbox app + image and the Machines payload against your Fly org
-// before relying on Spawn/Destroy in production.
+// HTTP is a real Fly client (Machines + Apps API).
 type HTTP struct {
-	token        string // Fly API token (org or, preferably, scoped)
+	token        string // Fly API token (org — trusted side only, never the sandbox)
+	org          string // org slug for app creation
+	deployToken  string // deploy-scoped token injected into the sandbox for `fly deploy`
 	sandboxApp   string // Fly app the per-task sandbox machines run under
 	sandboxImage string // OCI image containing opencode + toolchains
 	client       *http.Client
 }
 
-// NewHTTP returns a real Machines client.
-func NewHTTP(token, sandboxApp, sandboxImage string) *HTTP {
+// Options configures the real Fly client.
+type Options struct {
+	Token        string
+	Org          string
+	DeployToken  string
+	SandboxApp   string
+	SandboxImage string
+}
+
+// NewHTTP returns a real Fly client.
+func NewHTTP(o Options) *HTTP {
 	return &HTTP{
-		token:        token,
-		sandboxApp:   sandboxApp,
-		sandboxImage: sandboxImage,
+		token:        o.Token,
+		org:          o.Org,
+		deployToken:  o.DeployToken,
+		sandboxApp:   o.SandboxApp,
+		sandboxImage: o.SandboxImage,
 		client:       &http.Client{Timeout: 120 * time.Second}, // covers the machine wait endpoint
 	}
+}
+
+// EnsureApp creates the per-customer Fly app if it doesn't already exist.
+func (h *HTTP) EnsureApp(ctx context.Context, appName string) error {
+	// Already exists?
+	if err := h.do(ctx, http.MethodGet, "/apps/"+appName, nil, nil); err == nil {
+		return nil
+	}
+	// Create it under the configured org.
+	return h.do(ctx, http.MethodPost, "/apps",
+		map[string]any{"app_name": appName, "org_slug": h.org}, nil)
+}
+
+// AppDeployToken returns a token the sandbox agent uses to run `fly deploy`.
+//
+// Interim: returns the configured deploy-scoped token (created once with
+// `fly tokens create deploy`). It is a limited token (deploy operations only,
+// no org admin or secret reads), never the org API token. Hardening TODO: mint
+// a token scoped to appName alone, per task, and revoke it after the build.
+func (h *HTTP) AppDeployToken(_ context.Context, _ string) (string, error) {
+	return h.deployToken, nil
 }
 
 func (h *HTTP) SpawnSandbox(ctx context.Context, spec SpawnSpec) (*Sandbox, error) {
@@ -118,11 +148,6 @@ func (h *HTTP) DestroySandbox(ctx context.Context, s *Sandbox) error {
 	}
 	return h.do(ctx, http.MethodDelete,
 		fmt.Sprintf("/apps/%s/machines/%s?force=true", app, s.MachineID), nil, nil)
-}
-
-// Deploy is intentionally not enabled yet — the single step left switched off.
-func (h *HTTP) Deploy(_ context.Context, _ *Sandbox, _ string) (string, error) {
-	return "", ErrDeployDisabled
 }
 
 func (h *HTTP) do(ctx context.Context, method, path string, in, out any) error {

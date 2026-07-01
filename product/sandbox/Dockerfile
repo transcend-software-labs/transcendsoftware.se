@@ -39,9 +39,13 @@ ENV PATH="/usr/local/go/bin:/root/.opencode/bin:${PATH}"
 # Pin a version in production rather than tracking the install script's latest.
 RUN curl -fsSL https://opencode.ai/install | bash
 
+# flyctl — the agent deploys the finished site to its per-customer app using an
+# app-scoped token the orchestrator injects (the org token never enters here).
+RUN curl -L https://fly.io/install.sh | FLYCTL_INSTALL=/usr/local sh
+
 # Verify the toolchain is installed and on PATH — fails the build early if not.
 RUN node --version && npm --version && pnpm --version && go version \
- && command -v opencode && command -v git && test -d /ms-playwright
+ && command -v opencode && command -v flyctl && command -v git && test -d /ms-playwright
 
 WORKDIR /workspace
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh

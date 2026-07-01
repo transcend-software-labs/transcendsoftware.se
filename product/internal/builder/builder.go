@@ -10,10 +10,20 @@ package builder
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
 	"github.com/transcend-software-labs/rasmus-ai/internal/opencode"
 )
+
+// deployAppName is the per-customer Fly app for a project (globally unique).
+func deployAppName(projectID string) string {
+	id := strings.ToLower(projectID)
+	if len(id) > 12 {
+		id = id[:12]
+	}
+	return "forge-" + id
+}
 
 // Request is one build pass.
 type Request struct {
@@ -89,6 +99,21 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 		}
 	}
 
+	// Provision the per-customer app (orchestrator side) and inject the app +
+	// an app-scoped deploy token so the agent can `fly deploy` that one app.
+	appName := deployAppName(req.ProjectID)
+	if err := b.machines.EnsureApp(ctx, appName); err != nil {
+		return Result{}, err
+	}
+	token, err := b.machines.AppDeployToken(ctx, appName)
+	if err != nil {
+		return Result{}, err
+	}
+	env["FLY_APP"] = appName
+	if token != "" {
+		env["FLY_DEPLOY_TOKEN"] = token
+	}
+
 	emit(hooks.OnLog, "Spawning isolated sandbox…")
 	sb, err := b.machines.SpawnSandbox(ctx, fly.SpawnSpec{
 		TaskID: req.ProjectID,
@@ -119,12 +144,9 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 		return Result{Log: res.Log}, err
 	}
 
-	preview, err := b.machines.Deploy(ctx, sb, req.ProjectID)
-	if err != nil {
-		// fly.ErrDeployDisabled stops real runs here, with the build log intact.
-		return Result{RepoURL: req.RepoURL, Log: res.Log}, err
-	}
-
+	// The agent ran `fly deploy` inside the sandbox (per the operating spec); the
+	// app URL is deterministic.
+	preview := "https://" + appName + ".fly.dev"
 	return Result{RepoURL: req.RepoURL, PreviewURL: preview, Log: res.Log}, nil
 }
 

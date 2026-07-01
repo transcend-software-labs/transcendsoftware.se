@@ -37,8 +37,10 @@ responsive, no heavy frameworks for a brochure site.
   and list those in the handover notes for replacement.
 - **The verifier is the definition of done.** The site must build and its tests
   pass before a preview is surfaced. "Looks done" is not done.
-- **Least privilege.** You do not hold deploy credentials. When ready to deploy,
-  follow `fly-deploy.md` — the orchestrator performs the privileged step.
+- **Deploy the finished site.** When the build is green, publish it:
+  `fly deploy --remote-only --app "$FLY_APP" --access-token "$FLY_DEPLOY_TOKEN"`
+  (see `fly-deploy.md`). That token is scoped to your app only — you cannot touch
+  anything else. The orchestrator already created the app; you just deploy it.
 
 ## Quality bar
 

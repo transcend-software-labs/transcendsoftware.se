@@ -10,10 +10,13 @@ the Astro project at the repo root) but lives in the same monorepo.
 
 ## Status
 
-The full customer-facing flow is implemented and tested **except the actual Fly
-deploy**, which is deliberately switched off (`fly.ErrDeployDisabled`). In dev
-mode everything runs locally with fakes, so the whole experience works without
-any secrets.
+The full customer-facing flow is implemented. In dev mode everything runs
+locally with fakes, so the whole experience works without any secrets. In real
+mode the agent builds in a Fly Machine sandbox and **deploys the finished site**
+to a per-customer app (`forge-<projectId>`) with an app-scoped token — the org
+token never enters the sandbox. (The end-to-end real path is validated
+piecewise; a full live run needs the product deployed on Fly's 6PN network + an
+API key.)
 
 What works today:
 
@@ -38,9 +41,9 @@ against the live Fly API (`internal/fly/integration_test.go`, gated behind
 `FLY_SMOKE=1`). **The orchestrator must run on the Fly private (6PN) network** to
 reach the sandbox.
 
-Not yet built (by design): the payment gate and the real Fly **deploy** (still
-`fly.ErrDeployDisabled`). Live opencode token-level streaming is a refinement
-(the driver currently reports start + final result).
+Not yet built (by design): the payment gate. Live opencode token-level streaming
+is a refinement (the driver currently reports start + final result), and the
+deploy token should be minted per-app rather than a shared deploy-scoped token.
 
 ## Run it
 
@@ -85,7 +88,9 @@ mode.** Each variable independently switches one piece from fake to real:
 | `ANTHROPIC_API_KEY`   | use the real planner + safety gate (else a deterministic fake) |
 | `ANTHROPIC_MODEL`     | override the model (default `claude-sonnet-4-6`)           |
 | `OPENCODE_URL`        | drive a real opencode server (else simulated build)        |
-| `FLY_API_TOKEN`       | use the real Fly Machines client (deploy still gated)      |
+| `FLY_API_TOKEN`       | real Fly Machines client (spawn sandbox, create per-customer app) |
+| `FLY_ORG`             | Fly org slug for per-customer app creation                 |
+| `FLY_DEPLOY_TOKEN`    | deploy-scoped token injected into the sandbox for `fly deploy` |
 | `FLY_SANDBOX_APP`     | Fly app the per-task sandbox machines run under            |
 | `FLY_SANDBOX_IMAGE`   | OCI image with opencode + toolchains                       |
 | `STORAGE_ENDPOINT`    | S3-compatible object storage for asset uploads — `localhost:9000` (MinIO) or Tigris host; empty → in-memory dev store |
@@ -123,7 +128,7 @@ Packages (`internal/`):
 - `llm` — `Planner` + `SafetyGate`, with the Anthropic client and a Fake; the
   operating spec ("Rasmus's decisions") lives in `PlannerSystemPrompt`
 - `opencode` — driver to run a build via an opencode server (HTTP + Fake)
-- `fly` — Fly Machines client: spawn/destroy sandboxes; deploy is gated
+- `fly` — Fly client: spawn/destroy sandboxes, create per-customer apps, mint deploy tokens
 - `builder` — one build pass: spawn sandbox → run agent → deploy → teardown
 - `orchestrator` — async pipeline driving a project through its lifecycle
 - `web` — HTTP handlers, templates (`templates/`), assets (`static/`)

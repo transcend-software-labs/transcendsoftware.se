@@ -158,5 +158,11 @@ func newMachines(cfg config.Config, log *slog.Logger) fly.Machines {
 		return fly.NewFake()
 	}
 	log.Info("fly: http")
-	return fly.NewHTTP(cfg.FlyAPIToken, cfg.FlySandboxApp, cfg.FlySandboxImage)
+	return fly.NewHTTP(fly.Options{
+		Token:        cfg.FlyAPIToken,
+		Org:          cfg.FlyOrg,
+		DeployToken:  cfg.FlyDeployToken,
+		SandboxApp:   cfg.FlySandboxApp,
+		SandboxImage: cfg.FlySandboxImage,
+	})
 }

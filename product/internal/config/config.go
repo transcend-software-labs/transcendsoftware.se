@@ -27,7 +27,9 @@ type Config struct {
 	// Execution plane (empty → fake driver/machines):
 	OpencodeURL     string // fixed opencode server base URL (overrides per-machine)
 	OpencodePort    int    // port opencode listens on inside each sandbox machine
-	FlyAPIToken     string // Fly API token
+	FlyAPIToken     string // Fly API token (trusted side only)
+	FlyOrg          string // Fly org slug for per-customer app creation
+	FlyDeployToken  string // deploy-scoped token injected into the sandbox for `fly deploy`
 	FlySandboxApp   string // Fly app the sandbox machines run under
 	FlySandboxImage string // OCI image with opencode + toolchains
 
@@ -60,6 +62,8 @@ func Load() Config {
 		OpencodeURL:     os.Getenv("OPENCODE_URL"),
 		OpencodePort:    4096,
 		FlyAPIToken:     os.Getenv("FLY_API_TOKEN"),
+		FlyOrg:          envOr("FLY_ORG", "personal"),
+		FlyDeployToken:  os.Getenv("FLY_DEPLOY_TOKEN"),
 		FlySandboxApp:   os.Getenv("FLY_SANDBOX_APP"),
 		FlySandboxImage: os.Getenv("FLY_SANDBOX_IMAGE"),
 
