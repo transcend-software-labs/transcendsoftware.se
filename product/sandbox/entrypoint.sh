@@ -81,5 +81,7 @@ fi
 
 # 5) Start opencode; the orchestrator connects over Fly's private network.
 #    (Flags may vary by opencode version — confirm against the pinned release.)
+# Bind :: (IPv6, dual-stack) so the orchestrator can reach it over Fly's private
+# 6PN network, which is IPv6-only.
 log "starting opencode on :${PORT}"
-exec opencode serve --hostname 0.0.0.0 --port "${PORT}"
+exec opencode serve --hostname :: --port "${PORT}"
