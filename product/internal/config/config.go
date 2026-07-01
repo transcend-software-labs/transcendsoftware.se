@@ -24,6 +24,12 @@ type Config struct {
 	AnthropicAPIKey string // empty → fake planner/gate
 	AnthropicModel  string // empty → llm.DefaultModel
 
+	// OpenAI-compatible LLM (e.g. Moonshot/Kimi) for intake/plan/gate. Takes
+	// precedence over Anthropic when LLMAPIKey is set.
+	LLMBaseURL string
+	LLMAPIKey  string
+	LLMModel   string
+
 	// Execution plane (empty → fake driver/machines):
 	OpencodeURL     string // fixed opencode server base URL (overrides per-machine)
 	OpencodePort    int    // port opencode listens on inside each sandbox machine
@@ -59,6 +65,10 @@ func Load() Config {
 		AdminEmail:      os.Getenv("ADMIN_EMAIL"),
 		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
 		AnthropicModel:  os.Getenv("ANTHROPIC_MODEL"),
+
+		LLMBaseURL:      envOr("LLM_BASE_URL", "https://api.moonshot.ai/v1"),
+		LLMAPIKey:       os.Getenv("LLM_API_KEY"),
+		LLMModel:        envOr("LLM_MODEL", "kimi-k2.7-code"),
 		OpencodeURL:     os.Getenv("OPENCODE_URL"),
 		OpencodePort:    4096,
 		FlyAPIToken:     os.Getenv("FLY_API_TOKEN"),

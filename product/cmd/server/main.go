@@ -98,14 +98,20 @@ func newStore(cfg config.Config, log *slog.Logger) (store.Store, error) {
 }
 
 func newLLM(cfg config.Config, log *slog.Logger) (llm.Intake, llm.Planner, llm.SafetyGate) {
-	if cfg.AnthropicAPIKey == "" {
+	switch {
+	case cfg.LLMAPIKey != "":
+		log.Info("llm: openai-compatible", "base", cfg.LLMBaseURL, "model", cfg.LLMModel)
+		c := llm.NewOpenAICompat(cfg.LLMBaseURL, cfg.LLMAPIKey, cfg.LLMModel)
+		return c, c, c
+	case cfg.AnthropicAPIKey != "":
+		log.Info("llm: anthropic")
+		a := llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.AnthropicModel)
+		return a, a, a
+	default:
 		log.Info("llm: fake (dev)")
 		f := llm.NewFake()
 		return f, f, f
 	}
-	log.Info("llm: anthropic")
-	a := llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.AnthropicModel)
-	return a, a, a
 }
 
 // driverFactory decides how to reach opencode for each build:
