@@ -59,10 +59,20 @@ func (h *HTTP) EnsureApp(ctx context.Context, appName string) error {
 
 // AppDeployToken returns a token the sandbox agent uses to run `fly deploy`.
 //
-// Interim: returns the configured deploy-scoped token (created once with
-// `fly tokens create deploy`). It is a limited token (deploy operations only,
-// no org admin or secret reads), never the org API token. Hardening TODO: mint
-// a token scoped to appName alone, per task, and revoke it after the build.
+// Interim: returns the configured deploy-scoped token. It is a limited token
+// (deploy operations only, no org admin or secret reads), never the org API
+// token. But it is scoped to the *org*, so a misbehaving or prompt-injected
+// build agent could deploy to (or destroy) any app in the org, not just its own.
+//
+// Hardening TODO: mint a token scoped to appName alone, per task, with a short
+// expiry (~1h), and let it expire after the build. The mechanism is Fly's
+// `createLimitedAccessToken` GraphQL mutation (what `fly tokens create deploy
+// -a <app>` calls): profile "deploy", the app as the resource, organizationId
+// from the org. The blocker is authority: minting sub-tokens requires an
+// org-privileged token — a deploy-scoped token like this one gets "Not
+// authorized to access this createlimitedaccesstoken". So enabling per-app
+// scoping means giving the (trusted) orchestrator a token that can mint tokens,
+// which is a deliberate trade-off to make explicitly, not silently.
 func (h *HTTP) AppDeployToken(_ context.Context, _ string) (string, error) {
 	return h.deployToken, nil
 }
