@@ -48,7 +48,10 @@ func main() {
 	build := builder.NewSandbox(machines, newDriver, builder.Config{
 		SystemPrompt: llm.PlannerSystemPrompt,
 		OpencodePort: cfg.OpencodePort,
-		AnthropicKey: cfg.AnthropicAPIKey, // opencode needs it inside the sandbox
+		AnthropicKey: cfg.AnthropicAPIKey, // opencode uses this if set
+		LLMBaseURL:   cfg.LLMBaseURL,      // else an OpenAI-compatible model (Moonshot/Kimi)
+		LLMKey:       cfg.LLMAPIKey,
+		LLMModel:     cfg.LLMModel,
 	})
 	assets := newStorage(cfg, log)
 	broker := stream.NewBroker(500)

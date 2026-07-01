@@ -57,10 +57,15 @@ type Builder interface {
 type Config struct {
 	SystemPrompt string // "Rasmus's decisions" operating spec, passed to the agent
 	OpencodePort int    // port opencode listens on inside the sandbox
-	// AnthropicKey is injected into the sandbox so opencode can call Claude.
-	// (This is the one credential that must be inside the sandbox; the Fly
-	// deploy token stays out — the orchestrator deploys.)
+	// AnthropicKey is injected so opencode can call Claude (if used).
 	AnthropicKey string
+	// LLM* configure an OpenAI-compatible model for opencode (e.g. Moonshot/Kimi).
+	// The entrypoint writes an opencode provider config from these. The key is
+	// the one credential that must be inside the sandbox; the Fly deploy token
+	// stays out (the orchestrator deploys).
+	LLMBaseURL string
+	LLMKey     string
+	LLMModel   string
 }
 
 // DriverFactory builds an opencode driver for a sandbox at the given address.
@@ -87,6 +92,11 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 	env := map[string]string{}
 	if b.cfg.AnthropicKey != "" {
 		env["ANTHROPIC_API_KEY"] = b.cfg.AnthropicKey
+	}
+	if b.cfg.LLMKey != "" {
+		env["LLM_API_KEY"] = b.cfg.LLMKey
+		env["LLM_BASE_URL"] = b.cfg.LLMBaseURL
+		env["LLM_MODEL"] = b.cfg.LLMModel
 	}
 	if req.RepoURL != "" {
 		env["REPO_URL"] = req.RepoURL

@@ -55,7 +55,31 @@ if [ -n "${ASSETS_MANIFEST:-}" ]; then
     done
 fi
 
-# 4) Start opencode; the orchestrator connects over Fly's private network.
+# 4) Configure opencode's model provider. If an OpenAI-compatible model is set
+#    (e.g. Moonshot/Kimi), write a provider config; otherwise opencode uses its
+#    default (Anthropic via ANTHROPIC_API_KEY).
+if [ -n "${LLM_API_KEY:-}" ]; then
+  base="${LLM_BASE_URL:-https://api.moonshot.ai/v1}"
+  model="${LLM_MODEL:-kimi-k2.7-code}"
+  log "configuring opencode for ${base} model ${model}"
+  mkdir -p /root/.config/opencode
+  cat > /root/.config/opencode/opencode.json <<JSON
+{
+  "\$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "moonshot": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Moonshot",
+      "options": { "baseURL": "${base}", "apiKey": "{env:LLM_API_KEY}" },
+      "models": { "${model}": {} }
+    }
+  },
+  "model": "moonshot/${model}"
+}
+JSON
+fi
+
+# 5) Start opencode; the orchestrator connects over Fly's private network.
 #    (Flags may vary by opencode version — confirm against the pinned release.)
 log "starting opencode on :${PORT}"
 exec opencode serve --hostname 0.0.0.0 --port "${PORT}"
