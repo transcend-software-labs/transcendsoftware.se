@@ -7,6 +7,7 @@
 package opencode
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -84,25 +85,36 @@ func NewHTTP(baseURL string) *HTTP {
 	}
 }
 
+// buildDeadline caps a single build run.
+const buildDeadline = 30 * time.Minute
+
 func (h *HTTP) Run(ctx context.Context, spec Spec, onLog func(string)) (Result, error) {
-	// 1) Create a session.
 	sessionID, err := h.createSession(ctx)
 	if err != nil {
 		return Result{}, fmt.Errorf("opencode: create session: %w", err)
 	}
-	if onLog != nil {
-		onLog("opencode session " + sessionID + " started")
-	}
-	// 2) Send the instruction and collect the response.
-	// TODO: switch to the streaming endpoint and call onLog per event.
-	log, err := h.sendMessage(ctx, sessionID, spec.SystemPrompt+"\n\n"+spec.Instruction)
+	emit(onLog, "opencode session started")
+
+	streamCtx, cancel := context.WithTimeout(ctx, buildDeadline)
+	defer cancel()
+
+	// Open the event stream BEFORE prompting so we don't miss early tool activity.
+	stream, err := h.openEvents(streamCtx)
 	if err != nil {
-		return Result{}, fmt.Errorf("opencode: run: %w", err)
+		return Result{}, fmt.Errorf("opencode: open event stream: %w", err)
 	}
-	if onLog != nil {
-		onLog(log)
+	defer stream.Close()
+
+	// Fire the prompt asynchronously; progress arrives over the event stream.
+	body := map[string]any{
+		"parts": []map[string]any{{"type": "text", "text": spec.SystemPrompt + "\n\n" + spec.Instruction}},
 	}
-	return Result{Log: log, SessionID: sessionID}, nil
+	if err := h.postJSON(ctx, "/session/"+sessionID+"/prompt_async", body, nil); err != nil {
+		return Result{}, fmt.Errorf("opencode: prompt: %w", err)
+	}
+
+	log, err := h.consume(sessionID, stream, onLog)
+	return Result{Log: log, SessionID: sessionID}, err
 }
 
 func (h *HTTP) createSession(ctx context.Context) (string, error) {
@@ -115,26 +127,136 @@ func (h *HTTP) createSession(ctx context.Context) (string, error) {
 	return out.ID, nil
 }
 
-func (h *HTTP) sendMessage(ctx context.Context, sessionID, text string) (string, error) {
-	var out struct {
-		Parts []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"parts"`
+// ocEvent is one server-sent event from opencode's /event stream.
+type ocEvent struct {
+	Type       string `json:"type"`
+	Properties struct {
+		SessionID string      `json:"sessionID"`
+		Part      ocEventPart `json:"part"`
+	} `json:"properties"`
+}
+
+type ocEventPart struct {
+	ID        string          `json:"id"`
+	SessionID string          `json:"sessionID"`
+	Type      string          `json:"type"`
+	Tool      string          `json:"tool"`
+	Text      string          `json:"text"`
+	State     json.RawMessage `json:"state"`
+}
+
+// openEvents starts reading opencode's SSE /event stream. The returned Closer
+// must be closed by the caller.
+func (h *HTTP) openEvents(ctx context.Context) (io.ReadCloser, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, h.BaseURL+"/event", nil)
+	if err != nil {
+		return nil, err
 	}
-	body := map[string]any{
-		"parts": []map[string]any{{"type": "text", "text": text}},
+	req.Header.Set("accept", "text/event-stream")
+	// Streaming request: no client timeout; lifetime is bounded by ctx.
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		return nil, err
 	}
-	if err := h.postJSON(ctx, "/session/"+sessionID+"/message", body, &out); err != nil {
-		return "", err
+	if resp.StatusCode/100 != 2 {
+		raw, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, fmt.Errorf("opencode: /event returned %d: %s", resp.StatusCode, string(raw))
 	}
-	var sb strings.Builder
-	for _, p := range out.Parts {
-		if p.Type == "text" {
-			sb.WriteString(p.Text)
+	return resp.Body, nil
+}
+
+// consume reads events for sessionID, streaming each tool action via onLog and
+// returning the final assistant text once the session goes idle.
+func (h *HTTP) consume(sessionID string, stream io.Reader, onLog func(string)) (string, error) {
+	seen := map[string]bool{}
+	var lastText string
+	sc := bufio.NewScanner(stream)
+	sc.Buffer(make([]byte, 64*1024), 8*1024*1024) // tool payloads can be large
+	for sc.Scan() {
+		line := sc.Text()
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		var ev ocEvent
+		if json.Unmarshal([]byte(strings.TrimSpace(line[5:])), &ev) != nil {
+			continue
+		}
+		sid := ev.Properties.SessionID
+		if sid == "" {
+			sid = ev.Properties.Part.SessionID
+		}
+		if sid != sessionID {
+			continue
+		}
+		switch ev.Type {
+		case "message.part.updated":
+			p := ev.Properties.Part
+			switch p.Type {
+			case "tool":
+				// Emit once, after the input is populated (status past "pending").
+				if !seen[p.ID] && partStatus(p.State) != "pending" {
+					seen[p.ID] = true
+					emit(onLog, toolLine(p.Tool, p.State))
+				}
+			case "text":
+				if p.Text != "" {
+					lastText = p.Text
+				}
+			}
+		case "session.idle":
+			if lastText != "" {
+				emit(onLog, lastText)
+			}
+			return lastText, nil
+		case "session.error":
+			return lastText, fmt.Errorf("opencode: agent reported an error")
 		}
 	}
-	return sb.String(), nil
+	if err := sc.Err(); err != nil {
+		return lastText, fmt.Errorf("opencode: event stream error: %w", err)
+	}
+	return lastText, fmt.Errorf("opencode: event stream ended before the build finished")
+}
+
+func partStatus(state json.RawMessage) string {
+	var s struct {
+		Status string `json:"status"`
+	}
+	_ = json.Unmarshal(state, &s)
+	return s.Status
+}
+
+// toolLine summarises a tool action as a progress line, e.g. "→ write index.html".
+func toolLine(tool string, state json.RawMessage) string {
+	desc := tool
+	if desc == "" {
+		desc = "tool"
+	}
+	var st struct {
+		Input map[string]any `json:"input"`
+	}
+	if json.Unmarshal(state, &st) == nil {
+		if fp, ok := st.Input["filePath"].(string); ok {
+			desc += " " + fp
+		} else if cmd, ok := st.Input["command"].(string); ok {
+			desc += ": " + truncate(cmd, 70)
+		}
+	}
+	return "→ " + desc
+}
+
+func truncate(s string, n int) string {
+	if len(s) > n {
+		return s[:n] + "…"
+	}
+	return s
+}
+
+func emit(onLog func(string), line string) {
+	if onLog != nil {
+		onLog(line)
+	}
 }
 
 func (h *HTTP) postJSON(ctx context.Context, path string, in, out any) error {
