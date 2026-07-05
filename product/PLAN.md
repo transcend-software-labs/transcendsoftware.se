@@ -237,8 +237,12 @@ Milestones:
       warms the cache at boot (agent-side `go build` ≈ 35s / `go test` ≈ 15s
       vs 12+ min cold). Customer deploys now `--ha=false` (one machine — with
       SQLite, two machines would be two diverging databases); the 2-machine
-      E2E app was scaled down live. **Rasmus: review the template's taste +
-      first live template build together.**
+      E2E app was scaled down live. First live template build ran 2026-07-05
+      (Snickare Lindqvist, ~16 min): agent read AGENTS.md first, extended the
+      template (localized it to Swedish incl. flash messages and the owner
+      dashboard), kept tests green with go test/vet loops, deployed
+      --ha=false → **1 machine**, contact form → owner inbox verified on the
+      live site. **Rasmus: taste review of the template still open.**
 - [ ] GitHub mirroring under `transcend-software-labs` (the code-review story)
 - [ ] Screenshot verification into the admin review queue
 - [ ] Custom-domain automation
