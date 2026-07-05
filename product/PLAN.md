@@ -4,6 +4,15 @@ Reviewed 2026-07-05 on branch `rasmus-ai-product`, after a code review of the
 orchestrator, builder, sandbox, Fly client, web layer, and the live deployment
 (`transcend-forge.fly.dev`, release v3).
 
+## Status update (2026-07-05, end of session)
+
+Phase 1 **done**, Phase 2 **done** except three items that need Rasmus (DNS
+repoint, a Resend key, credential rotation). Postgres + Tigris provisioned and
+live. The core M2 promise — brief → verified preview → a real change that edits
+the same site — was proven end-to-end through prod (see the reiteration line in
+Phase 1). What's left for a paying stranger is Phase 3 (handover, payments,
+ToS) plus those three Rasmus items.
+
 ## Verdict: right path, no pivot — but "worked once E2E" ≠ "sellable"
 
 The architecture is sound and proven: Go + HTMX + Postgres-ready store, opencode
@@ -154,14 +163,15 @@ Milestones:
       now state the real security model (org-scoped deploy token in the
       sandbox, presigned-only storage); also fixed `make db-migrate` to apply
       all migrations, not just 0001 (S)
-- [x] Reiteration snapshot path proven: dev-fake tests (key persisted, restore
-      exec ordered) **plus a live round-trip** — seeded a real sandbox
-      workspace (incl. a nested dir), ran the builder's exact save (tar + curl
-      PUT) and restore (curl GET + tar) against real Tigris presigned URLs,
-      wiped in between, and confirmed every file came back. Reusable gated test
-      at `internal/builder/snapshot_integration_test.go` (needs 6PN). A full
-      2×15-min Kimi build to judge *edit quality* is the last manual check,
-      best done with Rasmus watching the output (S)
+- [x] Reiteration snapshot path proven at every level: dev-fake tests, a live
+      storage round-trip, **and a full live 2-build E2E through prod** (Kanelbullen
+      bakery, 2026-07-05). Build 1 → coherent Swedish Astro site, verified live.
+      Reiteration ("add a catering section, keep everything else") → prod log
+      showed "Restoring your site from the previous build…" then the agent
+      *reading* index.astro/Layout/Dockerfile and editing them. Result: catering
+      section added (+997 bytes, not a rewrite), both incidental hero phrases
+      preserved **verbatim**, all original sections intact. The "2 changes"
+      promise works for real. (M2 core validated) (S)
 
 ### Phase 2 — safe to expose (M2 blockers)
 - [x] Quotas: ≤3 projects/day/user (env `MAX_PROJECTS_PER_DAY`), one in-flight
