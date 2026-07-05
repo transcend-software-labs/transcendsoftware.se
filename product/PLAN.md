@@ -121,18 +121,25 @@ Milestones:
 - **M1 — demo that works: done.**
 - **M2 — pilot:** one friendly real customer goes brief → preview → 2 changes
   with nothing lost, nothing unverified, and Rasmus notified. (Phases 1–2)
+  **Phase 1 done; Phase 2 done except email + DNS + credential rotation.**
 - **M3 — sellable:** a stranger can pay, get a site, and have it handed over.
   (Phase 3)
 
 ### Phase 1 — make it real (M2 blockers)
-- [ ] Provision Fly Managed Postgres (arn) + run migrations + set
-      `DATABASE_URL` — *needs OK, paid (§5.1)* (S)
+- [x] Provision Fly Managed Postgres + run migrations + set `DATABASE_URL`:
+      cluster `transcend-forge-db` (Basic, $38/mo) in **fra** (arn wasn't
+      available for MPG; Frankfurt keeps EU residency, ~20ms from Stockholm).
+      pgx set to exec query mode for the PgBouncer pooler. Live-verified:
+      prod signup persists to the cluster, no pooler errors (§5.1) (S)
 - [x] Sessions out of process memory: store-backed (memory in dev, Postgres in
       prod once provisioned), cookie token stored as SHA-256 hash, expired
       sessions swept on login; full SQL surface validated against local
       Postgres (migration 0003) (S)
-- [ ] Provision Tigris bucket + set `STORAGE_*` — fixes prod asset uploads —
-      *needs OK, usage-priced (§5.2)* (S)
+- [x] Provision Tigris bucket + set `STORAGE_*`: bucket
+      `transcend-forge-assets`. Whole storage layer (Put, presigned GET **and**
+      PUT) smoke-tested against real Tigris — fixes prod asset uploads and
+      unblocks the live snapshot path. Prod boots `storage: s3-compatible`
+      (§5.2) (S)
 - [x] **Workspace snapshots** (3.1): restore + save are orchestrator-driven via
       the Fly Machines exec API (validated live) with presigned GET/PUT URLs —
       no storage creds and no agent reliance; builder's dead `RepoURL`
@@ -149,8 +156,9 @@ Milestones:
       all migrations, not just 0001 (S)
 - [x] Reiteration test in dev fakes: snapshot key persisted after build 1,
       restore exec verified before build 2 (orchestrator + builder tests).
-      The live run proving "change X" edits the *same* site is **blocked on
-      Tigris** (§5.2) — presigned snapshot URLs need a real bucket (S)
+      Live run proving "change X" edits the *same* site is now **unblocked**
+      (Tigris provisioned); pending a real ~2×15-min build to confirm the
+      in-sandbox tar/curl against presigned Tigris URLs end to end (S)
 
 ### Phase 2 — safe to expose (M2 blockers)
 - [x] Quotas: ≤3 projects/day/user (env `MAX_PROJECTS_PER_DAY`), one in-flight
