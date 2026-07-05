@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
@@ -15,6 +16,7 @@ import (
 type Memory struct {
 	mu         sync.RWMutex
 	users      map[string]*user.User
+	sessions   map[string]*user.Session
 	projects   map[string]*project.Project
 	iterations map[string]*project.Iteration
 	assets     map[string]*project.Asset
@@ -24,6 +26,7 @@ type Memory struct {
 func NewMemory() *Memory {
 	return &Memory{
 		users:      make(map[string]*user.User),
+		sessions:   make(map[string]*user.Session),
 		projects:   make(map[string]*project.Project),
 		iterations: make(map[string]*project.Iteration),
 		assets:     make(map[string]*project.Asset),
@@ -66,6 +69,44 @@ func (m *Memory) UserByID(_ context.Context, id string) (*user.User, error) {
 	}
 	cp := *u
 	return &cp, nil
+}
+
+func (m *Memory) CreateSession(_ context.Context, s *user.Session) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cp := *s
+	m.sessions[s.TokenHash] = &cp
+	return nil
+}
+
+func (m *Memory) SessionByTokenHash(_ context.Context, tokenHash string) (*user.Session, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s, ok := m.sessions[tokenHash]
+	if !ok {
+		return nil, project.ErrNotFound
+	}
+	cp := *s
+	return &cp, nil
+}
+
+func (m *Memory) DeleteSession(_ context.Context, tokenHash string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.sessions, tokenHash)
+	return nil
+}
+
+func (m *Memory) DeleteExpiredSessions(_ context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	now := time.Now()
+	for k, s := range m.sessions {
+		if now.After(s.ExpiresAt) {
+			delete(m.sessions, k)
+		}
+	}
+	return nil
 }
 
 func (m *Memory) CreateProject(_ context.Context, p *project.Project) error {

@@ -79,6 +79,38 @@ func (p *Postgres) UserByID(ctx context.Context, id string) (*user.User, error) 
 	return &u, nil
 }
 
+func (p *Postgres) CreateSession(ctx context.Context, s *user.Session) error {
+	_, err := p.pool.Exec(ctx,
+		`INSERT INTO sessions (token_hash, user_id, csrf, expires_at, created_at)
+		 VALUES ($1,$2,$3,$4,$5)`,
+		s.TokenHash, s.UserID, s.CSRF, s.ExpiresAt, s.CreatedAt)
+	return err
+}
+
+func (p *Postgres) SessionByTokenHash(ctx context.Context, tokenHash string) (*user.Session, error) {
+	var s user.Session
+	err := p.pool.QueryRow(ctx,
+		`SELECT token_hash, user_id, csrf, expires_at, created_at FROM sessions WHERE token_hash = $1`,
+		tokenHash).Scan(&s.TokenHash, &s.UserID, &s.CSRF, &s.ExpiresAt, &s.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, project.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+func (p *Postgres) DeleteSession(ctx context.Context, tokenHash string) error {
+	_, err := p.pool.Exec(ctx, `DELETE FROM sessions WHERE token_hash = $1`, tokenHash)
+	return err
+}
+
+func (p *Postgres) DeleteExpiredSessions(ctx context.Context) error {
+	_, err := p.pool.Exec(ctx, `DELETE FROM sessions WHERE expires_at < now()`)
+	return err
+}
+
 func (p *Postgres) CreateProject(ctx context.Context, pr *project.Project) error {
 	_, err := p.pool.Exec(ctx,
 		`INSERT INTO projects

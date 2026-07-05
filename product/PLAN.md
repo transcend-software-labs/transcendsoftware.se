@@ -127,7 +127,10 @@ Milestones:
 ### Phase 1 — make it real (M2 blockers)
 - [ ] Provision Fly Managed Postgres (arn) + run migrations + set
       `DATABASE_URL` — *needs OK, paid (§5.1)* (S)
-- [ ] Sessions out of process memory (sessions table; keep cookie token) (S)
+- [x] Sessions out of process memory: store-backed (memory in dev, Postgres in
+      prod once provisioned), cookie token stored as SHA-256 hash, expired
+      sessions swept on login; full SQL surface validated against local
+      Postgres (migration 0003) (S)
 - [ ] Provision Tigris bucket + set `STORAGE_*` — fixes prod asset uploads —
       *needs OK, usage-priced (§5.2)* (S)
 - [x] **Workspace snapshots** (3.1): restore + save are orchestrator-driven via

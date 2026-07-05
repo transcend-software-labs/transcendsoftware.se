@@ -116,7 +116,7 @@ func (s *Server) csrfToken(r *http.Request) string {
 	if err != nil {
 		return ""
 	}
-	tok, ok := s.sessions.CSRF(c.Value)
+	tok, ok := s.sessions.CSRF(r.Context(), c.Value)
 	if !ok {
 		return ""
 	}
@@ -144,7 +144,7 @@ func (s *Server) currentUser(r *http.Request) *user.User {
 	if err != nil {
 		return nil
 	}
-	uid, ok := s.sessions.UserID(c.Value)
+	uid, ok := s.sessions.UserID(r.Context(), c.Value)
 	if !ok {
 		return nil
 	}

@@ -33,7 +33,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.render(w, http.StatusUnauthorized, "login", View{Title: "Log in", Flash: "Wrong email or password."})
 		return
 	}
-	s.startSession(w, u.ID)
+	if !s.startSession(w, r, u.ID) {
+		return
+	}
 	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }
 
@@ -66,19 +68,29 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	s.startSession(w, u.ID)
+	if !s.startSession(w, r, u.ID) {
+		return
+	}
 	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(auth.CookieName); err == nil {
-		s.sessions.Destroy(c.Value)
+		s.sessions.Destroy(r.Context(), c.Value)
 	}
 	s.sessions.ClearCookie(w, s.cfg.SecureCookie)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-func (s *Server) startSession(w http.ResponseWriter, userID string) {
-	token := s.sessions.Create(userID)
+// startSession creates a session and sets its cookie; it reports success so
+// callers only redirect when a session actually exists.
+func (s *Server) startSession(w http.ResponseWriter, r *http.Request, userID string) bool {
+	token, err := s.sessions.Create(r.Context(), userID)
+	if err != nil {
+		s.log.Error("create session", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return false
+	}
 	s.sessions.SetCookie(w, token, s.cfg.SecureCookie)
+	return true
 }

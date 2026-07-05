@@ -57,7 +57,7 @@ func main() {
 	broker := stream.NewBroker(500)
 	orch := orchestrator.New(st, intake, planner, gate, build, machines, assets, broker, newVerifier(cfg, log), log)
 	orch.RecoverInterrupted(context.Background()) // reap builds left running by a prior run
-	sessions := auth.NewSessions(cfg.SessionTTL)
+	sessions := auth.NewSessions(st, cfg.SessionTTL)
 
 	srv, err := web.NewServer(cfg, st, sessions, orch, broker, assets, log)
 	if err != nil {

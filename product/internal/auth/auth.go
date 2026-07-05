@@ -1,16 +1,20 @@
 // Package auth provides password hashing and cookie-based sessions.
 //
-// Sessions are kept in memory: fine for a single instance, but they reset on
-// restart and won't work across multiple app instances. Move to a shared store
-// (Postgres/Redis) before scaling horizontally.
+// Sessions live in the store (Postgres in production), so logins survive
+// deploys and work across instances. The cookie holds a random token; the
+// store only ever sees its SHA-256 hash.
 package auth
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/id"
+	"github.com/transcend-software-labs/rasmus-ai/internal/store"
+	"github.com/transcend-software-labs/rasmus-ai/internal/user"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -28,64 +32,75 @@ func CheckPassword(hash, pw string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(pw)) == nil
 }
 
-type entry struct {
-	userID  string
-	csrf    string
-	expires time.Time
-}
-
-// Sessions is an in-memory session manager.
+// Sessions manages login sessions on top of the store.
 type Sessions struct {
-	mu  sync.RWMutex
-	m   map[string]entry
-	ttl time.Duration
+	store store.Store
+	ttl   time.Duration
 }
 
 // NewSessions returns a session manager with the given lifetime.
-func NewSessions(ttl time.Duration) *Sessions {
-	return &Sessions{m: make(map[string]entry), ttl: ttl}
+func NewSessions(st store.Store, ttl time.Duration) *Sessions {
+	return &Sessions{store: st, ttl: ttl}
 }
 
-// Create starts a session for userID and returns its token.
-func (s *Sessions) Create(userID string) string {
+// hashToken is the one-way mapping from cookie token to stored key.
+func hashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+// Create starts a session for userID and returns its cookie token.
+func (s *Sessions) Create(ctx context.Context, userID string) (string, error) {
+	// Opportunistic housekeeping; an error here must not block a login.
+	_ = s.store.DeleteExpiredSessions(ctx)
+
 	token := id.New()
-	s.mu.Lock()
-	s.m[token] = entry{userID: userID, csrf: id.New(), expires: time.Now().Add(s.ttl)}
-	s.mu.Unlock()
-	return token
+	now := time.Now().UTC()
+	err := s.store.CreateSession(ctx, &user.Session{
+		TokenHash: hashToken(token),
+		UserID:    userID,
+		CSRF:      id.New(),
+		ExpiresAt: now.Add(s.ttl),
+		CreatedAt: now,
+	})
+	if err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+// lookup returns the live session for a token, or nil.
+func (s *Sessions) lookup(ctx context.Context, token string) *user.Session {
+	sess, err := s.store.SessionByTokenHash(ctx, hashToken(token))
+	if err != nil {
+		return nil
+	}
+	if time.Now().After(sess.ExpiresAt) {
+		_ = s.store.DeleteSession(ctx, sess.TokenHash)
+		return nil
+	}
+	return sess
 }
 
 // CSRF returns the per-session CSRF token, or false if missing/expired.
-func (s *Sessions) CSRF(token string) (string, bool) {
-	s.mu.RLock()
-	e, ok := s.m[token]
-	s.mu.RUnlock()
-	if !ok || time.Now().After(e.expires) {
-		return "", false
+func (s *Sessions) CSRF(ctx context.Context, token string) (string, bool) {
+	if sess := s.lookup(ctx, token); sess != nil {
+		return sess.CSRF, true
 	}
-	return e.csrf, true
+	return "", false
 }
 
 // UserID returns the user for a token, or false if missing/expired.
-func (s *Sessions) UserID(token string) (string, bool) {
-	s.mu.RLock()
-	e, ok := s.m[token]
-	s.mu.RUnlock()
-	if !ok {
-		return "", false
+func (s *Sessions) UserID(ctx context.Context, token string) (string, bool) {
+	if sess := s.lookup(ctx, token); sess != nil {
+		return sess.UserID, true
 	}
-	if time.Now().After(e.expires) {
-		s.Destroy(token)
-		return "", false
-	}
-	return e.userID, true
+	return "", false
 }
 
 // Destroy ends a session.
-func (s *Sessions) Destroy(token string) {
-	s.mu.Lock()
-	delete(s.m, token)
-	s.mu.Unlock()
+func (s *Sessions) Destroy(ctx context.Context, token string) {
+	_ = s.store.DeleteSession(ctx, hashToken(token))
 }
 
 // SetCookie writes the session cookie on the response.

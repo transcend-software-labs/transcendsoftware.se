@@ -17,6 +17,13 @@ type Store interface {
 	UserByEmail(ctx context.Context, email string) (*user.User, error)
 	UserByID(ctx context.Context, id string) (*user.User, error)
 
+	// Sessions (cookie tokens are stored hashed; see user.Session)
+	CreateSession(ctx context.Context, s *user.Session) error
+	SessionByTokenHash(ctx context.Context, tokenHash string) (*user.Session, error)
+	DeleteSession(ctx context.Context, tokenHash string) error
+	// DeleteExpiredSessions removes sessions past their expiry (housekeeping).
+	DeleteExpiredSessions(ctx context.Context) error
+
 	// Projects
 	CreateProject(ctx context.Context, p *project.Project) error
 	UpdateProject(ctx context.Context, p *project.Project) error
