@@ -310,6 +310,41 @@ func sentTo(rec *recordingNotifier, to, subjectSubstr string) bool {
 	return false
 }
 
+func TestTemplate_SeedsFirstBuildNotReiterations(t *testing.T) {
+	st := store.NewMemory()
+	orch, machines := newTestOrchWithVerifier(st, NoopVerifier{})
+	orch.SetTemplate("templates/goapp.tgz")
+	id := seedProject(t, st, "A small site for an apple farm")
+
+	startThroughIntake(t, orch, st, id)
+	waitForIterations(t, st, id, 1)
+
+	// Build 1 must have unpacked the template (memory storage presigns to
+	// memory://<key>).
+	var templated bool
+	for _, e := range machines.Execs() {
+		if strings.Contains(strings.Join(e.Command, " "), "memory://templates/goapp.tgz") {
+			templated = true
+		}
+	}
+	if !templated {
+		t.Fatalf("first build did not seed the template; execs: %+v", machines.Execs())
+	}
+
+	// The reiteration must restore the project snapshot, not the template.
+	orch.Reiterate(id, "make the hero bigger")
+	waitForIterations(t, st, id, 2)
+	var tplCount int
+	for _, e := range machines.Execs() {
+		if strings.Contains(strings.Join(e.Command, " "), "memory://templates/goapp.tgz") {
+			tplCount++
+		}
+	}
+	if tplCount != 1 {
+		t.Errorf("template must seed only the first build, seen %d times", tplCount)
+	}
+}
+
 func TestVerifyFailure_InitialBuildFails(t *testing.T) {
 	st := store.NewMemory()
 	orch, _ := newTestOrchWithVerifier(st, &countingVerifier{okCalls: 0}) // always fails

@@ -1,0 +1,31 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="nav">
+  <a class="brand" href="/">Your Site</a>
+  <nav class="navlinks">
+    {{if .User}}
+      <a href="/app">Dashboard</a>
+      <form method="post" action="/logout" class="inline">
+        <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+        <button class="linklike">Log out</button>
+      </form>
+    {{else}}
+      <a href="/login">Log in</a>
+    {{end}}
+  </nav>
+</header>
+<main class="container">
+{{if .Flash}}<div class="flash">{{.Flash}}</div>{{end}}
+{{end}}
+
+{{define "foot"}}</main>
+<footer class="foot"><span class="muted">© Your Site</span></footer>
+</body>
+</html>{{end}}

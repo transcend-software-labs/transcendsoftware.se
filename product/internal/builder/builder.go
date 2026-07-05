@@ -47,6 +47,10 @@ type Request struct {
 	// the agent runs, so reiterations edit the existing site instead of
 	// rebuilding from scratch.
 	SnapshotGetURL string
+	// TemplateGetURL, when set (and there is no snapshot), is a presigned GET
+	// URL of the starter-app tarball unpacked into /workspace before the first
+	// build — the agent extends a working app instead of scaffolding.
+	TemplateGetURL string
 	// SnapshotPutURL, when set, is a presigned PUT URL the workspace is uploaded
 	// to after a successful build. Both URLs keep storage credentials out of the
 	// sandbox (same model as asset downloads).
@@ -156,12 +160,18 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 		hooks.OnSandbox(sb.MachineID, sb.Addr)
 	}
 
-	// Reiterations continue from the previous build's workspace. The restore is
-	// orchestrator-driven (Machines exec), never left to the agent: without it
-	// the agent would rebuild a different site from scratch.
-	if req.SnapshotGetURL != "" {
+	// Seed the workspace before the agent runs — orchestrator-driven (Machines
+	// exec), never left to the agent. Reiterations restore the previous build's
+	// snapshot; first builds unpack the starter template when one is configured.
+	switch {
+	case req.SnapshotGetURL != "":
 		emit(hooks.OnLog, "Restoring your site from the previous build…")
 		if err := b.restoreSnapshot(ctx, sb.MachineID, req.SnapshotGetURL); err != nil {
+			return Result{}, err
+		}
+	case req.TemplateGetURL != "":
+		emit(hooks.OnLog, "Preparing the Forge starter app…")
+		if err := b.restoreSnapshot(ctx, sb.MachineID, req.TemplateGetURL); err != nil {
 			return Result{}, err
 		}
 	}
@@ -170,6 +180,8 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 	instruction := req.Plan
 	if req.Prompt != "" {
 		instruction = "Apply this change to the existing site, then redeploy:\n\n" + req.Prompt
+	} else if req.TemplateGetURL != "" {
+		instruction = templatePreamble + "\n\n" + req.Plan
 	}
 
 	driver := b.newDriver(sb.Addr)
@@ -199,6 +211,13 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 	preview := "https://" + appName + ".fly.dev"
 	return Result{PreviewURL: preview, Log: res.Log, SnapshotSaved: snapshotSaved}, nil
 }
+
+// templatePreamble tells the agent the workspace is a working starter app, not
+// an empty directory. Prepended to the plan on first builds from the template.
+const templatePreamble = `The workspace /workspace already contains our production-ready Go starter app
+(one binary serving frontend + backend, SQLite, working auth, contact form).
+Read AGENTS.md first, then EXTEND this app to implement the plan below.
+Do not scaffold a new project. Keep /healthz, auth and CSRF intact.`
 
 // restoreSnapshot unpacks the previous build's workspace into /workspace.
 func (b *Sandbox) restoreSnapshot(ctx context.Context, machineID, getURL string) error {

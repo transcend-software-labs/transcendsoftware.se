@@ -8,51 +8,41 @@ destroyed. The toolchain is baked in so **nothing installs at runtime**.
 - Node + npm/pnpm, **Chromium + Playwright** (headless verification), Go, git
   (the Playwright base provides Node, Chromium, and all system libraries)
 - **opencode** — the agent engine the orchestrator drives over HTTP
+- **flyctl** — the agent runs `fly deploy` itself using the deploy token the
+  orchestrator injects (`FLY_APP`/`FLY_DEPLOY_TOKEN`; org-scoped for now — see
+  `internal/fly` for the per-app hardening TODO)
+- **Warm Go caches for the starter template** (`/opt/forge-template`): the
+  template's module + build caches are compiled into the image, so the agent's
+  `go build` / `go test` finish in seconds instead of minutes (modernc SQLite
+  alone takes minutes of CPU to compile cold). Building + testing the template
+  also gates the image on a working starter.
 
-## Deliberately NOT included
-- Deploy credentials and `flyctl`. The orchestrator performs the deploy *outside*
-  the sandbox, so the untrusted environment never holds a real token.
+## Trust model, in short
+The microVM is the isolation boundary. Inside per task: the LLM API key and the
+deploy token. Never inside: the Fly org API token and storage credentials —
+assets, snapshots, and the template travel via short-lived presigned URLs.
 
 ## Per-task env (injected at Machine create)
-| Env             | Purpose                                              |
-|-----------------|------------------------------------------------------|
-| `OPENCODE_PORT` | opencode server port (default 4096)                  |
-| `SPEC_URL`      | URL to fetch the operating spec (`AGENTS.md`) fresh  |
-| `REPO_URL`      | repo to work in for reiterations; empty = greenfield |
-| `GIT_TOKEN`     | short-lived, repo-scoped clone token                 |
-
-The image holds the **toolchain**; per-task data (plan, repo, spec, scoped env)
-is injected at boot. The operating spec is fetched at runtime so editing the
-agent's brain never requires an image rebuild.
+See the header of `entrypoint.sh` for the authoritative list (ports, asset
+manifest, LLM provider config, deploy env).
 
 ## Build & push (to your Fly registry)
 
-The app `transcend-forge-sandbox` already exists (Transcend Software org). It
-hosts the image only — it runs no service. Build on Fly's remote builder (no
-local 1.5 GB pull), from this directory:
+From `product/` (stages the template into the build context, then builds on
+Fly's remote builder — native amd64, no local pull):
 
 ```sh
-fly deploy --build-only --push --remote-only --image-label $(date +%Y%m%d)
+make sandbox-build SANDBOX_TAG=$(date +%Y%m%d)
 ```
 
-Or build locally:
-```sh
-fly auth docker
-TAG=$(date +%Y%m%d)
-docker build -t registry.fly.io/transcend-forge-sandbox:$TAG .
-docker push registry.fly.io/transcend-forge-sandbox:$TAG
-```
-
-Then set `FLY_SANDBOX_APP=transcend-forge-sandbox` and
-`FLY_SANDBOX_IMAGE=registry.fly.io/transcend-forge-sandbox:$TAG`. `fly.SpawnSandbox` creates
-Machines in `FLY_SANDBOX_APP` from `FLY_SANDBOX_IMAGE`.
-
-Or use the Make targets from `product/`: `make sandbox-build && make sandbox-push`.
+Then update the product's secret:
+`FLY_SANDBOX_IMAGE=registry.fly.io/transcend-forge-sandbox:<tag>`.
+`fly.SpawnSandbox` creates Machines in `FLY_SANDBOX_APP` from that image.
 
 ## Project dependencies
-The generated site's own dependencies still `npm install` per build — inherent,
-since each site has its own `package.json`. If that becomes a bottleneck, mount a
-pnpm store on a Fly volume to cache across builds.
+Template-based builds start from warmed Go caches (above). If the agent adds a
+new Go dependency it downloads just that one. JS-based sites still `npm install`
+per build — if that becomes a bottleneck, mount a pnpm store on a Fly volume.
 
 ## Version pinning
 Pin the Playwright tag, Go version, pnpm, and opencode for reproducibility, and

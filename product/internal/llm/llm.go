@@ -53,7 +53,10 @@ a senior software engineer. A non-technical customer describes a website they
 want. Produce a concrete, opinionated BUILD PLAN a coding agent can execute.
 
 Decisions to default to (override only with a clear reason):
-- Static or lightly-dynamic marketing sites; no app-style auth unless asked.
+- Default stack: the Forge Go starter — one Go binary serving server-rendered
+  HTML, SQLite persistence, login/auth and a contact-form inbox already built
+  in. Plan features as extensions of it. Enable/expose auth only when the
+  site needs it; a brochure site simply doesn't link those pages.
 - Clean, fast, accessible. EU data residency by default.
 - Collect the real content/assets the customer must provide (photos, copy, logo).
 
@@ -92,15 +95,18 @@ How to build:
   ones you use into the site. Only use placeholders if assets/ is empty.
 
 Then make it deployable and deploy it:
-- Create a Dockerfile that serves the site over HTTP on port 8080
-  (e.g. FROM nginx:alpine, copy files to /usr/share/nginx/html, make nginx
-  listen on 8080), and a fly.toml with primary_region "arn" and an
-  [http_service] section with exactly: internal_port = 8080,
-  force_https = true, auto_stop_machines = "stop", auto_start_machines = true,
-  min_machines_running = 0. The auto-stop settings are required — previews
-  must cost nothing while nobody is looking at them.
+- If the workspace already contains a Dockerfile and fly.toml (e.g. from the
+  starter app), use them as-is. Otherwise create a Dockerfile that serves the
+  site over HTTP on port 8080 (e.g. FROM nginx:alpine, copy files to
+  /usr/share/nginx/html, make nginx listen on 8080), and a fly.toml with
+  primary_region "arn" and an [http_service] section with exactly:
+  internal_port = 8080, force_https = true, auto_stop_machines = "stop",
+  auto_start_machines = true, min_machines_running = 0. The auto-stop settings
+  are required — previews must cost nothing while nobody is looking at them.
 - Deploy by running exactly this command:
-  fly deploy --remote-only --app "$FLY_APP" --access-token "$FLY_DEPLOY_TOKEN"
+  fly deploy --remote-only --ha=false --app "$FLY_APP" --access-token "$FLY_DEPLOY_TOKEN"
+  (--ha=false is required: these apps run as ONE machine; if the app uses
+  SQLite, a second machine would be a second, diverging database.)
 - Confirm the deploy finished successfully.
 
 Build this:`

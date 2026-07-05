@@ -47,11 +47,20 @@ RUN curl -L https://fly.io/install.sh | FLYCTL_INSTALL=/usr/local sh
 RUN node --version && npm --version && pnpm --version && go version \
  && command -v opencode && command -v flyctl && command -v git && test -d /ms-playwright
 
+# Warm the Go module + build caches with the starter template's dependency
+# tree (staged into .template/ by `make sandbox-build`). modernc SQLite alone
+# takes minutes of CPU to compile cold on a shared-cpu machine; with this
+# layer the agent's `go build` / `go test` inside a build finish in seconds.
+# Building + testing here also gates the image on a working template.
+COPY .template/goapp /opt/forge-template
+RUN cd /opt/forge-template && go mod download && go build ./... && go test ./...
+
 WORKDIR /workspace
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# The Fly Machine microVM is the isolation boundary, so running as root inside is
-# acceptable — and real credentials are never injected here (the orchestrator
-# performs the deploy outside the sandbox).
+# The Fly Machine microVM is the isolation boundary, so running as root inside
+# is acceptable. Credentials that DO enter per task: the LLM API key and an
+# (interim, org-scoped) Fly deploy token — see entrypoint.sh for the full list
+# and internal/fly for the per-app-token hardening TODO.
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

@@ -46,7 +46,12 @@ type Orchestrator struct {
 	notifier      notify.Notifier // email; defaults to Noop until configured
 	operatorEmail string          // Rasmus — escalation/failure notices
 	baseURL       string          // for links in emails
+	templateKey   string          // object-storage key of the starter-app tarball ("" = greenfield)
 }
+
+// SetTemplate points first builds at a starter-app tarball in object storage.
+// Empty means greenfield (the pre-template behavior).
+func (o *Orchestrator) SetTemplate(key string) { o.templateKey = key }
 
 // New returns an orchestrator.
 func New(s store.Store, in llm.Intake, p llm.Planner, g llm.SafetyGate, b builder.Builder, m fly.Machines, as storage.Store, br *stream.Broker, v Verifier, log *slog.Logger) *Orchestrator {
@@ -362,6 +367,17 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 		o.log.Error("presign snapshot put", "project", p.ID, "err", err)
 	}
 
+	// First build with a configured starter template: seed the workspace with
+	// it so the agent extends a working app instead of scaffolding.
+	var templateGet string
+	if p.SnapshotKey == "" && o.templateKey != "" {
+		if u, err := o.storage.PresignGet(ctx, o.templateKey, time.Hour); err == nil {
+			templateGet = u
+		} else {
+			o.log.Error("presign template get", "project", p.ID, "err", err)
+		}
+	}
+
 	res, err := o.builder.Build(ctx, builder.Request{
 		ProjectID:      p.ID,
 		Brief:          p.EffectiveBrief(),
@@ -369,6 +385,7 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 		Prompt:         prompt,
 		SnapshotGetURL: snapshotGet,
 		SnapshotPutURL: snapshotPut,
+		TemplateGetURL: templateGet,
 		AssetManifest:  o.assetManifest(ctx, p.ID),
 	}, builder.Hooks{
 		OnLog: onLog,

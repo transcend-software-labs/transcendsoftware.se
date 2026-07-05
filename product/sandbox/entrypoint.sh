@@ -84,7 +84,16 @@ if [ -n "${LLM_API_KEY:-}" ]; then
 JSON
 fi
 
-# 5) Start opencode; the orchestrator connects over Fly's private network.
+# 5) Warm the Go build cache in the background. The image ships precompiled
+#    caches for the starter template, but a fresh machine's first `go build`
+#    re-hashes all module sources to trust them (I/O-bound, ~1 min). Doing it
+#    now — while opencode boots and the agent reads the plan — makes the
+#    agent's own `go build`/`go test` effectively instant.
+if [ -d /opt/forge-template ]; then
+  (cd /opt/forge-template && go build ./... >/dev/null 2>&1 && log "go cache warmed") &
+fi
+
+# 6) Start opencode; the orchestrator connects over Fly's private network.
 #    (Flags may vary by opencode version — confirm against the pinned release.)
 # Bind :: (IPv6, dual-stack) so the orchestrator can reach it over Fly's private
 # 6PN network, which is IPv6-only.

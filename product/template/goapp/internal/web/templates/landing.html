@@ -1,0 +1,16 @@
+{{define "landing"}}{{template "head" .}}
+<section class="hero">
+  <h1>Welcome</h1>
+  <p class="lead">This is the starting point for your new site. Replace this page with your real content.</p>
+</section>
+
+<section class="panel" id="contact">
+  <h2>Contact us</h2>
+  <form method="post" action="/contact" class="stack">
+    <label>Name <input type="text" name="name" required maxlength="200"></label>
+    <label>Email <input type="email" name="email" maxlength="200"></label>
+    <label>Message <textarea name="message" rows="5" required maxlength="4000"></textarea></label>
+    <button class="btn" type="submit">Send</button>
+  </form>
+</section>
+{{template "foot" .}}{{end}}

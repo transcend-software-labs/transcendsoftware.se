@@ -34,6 +34,10 @@ type Config struct {
 	// reaper destroys it and marks the project expired (default 14 days).
 	PreviewTTL time.Duration
 
+	// TemplateKey is the object-storage key of the starter-app tarball that
+	// seeds first builds (empty → greenfield builds).
+	TemplateKey string
+
 	AnthropicAPIKey string // empty → fake planner/gate
 	AnthropicModel  string // empty → llm.DefaultModel
 
@@ -82,6 +86,7 @@ func Load() Config {
 		MaxProjectsPerDay:   envIntOr("MAX_PROJECTS_PER_DAY", 3),
 		MaxConcurrentBuilds: envIntOr("MAX_CONCURRENT_BUILDS", 3),
 		PreviewTTL:          time.Duration(envIntOr("PREVIEW_TTL_DAYS", 14)) * 24 * time.Hour,
+		TemplateKey:         os.Getenv("TEMPLATE_KEY"),
 
 		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
 		AnthropicModel:  os.Getenv("ANTHROPIC_MODEL"),

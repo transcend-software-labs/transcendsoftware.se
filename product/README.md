@@ -31,6 +31,10 @@ What works today:
 - **Workspace snapshots**: reiterations restore the previous build's
   `/workspace` (presigned URLs, orchestrator-driven via Machines exec), so
   changes edit the same site instead of rebuilding from scratch
+- **Starter template** ([`template/goapp`](template/goapp)): first builds seed
+  the workspace with a single-binary Go app (server-rendered FE+BE, SQLite,
+  auth, contact-form inbox) that the agent extends per `AGENTS.md` — enabled
+  via `TEMPLATE_KEY`; customer apps deploy with `--ha=false` (one machine)
 - Two reiterations per project (1 initial build + 2 changes); a failed change
   falls back to the still-live previous preview and consumes no credit
 - Safety gate rejects abuse and **escalates** ambiguous requests to an
@@ -95,6 +99,7 @@ mode.** Each variable independently switches one piece from fake to real:
 | `MAX_PROJECTS_PER_DAY` | per-user daily project cap (default 3)                    |
 | `MAX_CONCURRENT_BUILDS` | global concurrent build cap (default 3)                  |
 | `PREVIEW_TTL_DAYS`    | days an untouched preview app stays up before the reaper destroys it (default 14) |
+| `TEMPLATE_KEY`        | object-storage key of the starter-app tarball seeding first builds (empty → greenfield); push with `make template-push` |
 | `RESEND_API_KEY`      | send real email via Resend (else notifications are log-only) |
 | `EMAIL_FROM`          | verified sender for outgoing email                         |
 | `ANTHROPIC_API_KEY`   | use the real planner + safety gate (else a deterministic fake) |

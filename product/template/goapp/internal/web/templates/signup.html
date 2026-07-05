@@ -1,0 +1,12 @@
+{{define "signup"}}{{template "head" .}}
+<section class="panel narrow">
+  <h1>Create account</h1>
+  <form method="post" action="/signup" class="stack">
+    <label>Email <input type="email" name="email" required autocomplete="email"></label>
+    <label>Password <input type="password" name="password" required minlength="8" autocomplete="new-password">
+      <span class="muted small">At least 8 characters.</span></label>
+    <button class="btn" type="submit">Create account</button>
+  </form>
+  <p class="muted small">Already have an account? <a href="/login">Log in</a>.</p>
+</section>
+{{template "foot" .}}{{end}}

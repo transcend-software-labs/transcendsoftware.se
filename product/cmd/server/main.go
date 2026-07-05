@@ -58,6 +58,10 @@ func main() {
 	broker := stream.NewBroker(500)
 	orch := orchestrator.New(st, intake, planner, gate, build, machines, assets, broker, newVerifier(cfg, log), log)
 	orch.SetNotifications(newNotifier(cfg, log), cfg.AdminEmail, cfg.BaseURL)
+	if cfg.TemplateKey != "" {
+		log.Info("template: starter app enabled", "key", cfg.TemplateKey)
+		orch.SetTemplate(cfg.TemplateKey)
+	}
 	orch.RecoverInterrupted(context.Background()) // reap builds left running by a prior run
 	// Reap zombie infrastructure hourly: preview apps of failed projects,
 	// previews idle past PREVIEW_TTL_DAYS, and leaked sandbox machines.
