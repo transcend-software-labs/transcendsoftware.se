@@ -200,7 +200,10 @@ Milestones:
       Rasmus's words) (S–M)
 - [ ] Production build model — decision §5.5; env-only switch (S)
 - [ ] Email verification at signup (before taking money) (S)
-- [ ] Retry-once on transient LLM/API failures in intake/plan/gate (S)
+- [x] Retry-once on transient LLM/API failures in intake/plan/gate: the
+      OpenAI-compatible (Kimi) client retries network blips, 429s, 5xx and
+      empty 200s once; permanent 4xx are not retried. Tested (S). _(Anthropic
+      fallback client not yet covered — prod path is Kimi.)_
 
 ### Phase 4 — better product (post-M3; several are joint sessions)
 - [ ] Project template/scaffold — **explicitly waiting to build together with
