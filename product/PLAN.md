@@ -188,8 +188,12 @@ Milestones:
       in prod) (M)
 - [x] Escalated project page auto-updates after admin approval (slow 15s poll
       while held, fast 2s while building) (S)
-- [ ] `app.transcendsoftware.se`: DNS CNAME + `fly certs add` (BASE_URL is
-      already set) (S)
+- [~] `app.transcendsoftware.se`: Fly cert **created** (pending validation).
+      **Decision + action for Rasmus:** the subdomain currently resolves to
+      Hetzner (194.9.94.85/86) — repointing moves it to the product. Set one of:
+      - A `app` → 66.241.125.213 **and** AAAA `app` → 2a09:8280:1::13a:bc93:0,
+        or simply CNAME `app` → transcend-forge.fly.dev.
+      Then `fly certs check app.transcendsoftware.se`. BASE_URL already set (S)
 - [x] Failure-rate visibility: `/admin` shows a last-24h row — builds,
       succeeded, failed, in-flight, avg build duration (verified rendering with
       a completed build). Email-on-failure still to come (S)
