@@ -110,8 +110,11 @@ func (h *HTTP) SpawnSandbox(ctx context.Context, spec SpawnSpec) (*Sandbox, erro
 	sb := &Sandbox{MachineID: created.ID, AppName: h.sandboxApp}
 
 	// Wait until the machine is started before returning a reachable address.
+	// If any readiness step fails, destroy the machine we just created — leaving
+	// it running would leak infrastructure until the reaper's slow sweep.
 	if err := h.waitStarted(ctx, created.ID); err != nil {
-		return sb, err
+		h.cleanupFailedSpawn(sb)
+		return nil, err
 	}
 
 	// Reachable over Fly's private 6PN network (orchestrator must be on it).
@@ -120,9 +123,19 @@ func (h *HTTP) SpawnSandbox(ctx context.Context, spec SpawnSpec) (*Sandbox, erro
 	// The machine is "started" before opencode has bound its port; wait until it
 	// actually accepts connections (else the first request is refused).
 	if err := h.waitOpencodeReady(ctx, sb.Addr); err != nil {
-		return sb, err
+		h.cleanupFailedSpawn(sb)
+		return nil, err
 	}
 	return sb, nil
+}
+
+// cleanupFailedSpawn best-effort destroys a machine whose spawn didn't complete,
+// using a fresh context so it runs even when the caller's ctx has been cancelled
+// (a cancelled ctx is a common cause of the readiness wait failing).
+func (h *HTTP) cleanupFailedSpawn(sb *Sandbox) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_ = h.DestroySandbox(ctx, sb)
 }
 
 // waitOpencodeReady polls the opencode address until it accepts connections.
