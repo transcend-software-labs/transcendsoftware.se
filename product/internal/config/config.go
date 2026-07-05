@@ -26,6 +26,10 @@ type Config struct {
 	MaxProjectsPerDay   int // per user, rolling 24h (default 3)
 	MaxConcurrentBuilds int // across all users (default 3)
 
+	// PreviewTTL is how long an untouched preview app stays up before the
+	// reaper destroys it and marks the project expired (default 14 days).
+	PreviewTTL time.Duration
+
 	AnthropicAPIKey string // empty → fake planner/gate
 	AnthropicModel  string // empty → llm.DefaultModel
 
@@ -71,6 +75,7 @@ func Load() Config {
 
 		MaxProjectsPerDay:   envIntOr("MAX_PROJECTS_PER_DAY", 3),
 		MaxConcurrentBuilds: envIntOr("MAX_CONCURRENT_BUILDS", 3),
+		PreviewTTL:          time.Duration(envIntOr("PREVIEW_TTL_DAYS", 14)) * 24 * time.Hour,
 
 		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
 		AnthropicModel:  os.Getenv("ANTHROPIC_MODEL"),

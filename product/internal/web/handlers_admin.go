@@ -13,6 +13,7 @@ import (
 type adminView struct {
 	Escalated []*project.Project
 	Active    []activeBuild
+	Previews  []*project.Project // live preview apps (cost money; can be destroyed)
 }
 
 // activeBuild is one in-flight build, for the "what are we working on" view.
@@ -47,9 +48,32 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 			MachineID: it.MachineID, Started: it.CreatedAt,
 		})
 	}
+
+	// Live preview apps — each one is running infrastructure.
+	all, err := s.store.Projects(ctx)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	var previews []*project.Project
+	for _, p := range all {
+		if p.Status == project.StatusPreviewReady {
+			previews = append(previews, p)
+		}
+	}
+
 	s.render(w, http.StatusOK, "admin", s.view(r, "Operator review", adminView{
-		Escalated: escalated, Active: active,
+		Escalated: escalated, Active: active, Previews: previews,
 	}))
+}
+
+// handleAdminDestroyPreview tears down a project's preview app immediately.
+func (s *Server) handleAdminDestroyPreview(w http.ResponseWriter, r *http.Request, _ *user.User) {
+	if err := s.orch.DestroyPreview(r.Context(), r.PathValue("id")); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
 // handleAdminApprove clears an escalated project to build.

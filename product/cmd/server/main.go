@@ -57,6 +57,9 @@ func main() {
 	broker := stream.NewBroker(500)
 	orch := orchestrator.New(st, intake, planner, gate, build, machines, assets, broker, newVerifier(cfg, log), log)
 	orch.RecoverInterrupted(context.Background()) // reap builds left running by a prior run
+	// Reap zombie infrastructure hourly: preview apps of failed projects,
+	// previews idle past PREVIEW_TTL_DAYS, and leaked sandbox machines.
+	orch.StartReaper(context.Background(), time.Hour, cfg.PreviewTTL)
 	sessions := auth.NewSessions(st, cfg.SessionTTL)
 
 	srv, err := web.NewServer(cfg, st, sessions, orch, broker, assets, log)

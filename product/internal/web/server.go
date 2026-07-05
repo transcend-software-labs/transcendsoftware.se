@@ -92,6 +92,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /admin", s.requireAdmin(s.handleAdmin))
 	mux.HandleFunc("POST /admin/projects/{id}/approve", s.requireAdmin(s.handleAdminApprove))
 	mux.HandleFunc("POST /admin/projects/{id}/reject", s.requireAdmin(s.handleAdminReject))
+	mux.HandleFunc("POST /admin/projects/{id}/destroy-preview", s.requireAdmin(s.handleAdminDestroyPreview))
 
 	return logRequests(s.log, mux)
 }
@@ -229,6 +230,8 @@ func statusLabel(s project.Status) string {
 		return "Declined"
 	case project.StatusFailed:
 		return "Failed"
+	case project.StatusExpired:
+		return "Preview expired"
 	default:
 		return string(s)
 	}
@@ -241,8 +244,8 @@ func statusLabel(s project.Status) string {
 // operator approves or declines — see pollEvery.
 func polling(p *project.Project) bool {
 	switch p.Status {
-	case project.StatusNeedsInput,
-		project.StatusPreviewReady, project.StatusRejected, project.StatusFailed:
+	case project.StatusNeedsInput, project.StatusPreviewReady,
+		project.StatusRejected, project.StatusFailed, project.StatusExpired:
 		return false
 	default:
 		return true

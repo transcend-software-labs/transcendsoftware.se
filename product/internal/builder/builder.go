@@ -24,8 +24,10 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/opencode"
 )
 
-// deployAppName is the per-customer Fly app for a project (globally unique).
-func deployAppName(projectID string) string {
+// DeployAppName is the per-customer Fly app for a project (globally unique).
+// Exported so the orchestrator's reaper and the admin destroy action can name
+// the app to remove.
+func DeployAppName(projectID string) string {
 	id := strings.ToLower(projectID)
 	if len(id) > 12 {
 		id = id[:12]
@@ -127,7 +129,7 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 	// Provision the per-customer app (orchestrator side) and inject the app name
 	// + a deploy token so the agent can `fly deploy` it. The token is org-scoped
 	// for now (per-app minting is blocked — see fly.HTTP.AppDeployToken).
-	appName := deployAppName(req.ProjectID)
+	appName := DeployAppName(req.ProjectID)
 	if err := b.machines.EnsureApp(ctx, appName); err != nil {
 		return Result{}, err
 	}

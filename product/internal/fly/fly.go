@@ -14,6 +14,7 @@ package fly
 import (
 	"context"
 	"sync"
+	"time"
 )
 
 // SpawnSpec describes one sandbox to create.
@@ -51,6 +52,14 @@ type Machines interface {
 	// EnsureApp creates the per-customer Fly app if it doesn't exist. Done by the
 	// orchestrator so app-creation privilege stays out of the sandbox.
 	EnsureApp(ctx context.Context, appName string) error
+	// DestroyApp deletes a per-customer app and everything in it (machines,
+	// IPs). Destroying an already-absent app is not an error — the reaper and
+	// the admin destroy action must be idempotent.
+	DestroyApp(ctx context.Context, appName string) error
+	// SweepSandboxes destroys sandbox machines older than olderThan, returning
+	// how many were reaped. A build never legitimately outlives its pipeline
+	// timeout, so anything older is a leak (e.g. manual testing leftovers).
+	SweepSandboxes(ctx context.Context, olderThan time.Duration) (int, error)
 	// AppDeployToken returns a deploy token for appName, injected into the
 	// sandbox so the agent can run `fly deploy`. Interim: org-scoped (see
 	// fly_http.go for the per-app hardening TODO and its blocker).
@@ -60,11 +69,12 @@ type Machines interface {
 // DefaultPort is the opencode port used when a spec leaves Port unset.
 const DefaultPort = 4096
 
-// Fake is a dev-mode Machines that touches no real infra. It records Exec
-// calls so tests can assert the snapshot restore/save sequence.
+// Fake is a dev-mode Machines that touches no real infra. It records Exec and
+// DestroyApp calls so tests can assert snapshot and reaper behavior.
 type Fake struct {
-	mu    sync.Mutex
-	execs []FakeExec
+	mu            sync.Mutex
+	execs         []FakeExec
+	destroyedApps []string
 }
 
 // FakeExec is one recorded Exec call.
@@ -84,6 +94,24 @@ func (f *Fake) SpawnSandbox(_ context.Context, spec SpawnSpec) (*Sandbox, error)
 func (f *Fake) DestroySandbox(_ context.Context, _ *Sandbox) error         { return nil }
 func (f *Fake) EnsureApp(_ context.Context, _ string) error                { return nil }
 func (f *Fake) AppDeployToken(_ context.Context, _ string) (string, error) { return "", nil }
+
+func (f *Fake) DestroyApp(_ context.Context, appName string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.destroyedApps = append(f.destroyedApps, appName)
+	return nil
+}
+
+// DestroyedApps returns the app names destroyed so far.
+func (f *Fake) DestroyedApps() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, len(f.destroyedApps))
+	copy(out, f.destroyedApps)
+	return out
+}
+
+func (f *Fake) SweepSandboxes(_ context.Context, _ time.Duration) (int, error) { return 0, nil }
 
 func (f *Fake) Exec(_ context.Context, machineID string, command []string, _ int) (ExecResult, error) {
 	f.mu.Lock()

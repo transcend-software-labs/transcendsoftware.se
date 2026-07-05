@@ -157,11 +157,16 @@ Milestones:
       pipeline per user, global concurrent-build cap (env
       `MAX_CONCURRENT_BUILDS`, reiterations included), 4k char caps on
       brief/answers/change requests (S)
-- [ ] Preview lifecycle (M):
+- [x] Preview lifecycle (M):
   - [x] generated `fly.toml` gets `auto_stop_machines` + `min_machines_running
         = 0` (BuildSystemPrompt) — previews cost ~nothing when idle
-  - [ ] reaper destroys preview apps N days after reject/fail/abandon
-  - [ ] admin destroy button
+  - [x] hourly reaper: destroys preview apps of failed projects, expires
+        previews idle past `PREVIEW_TTL_DAYS` (default 14; customer sees
+        "Preview expired"), and sweeps sandbox machines older than 2h
+  - [x] admin "Live previews" section with a destroy button (verified E2E in
+        dev: list → destroy → project expired)
+  - [x] one-off cleanup 2026-07-05: destroyed the three zombie test apps
+        (forge-appelmust-demo, forge-06e6dbdd2900, forge-4d012fcb1bba)
 - [ ] Per-app deploy tokens *or* explicitly accepted org-token risk — decision
       §5.3 (M)
 - [ ] **Rotate the burned credentials:** the Kimi key and Fly tokens were

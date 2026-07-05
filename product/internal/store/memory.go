@@ -155,6 +155,18 @@ func (m *Memory) ProjectsByUser(_ context.Context, userID string) ([]*project.Pr
 	return out, nil
 }
 
+func (m *Memory) Projects(_ context.Context) ([]*project.Project, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]*project.Project, 0, len(m.projects))
+	for _, p := range m.projects {
+		cp := *p
+		out = append(out, &cp)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out, nil
+}
+
 func (m *Memory) EscalatedProjects(_ context.Context) ([]*project.Project, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

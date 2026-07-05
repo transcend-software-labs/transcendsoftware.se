@@ -23,6 +23,30 @@
 </section>
 
 <section class="panel">
+  <h2>Live previews</h2>
+  <p class="muted small">Each preview is a running Fly app. Idle ones are reaped automatically after the retention window; destroy sooner here.</p>
+  {{if .Data.Previews}}
+  <ul class="project-list">
+    {{range .Data.Previews}}
+    <li class="project-row">
+      <a href="/projects/{{.ID}}">
+        <span class="project-name">{{.Name}}</span>
+      </a>
+      <a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{.PreviewURL}} ↗</a>
+      <form method="post" action="/admin/projects/{{.ID}}/destroy-preview" class="inline"
+        onsubmit="return confirm('Destroy this preview app? The customer’s link dies immediately.')">
+        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+        <button class="linklike" type="submit">Destroy</button>
+      </form>
+    </li>
+    {{end}}
+  </ul>
+  {{else}}
+  <p class="muted small">No live previews.</p>
+  {{end}}
+</section>
+
+<section class="panel">
   <h2>Needs review</h2>
   <p class="muted small">Projects the safety gate flagged as ambiguous. Approve to build, or decline.</p>
   {{if .Data.Escalated}}

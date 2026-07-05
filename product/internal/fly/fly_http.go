@@ -181,6 +181,42 @@ func (h *HTTP) waitStarted(ctx context.Context, machineID string) error {
 	}
 }
 
+// DestroyApp deletes a per-customer app (machines, IPs, everything).
+// Absent apps are treated as already destroyed.
+func (h *HTTP) DestroyApp(ctx context.Context, appName string) error {
+	err := h.do(ctx, http.MethodDelete, "/apps/"+appName, nil, nil)
+	if err != nil && strings.Contains(err.Error(), "returned 404") {
+		return nil // already gone — reaping is idempotent
+	}
+	return err
+}
+
+// SweepSandboxes destroys machines in the sandbox app older than olderThan.
+// Builds are bounded by the pipeline timeout, so anything older is a leak.
+func (h *HTTP) SweepSandboxes(ctx context.Context, olderThan time.Duration) (int, error) {
+	var machines []struct {
+		ID        string    `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+	}
+	if err := h.do(ctx, http.MethodGet,
+		fmt.Sprintf("/apps/%s/machines", h.sandboxApp), nil, &machines); err != nil {
+		return 0, err
+	}
+	cutoff := time.Now().Add(-olderThan)
+	reaped := 0
+	for _, m := range machines {
+		if m.CreatedAt.After(cutoff) {
+			continue
+		}
+		if err := h.do(ctx, http.MethodDelete,
+			fmt.Sprintf("/apps/%s/machines/%s?force=true", h.sandboxApp, m.ID), nil, nil); err != nil {
+			return reaped, err
+		}
+		reaped++
+	}
+	return reaped, nil
+}
+
 // Exec runs a command inside a sandbox machine via the Machines exec API.
 // A non-zero exit code is returned in the result, not as an error.
 func (h *HTTP) Exec(ctx context.Context, machineID string, command []string, timeoutSec int) (ExecResult, error) {

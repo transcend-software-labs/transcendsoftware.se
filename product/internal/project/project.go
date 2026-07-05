@@ -28,6 +28,7 @@ const (
 	StatusBuilding     Status = "building"      // a sandboxed build is running
 	StatusPreviewReady Status = "preview_ready" // a build finished, preview link attached
 	StatusFailed       Status = "failed"        // a build or pipeline step errored (terminal)
+	StatusExpired      Status = "expired"       // preview reaped after the retention window (terminal)
 )
 
 // MaxIterations is the total number of build passes a project gets:

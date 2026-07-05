@@ -177,6 +177,23 @@ func (p *Postgres) ProjectsByUser(ctx context.Context, userID string) ([]*projec
 	return out, rows.Err()
 }
 
+func (p *Postgres) Projects(ctx context.Context) ([]*project.Project, error) {
+	rows, err := p.pool.Query(ctx, projectColumns+` ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*project.Project
+	for rows.Next() {
+		pr, err := scanProject(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, pr)
+	}
+	return out, rows.Err()
+}
+
 func (p *Postgres) EscalatedProjects(ctx context.Context) ([]*project.Project, error) {
 	rows, err := p.pool.Query(ctx, projectColumns+` WHERE status = $1 ORDER BY created_at DESC`,
 		project.StatusEscalated)

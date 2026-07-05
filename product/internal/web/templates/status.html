@@ -5,5 +5,6 @@
   {{end}}
   {{if eq .Status "rejected"}}<p class="reason">Declined: {{.RejectReason}}</p>{{end}}
   {{if eq .Status "failed"}}<p class="reason">Something went wrong: {{.RejectReason}}</p>{{end}}
+  {{if eq .Status "expired"}}<p class="reason">{{.RejectReason}}</p>{{end}}
   {{if eq .Status "escalated"}}<p class="reason">Held for a quick human review by Rasmus — this page updates on its own.</p>{{end}}
 </div>{{end}}
