@@ -186,8 +186,9 @@ Milestones:
       while held, fast 2s while building) (S)
 - [ ] `app.transcendsoftware.se`: DNS CNAME + `fly certs add` (BASE_URL is
       already set) (S)
-- [ ] Failure-rate visibility: at minimum, email-on-failure covers it; add a
-      daily "builds started/succeeded/avg duration" line to `/admin` (S)
+- [x] Failure-rate visibility: `/admin` shows a last-24h row — builds,
+      succeeded, failed, in-flight, avg build duration (verified rendering with
+      a completed build). Email-on-failure still to come (S)
 
 ### Phase 3 — sellable (M3)
 - [ ] Handover flow: customer **Accept** on preview → Rasmus review gate in

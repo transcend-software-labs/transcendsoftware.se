@@ -4,6 +4,19 @@
 </section>
 
 <section class="panel">
+  <h2>Last 24 hours</h2>
+  {{with .Data.Stats}}
+  <ul class="stat-row">
+    <li><span class="stat-num">{{.Total}}</span> <span class="muted small">builds</span></li>
+    <li><span class="stat-num">{{.Succeeded}}</span> <span class="muted small">succeeded</span></li>
+    <li><span class="stat-num">{{.Failed}}</span> <span class="muted small">failed</span></li>
+    <li><span class="stat-num">{{.Building}}</span> <span class="muted small">in flight</span></li>
+    <li><span class="stat-num">{{.AvgBuildStr}}</span> <span class="muted small">avg build</span></li>
+  </ul>
+  {{end}}
+</section>
+
+<section class="panel">
   <h2>In progress</h2>
   {{if .Data.Active}}
   <ul class="project-list">

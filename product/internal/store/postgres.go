@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -322,6 +323,23 @@ func scanIteration(row rowScanner) (*project.Iteration, error) {
 
 func (p *Postgres) IterationsByProject(ctx context.Context, projectID string) ([]*project.Iteration, error) {
 	rows, err := p.pool.Query(ctx, iterationColumns+` WHERE project_id = $1 ORDER BY number ASC`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*project.Iteration
+	for rows.Next() {
+		it, err := scanIteration(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, it)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) IterationsSince(ctx context.Context, t time.Time) ([]*project.Iteration, error) {
+	rows, err := p.pool.Query(ctx, iterationColumns+` WHERE created_at >= $1 ORDER BY created_at DESC`, t)
 	if err != nil {
 		return nil, err
 	}

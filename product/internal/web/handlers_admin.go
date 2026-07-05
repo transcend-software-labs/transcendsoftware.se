@@ -14,6 +14,44 @@ type adminView struct {
 	Escalated []*project.Project
 	Active    []activeBuild
 	Previews  []*project.Project // live preview apps (cost money; can be destroyed)
+	Stats     buildStats
+}
+
+// buildStats summarizes build activity over the last 24h (visibility until
+// email-on-failure exists).
+type buildStats struct {
+	Total       int
+	Succeeded   int
+	Failed      int
+	Building    int
+	AvgBuildStr string // human "4m12s" over completed builds, or "—"
+}
+
+func computeStats(its []*project.Iteration) buildStats {
+	var s buildStats
+	var totalDur time.Duration
+	var completed int
+	for _, it := range its {
+		s.Total++
+		switch it.Status {
+		case project.StatusPreviewReady:
+			s.Succeeded++
+			if d := it.HeartbeatAt.Sub(it.CreatedAt); d > 0 {
+				totalDur += d
+				completed++
+			}
+		case project.StatusFailed:
+			s.Failed++
+		case project.StatusBuilding:
+			s.Building++
+		}
+	}
+	if completed > 0 {
+		s.AvgBuildStr = (totalDur / time.Duration(completed)).Round(time.Second).String()
+	} else {
+		s.AvgBuildStr = "—"
+	}
+	return s
 }
 
 // activeBuild is one in-flight build, for the "what are we working on" view.
@@ -62,8 +100,16 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 		}
 	}
 
+	// Last-24h build stats (money + reliability at a glance).
+	recent, err := s.store.IterationsSince(ctx, time.Now().Add(-24*time.Hour))
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
 	s.render(w, http.StatusOK, "admin", s.view(r, "Operator review", adminView{
 		Escalated: escalated, Active: active, Previews: previews,
+		Stats: computeStats(recent),
 	}))
 }
 

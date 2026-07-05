@@ -5,6 +5,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
@@ -42,6 +43,9 @@ type Store interface {
 	// ActiveIterations returns build passes currently in the building state
 	// (for the active-builds view and startup recovery).
 	ActiveIterations(ctx context.Context) ([]*project.Iteration, error)
+	// IterationsSince returns build passes created at or after t, newest first
+	// (for the operator's recent-build stats).
+	IterationsSince(ctx context.Context, t time.Time) ([]*project.Iteration, error)
 
 	// Assets (metadata; bytes live in object storage)
 	CreateAsset(ctx context.Context, a *project.Asset) error

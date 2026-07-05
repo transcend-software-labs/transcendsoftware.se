@@ -202,6 +202,10 @@ details summary { cursor: pointer; }
 .inline-actions { display: flex; align-items: center; gap: .5rem; }
 .inline-actions input { width: auto; }
 
+.stat-row { list-style: none; display: flex; gap: 2rem; flex-wrap: wrap; }
+.stat-row li { display: flex; flex-direction: column; gap: .15rem; }
+.stat-num { font-size: 1.5rem; font-weight: 600; color: var(--text); line-height: 1; }
+
 .foot { border-top: 1px solid var(--border); padding: 1.5rem 1.25rem; text-align: center; font-size: .8rem; }
 
 /* HTMX swap transitions (gentle; avoids flicker on polled swaps) */
