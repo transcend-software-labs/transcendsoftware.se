@@ -18,6 +18,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/storage"
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
 	"github.com/transcend-software-labs/rasmus-ai/internal/stream"
+	"github.com/transcend-software-labs/rasmus-ai/internal/user"
 )
 
 func newTestOrch(st store.Store) *Orchestrator {
@@ -31,6 +32,29 @@ func newTestOrchWithVerifier(st store.Store, v Verifier) (*Orchestrator, *fly.Fa
 	machines := fly.NewFake()
 	b := builder.NewSandbox(machines, func(string) opencode.Driver { return opencode.NewFake() }, builder.Config{})
 	return New(st, fake, fake, fake, b, machines, storage.NewMemory(), stream.NewBroker(100), v, log), machines
+}
+
+// recordingNotifier captures sent messages for assertions.
+type recordingNotifier struct {
+	mu   sync.Mutex
+	sent []sentMsg
+}
+
+type sentMsg struct{ To, Subject string }
+
+func (n *recordingNotifier) Send(_ context.Context, to, subject, _ string) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.sent = append(n.sent, sentMsg{To: to, Subject: subject})
+	return nil
+}
+
+func (n *recordingNotifier) all() []sentMsg {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	out := make([]sentMsg, len(n.sent))
+	copy(out, n.sent)
+	return out
 }
 
 // countingVerifier fails every call after the first okCalls calls.
@@ -243,6 +267,47 @@ func TestReiteration_ContinuesFromSnapshot(t *testing.T) {
 	if !restored {
 		t.Errorf("reiteration did not restore the workspace snapshot; execs: %+v", machines.Execs())
 	}
+}
+
+func TestNotify_CustomerOnReady_OperatorOnFailure(t *testing.T) {
+	// Customer notified when the preview is ready.
+	st := store.NewMemory()
+	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
+	rec := &recordingNotifier{}
+	orch.SetNotifications(rec, "rasmus@example.com", "https://app.example")
+	if err := st.CreateUser(context.Background(),
+		&user.User{ID: "u1", Email: "customer@example.com", CreatedAt: time.Now().UTC()}); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	id := seedProject(t, st, "A small site for an apple farm")
+	startThroughIntake(t, orch, st, id)
+	waitFor(t, st, id, project.StatusPreviewReady)
+
+	if !sentTo(rec, "customer@example.com", "ready") {
+		t.Errorf("customer not emailed on preview ready; sent: %+v", rec.all())
+	}
+
+	// Operator notified when a build fails.
+	st2 := store.NewMemory()
+	orch2, _ := newTestOrchWithVerifier(st2, &countingVerifier{okCalls: 0}) // always fails
+	rec2 := &recordingNotifier{}
+	orch2.SetNotifications(rec2, "rasmus@example.com", "https://app.example")
+	id2 := seedProject(t, st2, "A small site for an apple farm")
+	startThroughIntake(t, orch2, st2, id2)
+	waitFor(t, st2, id2, project.StatusFailed)
+
+	if !sentTo(rec2, "rasmus@example.com", "failed") {
+		t.Errorf("operator not emailed on build failure; sent: %+v", rec2.all())
+	}
+}
+
+func sentTo(rec *recordingNotifier, to, subjectSubstr string) bool {
+	for _, m := range rec.all() {
+		if m.To == to && strings.Contains(strings.ToLower(m.Subject), subjectSubstr) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestVerifyFailure_InitialBuildFails(t *testing.T) {

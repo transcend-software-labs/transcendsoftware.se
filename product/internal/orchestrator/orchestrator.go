@@ -20,6 +20,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
 	"github.com/transcend-software-labs/rasmus-ai/internal/id"
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
+	"github.com/transcend-software-labs/rasmus-ai/internal/notify"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 	"github.com/transcend-software-labs/rasmus-ai/internal/storage"
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
@@ -41,11 +42,61 @@ type Orchestrator struct {
 	broker   *stream.Broker
 	verifier Verifier // smoke-checks the deployed preview before preview_ready
 	log      *slog.Logger
+
+	notifier      notify.Notifier // email; defaults to Noop until configured
+	operatorEmail string          // Rasmus — escalation/failure notices
+	baseURL       string          // for links in emails
 }
 
 // New returns an orchestrator.
 func New(s store.Store, in llm.Intake, p llm.Planner, g llm.SafetyGate, b builder.Builder, m fly.Machines, as storage.Store, br *stream.Broker, v Verifier, log *slog.Logger) *Orchestrator {
-	return &Orchestrator{store: s, intake: in, planner: p, gate: g, builder: b, machines: m, storage: as, broker: br, verifier: v, log: log}
+	return &Orchestrator{store: s, intake: in, planner: p, gate: g, builder: b, machines: m, storage: as, broker: br, verifier: v, log: log, notifier: notify.Noop{}}
+}
+
+// SetNotifications wires transactional email. operatorEmail receives escalation
+// and failure notices; customers are emailed when a preview is ready. baseURL
+// is used for links. A nil notifier leaves the default Noop in place.
+func (o *Orchestrator) SetNotifications(n notify.Notifier, operatorEmail, baseURL string) {
+	if n != nil {
+		o.notifier = n
+	}
+	o.operatorEmail = operatorEmail
+	o.baseURL = baseURL
+}
+
+// notifyOperator emails Rasmus, best-effort (a failed send must never affect
+// the pipeline; the state is already persisted by the time we get here).
+func (o *Orchestrator) notifyOperator(ctx context.Context, subject, body string) {
+	if o.operatorEmail == "" {
+		return
+	}
+	if err := o.notifier.Send(ctx, o.operatorEmail, subject, body); err != nil {
+		o.log.Error("notify operator", "err", err)
+	}
+}
+
+// notifyCustomer emails the project's owner, best-effort.
+func (o *Orchestrator) notifyCustomer(ctx context.Context, userID, subject, body string) {
+	u, err := o.store.UserByID(ctx, userID)
+	if err != nil {
+		o.log.Error("notify customer: lookup user", "err", err)
+		return
+	}
+	if err := o.notifier.Send(ctx, u.Email, subject, body); err != nil {
+		o.log.Error("notify customer", "err", err)
+	}
+}
+
+func (o *Orchestrator) projectLink(id string) string {
+	if o.baseURL == "" {
+		return ""
+	}
+	return o.baseURL + "/projects/" + id
+}
+
+// baseURLOr returns baseURL+path, or just path if no base URL is configured.
+func (o *Orchestrator) baseURLOr(path string) string {
+	return o.baseURL + path
 }
 
 // assetManifest builds filename → presigned GET URL for a project's uploaded
@@ -230,7 +281,14 @@ func (o *Orchestrator) runPlanGateBuild(ctx context.Context, projectID string) e
 	case project.VerdictEscalate:
 		p.Status = project.StatusEscalated
 		p.RejectReason = gateRes.Reason
-		return o.save(ctx, p)
+		if err := o.save(ctx, p); err != nil {
+			return err
+		}
+		o.notifyOperator(ctx, "Forge: a project needs your review",
+			"A project was flagged for review: "+p.Name+"\n\n"+
+				"Brief:\n"+p.Brief+"\n\nReason: "+gateRes.Reason+"\n\n"+
+				"Review it: "+o.baseURLOr("/admin"))
+		return nil
 	case project.VerdictAllow:
 		if err := o.save(ctx, p); err != nil {
 			return err
@@ -356,7 +414,13 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 		p.SnapshotKey = snapshotKey
 	}
 	p.Status = project.StatusPreviewReady
-	return o.save(ctx, p)
+	if err := o.save(ctx, p); err != nil {
+		return err
+	}
+	o.notifyCustomer(ctx, p.UserID, "Your website preview is ready",
+		"Your preview for \""+p.Name+"\" is ready to view:\n\n"+res.PreviewURL+"\n\n"+
+			"Open your project to review it or request a change: "+o.projectLink(p.ID))
+	return nil
 }
 
 func (o *Orchestrator) setStatus(ctx context.Context, p *project.Project, s project.Status) error {
@@ -388,4 +452,6 @@ func (o *Orchestrator) markFailed(ctx context.Context, projectID string, cause e
 		p.RejectReason = cause.Error()
 	}
 	_ = o.save(ctx, p)
+	o.notifyOperator(ctx, "Forge: a build failed",
+		"Build failed for \""+p.Name+"\": "+p.RejectReason+"\n\n"+o.projectLink(p.ID))
 }

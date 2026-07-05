@@ -22,6 +22,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
+	"github.com/transcend-software-labs/rasmus-ai/internal/notify"
 	"github.com/transcend-software-labs/rasmus-ai/internal/opencode"
 	"github.com/transcend-software-labs/rasmus-ai/internal/orchestrator"
 	"github.com/transcend-software-labs/rasmus-ai/internal/storage"
@@ -56,6 +57,7 @@ func main() {
 	assets := newStorage(cfg, log)
 	broker := stream.NewBroker(500)
 	orch := orchestrator.New(st, intake, planner, gate, build, machines, assets, broker, newVerifier(cfg, log), log)
+	orch.SetNotifications(newNotifier(cfg, log), cfg.AdminEmail, cfg.BaseURL)
 	orch.RecoverInterrupted(context.Background()) // reap builds left running by a prior run
 	// Reap zombie infrastructure hourly: preview apps of failed projects,
 	// previews idle past PREVIEW_TTL_DAYS, and leaked sandbox machines.
@@ -162,6 +164,17 @@ func newStorage(cfg config.Config, log *slog.Logger) storage.Store {
 		os.Exit(1)
 	}
 	return s
+}
+
+// newNotifier picks the email backend: Resend when RESEND_API_KEY is set,
+// otherwise a log-only notifier (dev) so the flow works without a provider.
+func newNotifier(cfg config.Config, log *slog.Logger) notify.Notifier {
+	if cfg.ResendAPIKey != "" {
+		log.Info("notify: resend", "from", cfg.EmailFrom)
+		return notify.NewResend(cfg.ResendAPIKey, cfg.EmailFrom)
+	}
+	log.Info("notify: log-only (no RESEND_API_KEY)")
+	return notify.Log{Logger: log}
 }
 
 // newVerifier picks the preview smoke check: a real HTTP probe when builds are

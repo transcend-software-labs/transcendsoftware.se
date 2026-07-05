@@ -20,7 +20,11 @@ type Config struct {
 
 	DatabaseURL string // Postgres DSN; empty → in-memory store
 
-	AdminEmail string // email that may access the operator/admin views
+	AdminEmail string // email that may access the operator/admin views + gets notices
+
+	// Email (empty key → log-only notifier; no mail sent).
+	ResendAPIKey string // Resend API key
+	EmailFrom    string // verified sender, e.g. "Transcend Forge <hello@transcendsoftware.se>"
 
 	// Quotas — every build spends real money (sandbox machine + LLM tokens).
 	MaxProjectsPerDay   int // per user, rolling 24h (default 3)
@@ -72,6 +76,8 @@ func Load() Config {
 		SecureCookie: os.Getenv("SECURE_COOKIE") == "true",
 		DatabaseURL:  os.Getenv("DATABASE_URL"),
 		AdminEmail:   os.Getenv("ADMIN_EMAIL"),
+		ResendAPIKey: os.Getenv("RESEND_API_KEY"),
+		EmailFrom:    envOr("EMAIL_FROM", "Transcend Forge <onboarding@resend.dev>"),
 
 		MaxProjectsPerDay:   envIntOr("MAX_PROJECTS_PER_DAY", 3),
 		MaxConcurrentBuilds: envIntOr("MAX_CONCURRENT_BUILDS", 3),

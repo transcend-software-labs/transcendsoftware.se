@@ -95,6 +95,8 @@ mode.** Each variable independently switches one piece from fake to real:
 | `MAX_PROJECTS_PER_DAY` | per-user daily project cap (default 3)                    |
 | `MAX_CONCURRENT_BUILDS` | global concurrent build cap (default 3)                  |
 | `PREVIEW_TTL_DAYS`    | days an untouched preview app stays up before the reaper destroys it (default 14) |
+| `RESEND_API_KEY`      | send real email via Resend (else notifications are log-only) |
+| `EMAIL_FROM`          | verified sender for outgoing email                         |
 | `ANTHROPIC_API_KEY`   | use the real planner + safety gate (else a deterministic fake) |
 | `ANTHROPIC_MODEL`     | override the model (default `claude-sonnet-4-6`)           |
 | `LLM_API_KEY`         | OpenAI-compatible model for intake/plan/gate **and** the sandbox agent (takes precedence over Anthropic) |

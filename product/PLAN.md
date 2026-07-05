@@ -180,8 +180,12 @@ Milestones:
 - [ ] **Rotate the burned credentials:** the Kimi key and Fly tokens were
       pasted in chat and must be treated as compromised — mint fresh ones,
       update Fly secrets, revoke old (S)
-- [ ] Email (Resend or SMTP): escalated → Rasmus, build failed → Rasmus,
-      preview ready → customer (M)
+- [x] Email (Resend): escalated → Rasmus, build failed → Rasmus, preview ready
+      → customer. Interface + log-only fake (dev) + Resend impl; wired at all
+      three lifecycle points, best-effort after state is persisted; tested with
+      a recording notifier. **Activates when `RESEND_API_KEY` + `EMAIL_FROM`
+      are set** (needs a Resend account + verified sender — currently log-only
+      in prod) (M)
 - [x] Escalated project page auto-updates after admin approval (slow 15s poll
       while held, fast 2s while building) (S)
 - [ ] `app.transcendsoftware.se`: DNS CNAME + `fly certs add` (BASE_URL is
