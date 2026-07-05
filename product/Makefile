@@ -27,8 +27,9 @@ db-up:
 db-down:
 	docker compose down
 
+# Migrations are idempotent (IF NOT EXISTS), so applying all in order is safe.
 db-migrate:
-	psql "$(DATABASE_URL)" -f migrations/0001_init.sql
+	for f in migrations/*.sql; do psql -v ON_ERROR_STOP=1 "$(DATABASE_URL)" -f $$f || exit 1; done
 
 # Build the per-task build sandbox image (Fly registry). See sandbox/README.md.
 sandbox-build:

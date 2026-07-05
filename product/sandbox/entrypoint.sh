@@ -2,15 +2,20 @@
 # Transcend Forge sandbox entrypoint — WIRING ONLY (never installs toolchains).
 #
 # Per-task inputs (env vars injected at Machine create):
-#   OPENCODE_PORT  port for the opencode server          (default 4096)
-#   SPEC_URL       URL to fetch the operating spec        (optional)
-#   REPO_URL        git repo to work in for reiterations  (empty = greenfield)
+#   OPENCODE_PORT   port for the opencode server           (default 4096)
+#   SPEC_URL        URL to fetch the operating spec        (optional)
+#   REPO_URL        git repo to clone (reserved for GitHub mirroring; unused)
 #   GIT_TOKEN       short-lived, repo-scoped clone token   (optional)
 #   ASSETS_MANIFEST JSON {filename: presigned-GET-url} of customer uploads
+#   LLM_API_KEY / LLM_BASE_URL / LLM_MODEL   opencode's model provider
+#   FLY_APP / FLY_DEPLOY_TOKEN   let the agent `fly deploy` the customer app.
+#     The token is org-scoped for now (per-app minting is a documented TODO,
+#     see internal/fly) — treat this sandbox as able to deploy org-wide.
 #
-# Real deploy + storage credentials are intentionally NOT passed here. The
-# orchestrator performs the deploy and hands only short-lived presigned URLs in,
-# so a compromised build leaks nothing.
+# Storage is never credentialed here: assets arrive via presigned GET URLs, and
+# workspace snapshots are restored/saved by the orchestrator over the Machines
+# exec API with presigned URLs. A compromised build can spend LLM tokens and
+# deploy within the org, but cannot touch storage or the Fly org API.
 
 set -euo pipefail
 

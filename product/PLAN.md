@@ -140,7 +140,10 @@ Milestones:
 - [x] Failed reiteration returns project to `preview_ready` (previous preview
       stands), not terminal `failed` — incl. the startup-recovery path; a
       failed attempt does not consume the change credit (S)
-- [ ] Fix the lying docs (3.5): README + builder.go + entrypoint.sh (S)
+- [x] Fix the lying docs (3.5): README + fly.go + builder.go + entrypoint.sh
+      now state the real security model (org-scoped deploy token in the
+      sandbox, presigned-only storage); also fixed `make db-migrate` to apply
+      all migrations, not just 0001 (S)
 - [x] Reiteration test in dev fakes: snapshot key persisted after build 1,
       restore exec verified before build 2 (orchestrator + builder tests).
       The live run proving "change X" edits the *same* site is **blocked on

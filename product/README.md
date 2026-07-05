@@ -10,40 +10,47 @@ the Astro project at the repo root) but lives in the same monorepo.
 
 ## Status
 
-The full customer-facing flow is implemented. In dev mode everything runs
-locally with fakes, so the whole experience works without any secrets. In real
-mode the agent builds in a Fly Machine sandbox and **deploys the finished site**
-to a per-customer app (`forge-<projectId>`) with an app-scoped token — the org
-token never enters the sandbox. (The end-to-end real path is validated
-piecewise; a full live run needs the product deployed on Fly's 6PN network + an
-API key.)
+**Deployed and proven end-to-end** at `transcend-forge.fly.dev`: a real customer
+flow has run brief → intake questions → plan → safety gate → sandboxed build →
+agent-run `fly deploy` → live, verified preview on `forge-<projectId>.fly.dev`.
+In dev mode everything runs locally with fakes, so the whole experience works
+without any secrets.
+
+See [`PLAN.md`](PLAN.md) for the review verdict, the plan to completion, and
+the open decisions.
 
 What works today:
 
 - Landing page + email/password auth (bcrypt, cookie sessions, **CSRF-protected** forms)
 - Start a project → orchestrator runs **intake (clarifying questions) → plan →
   safety gate → build**
-- Clarifying-question step before building (the PO-level questions)
-- Live status via HTMX polling; preview link attached on completion
-- Two reiterations per project (1 initial build + 2 changes)
+- **Live build streaming**: the dashboard shows the agent's tool activity as it
+  happens (opencode SSE `/event` → broker → HTMX SSE)
+- **Deploy verification**: the preview URL is smoke-checked (HTTP 200 +
+  non-empty body) before a project is marked preview-ready — never asserted
+- **Workspace snapshots**: reiterations restore the previous build's
+  `/workspace` (presigned URLs, orchestrator-driven via Machines exec), so
+  changes edit the same site instead of rebuilding from scratch
+- Two reiterations per project (1 initial build + 2 changes); a failed change
+  falls back to the still-live previous preview and consumes no credit
 - Safety gate rejects abuse and **escalates** ambiguous requests to an
   operator/admin review queue (`/admin`, gated by `ADMIN_EMAIL`)
-- In-memory store (dev) **and** Postgres (both validated end-to-end)
+- Crash recovery: interrupted builds are reaped on startup; heartbeats + logs
+  persisted per iteration
+- In-memory store (dev) **and** Postgres (Postgres not yet provisioned in prod
+  — see PLAN.md §3.3)
 - Health check (`/healthz`), graceful shutdown, single static binary
-- Deploy config for the product itself (`Dockerfile`, `fly.toml`) — not deployed
 
 Real build mode (`FLY_API_TOKEN` + `FLY_SANDBOX_APP`/`FLY_SANDBOX_IMAGE` set):
 the orchestrator spawns a per-task Fly Machine from the sandbox image, injects
-env (incl. `ANTHROPIC_API_KEY` so opencode can call Claude — the one credential
-that must be in the sandbox; the deploy token stays out), waits for it to start,
-and drives opencode at its private address. The spawn/destroy path is validated
-against the live Fly API (`internal/fly/integration_test.go`, gated behind
-`FLY_SMOKE=1`). **The orchestrator must run on the Fly private (6PN) network** to
-reach the sandbox.
+env (the LLM key for opencode, plus `FLY_APP`/`FLY_DEPLOY_TOKEN` so the agent
+can deploy), waits for opencode to accept connections, and drives it at its
+private address. **The orchestrator must run on the Fly private (6PN) network**
+to reach the sandbox.
 
-Not yet built (by design): the payment gate. Live opencode token-level streaming
-is a refinement (the driver currently reports start + final result), and the
-deploy token should be minted per-app rather than a shared deploy-scoped token.
+Not yet built (by design): the payment gate. Known hardening TODO: the deploy
+token in the sandbox is org-scoped; per-app minting is blocked on a
+token-authority decision (PLAN.md §5.3).
 
 ## Run it
 
@@ -57,7 +64,7 @@ Against Postgres:
 
 ```sh
 make db-up          # start local Postgres in Docker
-make db-migrate     # apply migrations/0001_init.sql
+make db-migrate     # apply all migrations/ in order (idempotent)
 make run-pg
 ```
 
@@ -87,7 +94,9 @@ mode.** Each variable independently switches one piece from fake to real:
 | `ADMIN_EMAIL`         | the account allowed into the operator review views (`/admin`) |
 | `ANTHROPIC_API_KEY`   | use the real planner + safety gate (else a deterministic fake) |
 | `ANTHROPIC_MODEL`     | override the model (default `claude-sonnet-4-6`)           |
-| `OPENCODE_URL`        | drive a real opencode server (else simulated build)        |
+| `LLM_API_KEY`         | OpenAI-compatible model for intake/plan/gate **and** the sandbox agent (takes precedence over Anthropic) |
+| `LLM_BASE_URL` / `LLM_MODEL` | provider base URL (default Moonshot) and model (default `kimi-k2.7-code`) |
+| `OPENCODE_URL`        | drive a fixed opencode server (else per-sandbox over 6PN, else simulated) |
 | `FLY_API_TOKEN`       | real Fly Machines client (spawn sandbox, create per-customer app) |
 | `FLY_ORG`             | Fly org slug for per-customer app creation                 |
 | `FLY_DEPLOY_TOKEN`    | deploy-scoped token injected into the sandbox for `fly deploy` |
@@ -128,8 +137,8 @@ Packages (`internal/`):
 - `llm` — `Planner` + `SafetyGate`, with the Anthropic client and a Fake; the
   operating spec ("Rasmus's decisions") lives in `PlannerSystemPrompt`
 - `opencode` — driver to run a build via an opencode server (HTTP + Fake)
-- `fly` — Fly client: spawn/destroy sandboxes, create per-customer apps, mint deploy tokens
-- `builder` — one build pass: spawn sandbox → run agent → deploy → teardown
+- `fly` — Fly client: spawn/destroy sandboxes, exec inside them, create per-customer apps
+- `builder` — one build pass: spawn sandbox → restore snapshot → run agent → save snapshot → teardown
 - `orchestrator` — async pipeline driving a project through its lifecycle
 - `web` — HTTP handlers, templates (`templates/`), assets (`static/`)
 
@@ -139,12 +148,18 @@ The pipeline is built around a trusted/untrusted split:
 
 - **Untrusted:** the customer's brief and the agent that acts on it. Each build
   runs in an isolated per-task sandbox (a Fly Machine microVM; in dev, a fake).
-- **Trusted:** the orchestrator and real credentials live outside the sandbox.
-  The agent never holds the Fly/deploy token — it asks; the orchestrator
-  performs the deploy after a policy check.
+- **Trusted:** the orchestrator holds the real credentials (Fly org API token,
+  storage keys). App creation, snapshot restore/save, and deploy verification
+  all run on this side.
+- **Inside the sandbox** (what a compromised build could leak): the LLM API key
+  and a Fly **deploy token** — currently **org-scoped**, so a prompt-injected
+  agent could deploy to any app in the org. Per-app minting is a documented
+  hardening TODO blocked on a token-authority decision (PLAN.md §5.3).
+- **Storage is never credentialed in the sandbox**: assets arrive and snapshots
+  travel via short-lived presigned URLs only.
 - The **safety gate is tool-less**: it only classifies, so a jailbreak of it
   yields a bad verdict, never an action.
 
-Before exposing this publicly, also wire: real sandbox provisioning with an
-egress allowlist, per-task scoped Fly tokens, and the human review + payment
-gate. See the project notes for the full plan.
+Before exposing this publicly: quotas, preview-app lifecycle, credential
+rotation, and the human review + payment gate — the ordered list lives in
+[`PLAN.md`](PLAN.md).

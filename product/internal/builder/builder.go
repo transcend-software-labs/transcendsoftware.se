@@ -1,10 +1,17 @@
-// Package builder runs one build pass: spawn an isolated sandbox, drive opencode
-// inside it to build/iterate the site, then deploy and return a preview URL.
+// Package builder runs one build pass: spawn an isolated sandbox, restore the
+// previous workspace snapshot (on reiterations), drive opencode inside it to
+// build the site, let the agent deploy it, save a new snapshot, and tear the
+// sandbox down.
 //
 // The opencode driver is built per task from the spawned sandbox's address, so
 // the same Sandbox builder works in dev mode (fake machines → empty address →
 // fake driver) and in real mode (a Fly Machine → private address → HTTP driver).
-// The deploy step is currently gated by fly.ErrDeployDisabled.
+//
+// Credentials in the sandbox: the LLM API key (opencode needs it) and FLY_APP +
+// FLY_DEPLOY_TOKEN so the agent can run `fly deploy`. The deploy token is
+// currently org-scoped (interim — see fly_http.go for the per-app hardening
+// TODO and its blocker). Storage is never credentialed: assets and snapshots
+// move through short-lived presigned URLs only.
 package builder
 
 import (
@@ -71,9 +78,9 @@ type Config struct {
 	// AnthropicKey is injected so opencode can call Claude (if used).
 	AnthropicKey string
 	// LLM* configure an OpenAI-compatible model for opencode (e.g. Moonshot/Kimi).
-	// The entrypoint writes an opencode provider config from these. The key is
-	// the one credential that must be inside the sandbox; the Fly deploy token
-	// stays out (the orchestrator deploys).
+	// The entrypoint writes an opencode provider config from these. The LLM key
+	// and the deploy token (FLY_APP/FLY_DEPLOY_TOKEN, injected in Build) are the
+	// only credentials inside the sandbox.
 	LLMBaseURL string
 	LLMKey     string
 	LLMModel   string
@@ -117,8 +124,9 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 		}
 	}
 
-	// Provision the per-customer app (orchestrator side) and inject the app +
-	// an app-scoped deploy token so the agent can `fly deploy` that one app.
+	// Provision the per-customer app (orchestrator side) and inject the app name
+	// + a deploy token so the agent can `fly deploy` it. The token is org-scoped
+	// for now (per-app minting is blocked — see fly.HTTP.AppDeployToken).
 	appName := deployAppName(req.ProjectID)
 	if err := b.machines.EnsureApp(ctx, appName); err != nil {
 		return Result{}, err

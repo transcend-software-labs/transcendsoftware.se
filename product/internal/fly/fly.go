@@ -1,10 +1,14 @@
 // Package fly wraps the Fly Machines + Apps APIs: spawn an ephemeral microVM
-// sandbox per build, create the per-customer app, and mint an app-scoped deploy
-// token the agent uses to publish that one app.
+// sandbox per build, run orchestrator-driven commands inside it (exec), create
+// the per-customer app, and hand out the deploy token the agent uses to
+// publish it.
 //
 // Each Fly Machine is a Firecracker microVM, so one Machine per task is the
-// isolation boundary. The org token never enters the sandbox — only a deploy
-// token scoped to a single throwaway customer app (blast radius: that one app).
+// isolation boundary. The org *API* token stays on the trusted side and never
+// enters the sandbox. The *deploy* token the sandbox receives is, for now,
+// org-scoped — a misbehaving agent could deploy to any app in the org. Scoping
+// it per-app is a documented hardening TODO blocked on a token-minting
+// decision; see HTTP.AppDeployToken in fly_http.go.
 package fly
 
 import (
