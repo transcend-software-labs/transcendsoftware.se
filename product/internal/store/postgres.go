@@ -19,8 +19,19 @@ type Postgres struct {
 }
 
 // NewPostgres connects to the database at dsn and verifies the connection.
+//
+// Fly Managed Postgres hands out a PgBouncer (transaction-pooling) endpoint,
+// which is incompatible with pgx's default prepared-statement caching — a
+// cached statement lives on one server connection, but the next query may be
+// routed to another. QueryExecModeExec uses the unnamed statement per query
+// (no cross-transaction cache), which is the PgBouncer-safe mode.
 func NewPostgres(ctx context.Context, dsn string) (*Postgres, error) {
-	pool, err := pgxpool.New(ctx, dsn)
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
