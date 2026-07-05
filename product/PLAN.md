@@ -153,11 +153,15 @@ Milestones:
       Tigris** (§5.2) — presigned snapshot URLs need a real bucket (S)
 
 ### Phase 2 — safe to expose (M2 blockers)
-- [ ] Quotas: ≤3 projects/day/user, 1 concurrent build/user, global concurrent
-      cap (env), brief/answer length caps (S)
-- [ ] Preview lifecycle: generated `fly.toml` gets `auto_stop_machines` +
-      `min_machines_running = 0` (BuildSystemPrompt); reaper destroys preview
-      apps N days after reject/fail/abandon; admin destroy button (M)
+- [x] Quotas: ≤3 projects/day/user (env `MAX_PROJECTS_PER_DAY`), one in-flight
+      pipeline per user, global concurrent-build cap (env
+      `MAX_CONCURRENT_BUILDS`, reiterations included), 4k char caps on
+      brief/answers/change requests (S)
+- [ ] Preview lifecycle (M):
+  - [x] generated `fly.toml` gets `auto_stop_machines` + `min_machines_running
+        = 0` (BuildSystemPrompt) — previews cost ~nothing when idle
+  - [ ] reaper destroys preview apps N days after reject/fail/abandon
+  - [ ] admin destroy button
 - [ ] Per-app deploy tokens *or* explicitly accepted org-token risk — decision
       §5.3 (M)
 - [ ] **Rotate the burned credentials:** the Kimi key and Fly tokens were
@@ -165,7 +169,8 @@ Milestones:
       update Fly secrets, revoke old (S)
 - [ ] Email (Resend or SMTP): escalated → Rasmus, build failed → Rasmus,
       preview ready → customer (M)
-- [ ] Escalated project page auto-updates after admin approval (tiny) (S)
+- [x] Escalated project page auto-updates after admin approval (slow 15s poll
+      while held, fast 2s while building) (S)
 - [ ] `app.transcendsoftware.se`: DNS CNAME + `fly certs add` (BASE_URL is
       already set) (S)
 - [ ] Failure-rate visibility: at minimum, email-on-failure covers it; add a

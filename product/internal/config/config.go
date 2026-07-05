@@ -7,6 +7,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -20,6 +21,10 @@ type Config struct {
 	DatabaseURL string // Postgres DSN; empty → in-memory store
 
 	AdminEmail string // email that may access the operator/admin views
+
+	// Quotas — every build spends real money (sandbox machine + LLM tokens).
+	MaxProjectsPerDay   int // per user, rolling 24h (default 3)
+	MaxConcurrentBuilds int // across all users (default 3)
 
 	AnthropicAPIKey string // empty → fake planner/gate
 	AnthropicModel  string // empty → llm.DefaultModel
@@ -57,12 +62,16 @@ func (c Config) StorageEnabled() bool {
 // Load reads configuration from the environment, applying dev-friendly defaults.
 func Load() Config {
 	return Config{
-		Addr:            listenAddr(),
-		BaseURL:         envOr("BASE_URL", "http://localhost:8080"),
-		SessionTTL:      30 * 24 * time.Hour,
-		SecureCookie:    os.Getenv("SECURE_COOKIE") == "true",
-		DatabaseURL:     os.Getenv("DATABASE_URL"),
-		AdminEmail:      os.Getenv("ADMIN_EMAIL"),
+		Addr:         listenAddr(),
+		BaseURL:      envOr("BASE_URL", "http://localhost:8080"),
+		SessionTTL:   30 * 24 * time.Hour,
+		SecureCookie: os.Getenv("SECURE_COOKIE") == "true",
+		DatabaseURL:  os.Getenv("DATABASE_URL"),
+		AdminEmail:   os.Getenv("ADMIN_EMAIL"),
+
+		MaxProjectsPerDay:   envIntOr("MAX_PROJECTS_PER_DAY", 3),
+		MaxConcurrentBuilds: envIntOr("MAX_CONCURRENT_BUILDS", 3),
+
 		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
 		AnthropicModel:  os.Getenv("ANTHROPIC_MODEL"),
 
@@ -106,6 +115,15 @@ func listenAddr() string {
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return def
+}
+
+func envIntOr(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
 	}
 	return def
 }

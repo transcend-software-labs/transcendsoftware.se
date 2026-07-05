@@ -94,8 +94,11 @@ How to build:
 Then make it deployable and deploy it:
 - Create a Dockerfile that serves the site over HTTP on port 8080
   (e.g. FROM nginx:alpine, copy files to /usr/share/nginx/html, make nginx
-  listen on 8080), and a fly.toml with [http_service] internal_port 8080,
-  force_https true, primary_region "arn".
+  listen on 8080), and a fly.toml with primary_region "arn" and an
+  [http_service] section with exactly: internal_port = 8080,
+  force_https = true, auto_stop_machines = "stop", auto_start_machines = true,
+  min_machines_running = 0. The auto-stop settings are required — previews
+  must cost nothing while nobody is looking at them.
 - Deploy by running exactly this command:
   fly deploy --remote-only --app "$FLY_APP" --access-token "$FLY_DEPLOY_TOKEN"
 - Confirm the deploy finished successfully.

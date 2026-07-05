@@ -42,6 +42,7 @@ func NewServer(cfg config.Config, st store.Store, sessions *auth.Sessions, orch 
 	tmpl, err := template.New("").Funcs(template.FuncMap{
 		"statusLabel": statusLabel,
 		"polling":     polling,
+		"pollEvery":   pollEvery,
 	}).ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
 		return nil, err
@@ -235,14 +236,26 @@ func statusLabel(s project.Status) string {
 
 // polling reports whether the dashboard should keep polling this project.
 // It stops on resting states: waiting on the customer, the operator, or done.
+// polling reports whether the project page should keep refreshing its status.
+// Escalated projects poll too (slowly) so the page moves on its own once the
+// operator approves or declines — see pollEvery.
 func polling(p *project.Project) bool {
 	switch p.Status {
-	case project.StatusNeedsInput, project.StatusEscalated,
+	case project.StatusNeedsInput,
 		project.StatusPreviewReady, project.StatusRejected, project.StatusFailed:
 		return false
 	default:
 		return true
 	}
+}
+
+// pollEvery is the HTMX polling cadence: fast while a step is actively
+// running, slow while waiting on the operator (which can take hours).
+func pollEvery(p *project.Project) string {
+	if p.Status == project.StatusEscalated {
+		return "15s"
+	}
+	return "2s"
 }
 
 func logRequests(log *slog.Logger, next http.Handler) http.Handler {

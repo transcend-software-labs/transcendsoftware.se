@@ -28,6 +28,11 @@ import (
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
+	return newTestServerWithConfig(t, config.Config{AdminEmail: "admin@example.com"})
+}
+
+func newTestServerWithConfig(t *testing.T, cfg config.Config) *httptest.Server {
+	t.Helper()
 	st := store.NewMemory()
 	fake := llm.NewFake()
 	machines := fly.NewFake()
@@ -37,7 +42,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 	assets := storage.NewMemory()
 	orch := orchestrator.New(st, fake, fake, fake, b, machines, assets, broker, orchestrator.NoopVerifier{}, log)
 	sessions := auth.NewSessions(st, time.Hour)
-	srv, err := web.NewServer(config.Config{AdminEmail: "admin@example.com"}, st, sessions, orch, broker, assets, log)
+	srv, err := web.NewServer(cfg, st, sessions, orch, broker, assets, log)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
@@ -76,6 +81,48 @@ func signedInClient(t *testing.T, base string) *http.Client {
 		t.Fatalf("signup status = %d", resp.StatusCode)
 	}
 	return c
+}
+
+func TestQuota_DailyProjectCap(t *testing.T) {
+	srv := newTestServerWithConfig(t, config.Config{AdminEmail: "admin@example.com", MaxProjectsPerDay: 1})
+	defer srv.Close()
+	c := signedInClient(t, srv.URL)
+
+	tok := csrfToken(t, c, srv.URL)
+	resp, err := c.PostForm(srv.URL+"/projects", url.Values{
+		"brief": {"A brochure site for an apple farm selling juice locally"}, "csrf_token": {tok},
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	projURL := resp.Request.URL.String() // followed the redirect to the project page
+	resp.Body.Close()
+
+	// Wait for the project to settle in needs_input (intake questions shown),
+	// so the second create hits the daily cap, not the one-at-a-time rule.
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		r, _ := c.Get(projURL)
+		b, _ := io.ReadAll(r.Body)
+		r.Body.Close()
+		if strings.Contains(string(b), "A few quick questions") {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	tok2 := csrfToken(t, c, srv.URL)
+	resp2, err := c.PostForm(srv.URL+"/projects", url.Values{
+		"brief": {"Another site for the very same apple farm please"}, "csrf_token": {tok2},
+	})
+	if err != nil {
+		t.Fatalf("second create: %v", err)
+	}
+	b, _ := io.ReadAll(resp2.Body)
+	resp2.Body.Close()
+	if resp2.StatusCode != http.StatusTooManyRequests || !strings.Contains(string(b), "Daily limit reached") {
+		t.Fatalf("expected daily-cap rejection, got status %d", resp2.StatusCode)
+	}
 }
 
 func TestFullFlow_IntakeToPreview(t *testing.T) {

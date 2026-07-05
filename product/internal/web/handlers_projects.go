@@ -29,12 +29,26 @@ func (s *Server) handleNewProjectForm(w http.ResponseWriter, r *http.Request, _ 
 	s.render(w, http.StatusOK, "new_project", s.view(r, "Start a project", nil))
 }
 
+// maxBriefLen caps customer-provided text fed into the pipeline (each build
+// spends real money; unbounded input is both a cost and a prompt-size risk).
+const maxBriefLen = 4000
+
 func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request, u *user.User) {
 	brief := strings.TrimSpace(r.FormValue("brief"))
 	name := strings.TrimSpace(r.FormValue("name"))
 	if len(brief) < 10 {
 		s.render(w, http.StatusBadRequest, "new_project", View{Title: "Start a project", User: u,
 			Flash: "Tell me a bit more about the site you want (at least a sentence)."})
+		return
+	}
+	if len(brief) > maxBriefLen {
+		s.render(w, http.StatusBadRequest, "new_project", View{Title: "Start a project", User: u,
+			Flash: "That description is too long — please keep it under 4000 characters."})
+		return
+	}
+	if flash := s.quotaBlock(r, u); flash != "" {
+		s.render(w, http.StatusTooManyRequests, "new_project", View{Title: "Start a project", User: u,
+			Flash: flash})
 		return
 	}
 	if name == "" {
@@ -70,12 +84,45 @@ func (s *Server) handleAnswer(w http.ResponseWriter, r *http.Request, u *user.Us
 		return
 	}
 	answers := strings.TrimSpace(r.FormValue("answers"))
-	if p.Status != project.StatusNeedsInput || answers == "" {
+	if p.Status != project.StatusNeedsInput || answers == "" || len(answers) > maxBriefLen {
 		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 		return
 	}
 	s.orch.SubmitAnswers(p.ID, answers)
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+}
+
+// quotaBlock reports why a new build must not start right now ("" = go ahead):
+// per-user daily cap, one in-flight pipeline per user, and a global concurrent
+// build cap. Builds cost real money — these are the wallet's seatbelt.
+func (s *Server) quotaBlock(r *http.Request, u *user.User) string {
+	ctx := r.Context()
+
+	projects, err := s.store.ProjectsByUser(ctx, u.ID)
+	if err != nil {
+		return "Something went wrong — please try again."
+	}
+	recent := 0
+	for _, p := range projects {
+		if time.Since(p.CreatedAt) < 24*time.Hour {
+			recent++
+		}
+		switch p.Status {
+		case project.StatusClarifying, project.StatusPlanning,
+			project.StatusScreening, project.StatusBuilding:
+			return "One project at a time — wait for your current build to finish."
+		}
+	}
+	// A cap of 0 means "not configured" (e.g. tests) — no limit.
+	if s.cfg.MaxProjectsPerDay > 0 && recent >= s.cfg.MaxProjectsPerDay {
+		return fmt.Sprintf("Daily limit reached (%d projects per day) — come back tomorrow.", s.cfg.MaxProjectsPerDay)
+	}
+	if s.cfg.MaxConcurrentBuilds > 0 {
+		if active, err := s.store.ActiveIterations(ctx); err == nil && len(active) >= s.cfg.MaxConcurrentBuilds {
+			return "We're at full build capacity right now — please try again in a few minutes."
+		}
+	}
+	return ""
 }
 
 type projectView struct {
@@ -238,9 +285,16 @@ func (s *Server) handleReiterate(w http.ResponseWriter, r *http.Request, u *user
 		return
 	}
 	prompt := strings.TrimSpace(r.FormValue("prompt"))
-	if !p.CanReiterate() || prompt == "" {
+	if !p.CanReiterate() || prompt == "" || len(prompt) > maxBriefLen {
 		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 		return
+	}
+	// A reiteration spawns a build too — respect the global capacity cap.
+	if s.cfg.MaxConcurrentBuilds > 0 {
+		if active, err := s.store.ActiveIterations(r.Context()); err == nil && len(active) >= s.cfg.MaxConcurrentBuilds {
+			http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+			return
+		}
 	}
 	s.orch.Reiterate(p.ID, prompt)
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)

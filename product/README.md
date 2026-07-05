@@ -92,6 +92,8 @@ mode.** Each variable independently switches one piece from fake to real:
 |-----------------------|------------------------------------------------------------|
 | `DATABASE_URL`        | use Postgres instead of the in-memory store                |
 | `ADMIN_EMAIL`         | the account allowed into the operator review views (`/admin`) |
+| `MAX_PROJECTS_PER_DAY` | per-user daily project cap (default 3)                    |
+| `MAX_CONCURRENT_BUILDS` | global concurrent build cap (default 3)                  |
 | `ANTHROPIC_API_KEY`   | use the real planner + safety gate (else a deterministic fake) |
 | `ANTHROPIC_MODEL`     | override the model (default `claude-sonnet-4-6`)           |
 | `LLM_API_KEY`         | OpenAI-compatible model for intake/plan/gate **and** the sandbox agent (takes precedence over Anthropic) |
