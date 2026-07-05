@@ -228,8 +228,17 @@ Milestones:
       fallback client not yet covered — prod path is Kimi.)_
 
 ### Phase 4 — better product (post-M3; several are joint sessions)
-- [ ] Project template/scaffold — **explicitly waiting to build together with
-      Rasmus**; biggest lever on build time (~15 → ~5 min) and consistency
+- [x] Project template/scaffold — built 2026-07-05 at Rasmus's direction
+      (`template/goapp`): one Go binary serving FE+BE (embedded templates/
+      assets/migrations), SQLite, auth + sessions + CSRF, first-account-is-
+      owner, contact-form → owner inbox; AGENTS.md carries the conventions.
+      Seeded into first builds via `TEMPLATE_KEY` (snapshots win on
+      reiterations). Sandbox image `20260705-2` precompiles its dep tree +
+      warms the cache at boot (agent-side `go build` ≈ 35s / `go test` ≈ 15s
+      vs 12+ min cold). Customer deploys now `--ha=false` (one machine — with
+      SQLite, two machines would be two diverging databases); the 2-machine
+      E2E app was scaled down live. **Rasmus: review the template's taste +
+      first live template build together.**
 - [ ] GitHub mirroring under `transcend-software-labs` (the code-review story)
 - [ ] Screenshot verification into the admin review queue
 - [ ] Custom-domain automation
