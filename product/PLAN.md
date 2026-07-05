@@ -154,11 +154,14 @@ Milestones:
       now state the real security model (org-scoped deploy token in the
       sandbox, presigned-only storage); also fixed `make db-migrate` to apply
       all migrations, not just 0001 (S)
-- [x] Reiteration test in dev fakes: snapshot key persisted after build 1,
-      restore exec verified before build 2 (orchestrator + builder tests).
-      Live run proving "change X" edits the *same* site is now **unblocked**
-      (Tigris provisioned); pending a real ~2×15-min build to confirm the
-      in-sandbox tar/curl against presigned Tigris URLs end to end (S)
+- [x] Reiteration snapshot path proven: dev-fake tests (key persisted, restore
+      exec ordered) **plus a live round-trip** — seeded a real sandbox
+      workspace (incl. a nested dir), ran the builder's exact save (tar + curl
+      PUT) and restore (curl GET + tar) against real Tigris presigned URLs,
+      wiped in between, and confirmed every file came back. Reusable gated test
+      at `internal/builder/snapshot_integration_test.go` (needs 6PN). A full
+      2×15-min Kimi build to judge *edit quality* is the last manual check,
+      best done with Rasmus watching the output (S)
 
 ### Phase 2 — safe to expose (M2 blockers)
 - [x] Quotas: ≤3 projects/day/user (env `MAX_PROJECTS_PER_DAY`), one in-flight
