@@ -83,11 +83,11 @@ func (p *Postgres) CreateProject(ctx context.Context, pr *project.Project) error
 	_, err := p.pool.Exec(ctx,
 		`INSERT INTO projects
 		   (id, user_id, name, brief, status, questions, answers, plan, verdict,
-		    reject_reason, preview_url, repo_url, iterations_used, created_at, updated_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+		    reject_reason, preview_url, repo_url, snapshot_key, iterations_used, created_at, updated_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
 		pr.ID, pr.UserID, pr.Name, pr.Brief, pr.Status, marshalQuestions(pr.Questions),
 		pr.Answers, pr.Plan, pr.Verdict, pr.RejectReason, pr.PreviewURL, pr.RepoURL,
-		pr.IterationsUsed, pr.CreatedAt, pr.UpdatedAt)
+		pr.SnapshotKey, pr.IterationsUsed, pr.CreatedAt, pr.UpdatedAt)
 	return err
 }
 
@@ -95,11 +95,11 @@ func (p *Postgres) UpdateProject(ctx context.Context, pr *project.Project) error
 	tag, err := p.pool.Exec(ctx,
 		`UPDATE projects SET
 		   name=$2, brief=$3, status=$4, questions=$5, answers=$6, plan=$7, verdict=$8,
-		   reject_reason=$9, preview_url=$10, repo_url=$11, iterations_used=$12, updated_at=$13
+		   reject_reason=$9, preview_url=$10, repo_url=$11, snapshot_key=$12, iterations_used=$13, updated_at=$14
 		 WHERE id=$1`,
 		pr.ID, pr.Name, pr.Brief, pr.Status, marshalQuestions(pr.Questions), pr.Answers,
 		pr.Plan, pr.Verdict, pr.RejectReason, pr.PreviewURL, pr.RepoURL,
-		pr.IterationsUsed, pr.UpdatedAt)
+		pr.SnapshotKey, pr.IterationsUsed, pr.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -164,7 +164,7 @@ func (p *Postgres) EscalatedProjects(ctx context.Context) ([]*project.Project, e
 }
 
 const projectColumns = `SELECT id, user_id, name, brief, status, questions, answers, plan, verdict,
-	reject_reason, preview_url, repo_url, iterations_used, created_at, updated_at
+	reject_reason, preview_url, repo_url, snapshot_key, iterations_used, created_at, updated_at
 	FROM projects`
 
 // rowScanner is satisfied by both pgx.Row and pgx.Rows.
@@ -177,7 +177,7 @@ func scanProject(row rowScanner) (*project.Project, error) {
 	var questionsJSON string
 	err := row.Scan(&pr.ID, &pr.UserID, &pr.Name, &pr.Brief, &pr.Status, &questionsJSON,
 		&pr.Answers, &pr.Plan, &pr.Verdict, &pr.RejectReason, &pr.PreviewURL, &pr.RepoURL,
-		&pr.IterationsUsed, &pr.CreatedAt, &pr.UpdatedAt)
+		&pr.SnapshotKey, &pr.IterationsUsed, &pr.CreatedAt, &pr.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}

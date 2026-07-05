@@ -14,12 +14,15 @@ import (
 	"time"
 )
 
-// Store is object storage for project assets.
+// Store is object storage for project assets and workspace snapshots.
 type Store interface {
 	// Put stores an object under key with the given content type.
 	Put(ctx context.Context, key, contentType string, r io.Reader, size int64) error
 	// PresignGet returns a short-lived, read-only URL for the object.
 	PresignGet(ctx context.Context, key string, expiry time.Duration) (string, error)
+	// PresignPut returns a short-lived, write-only URL for the object — how the
+	// sandbox uploads its workspace snapshot without holding storage credentials.
+	PresignPut(ctx context.Context, key string, expiry time.Duration) (string, error)
 }
 
 // Memory is an in-process Store for the zero-config dev mode. Presigned URLs are
@@ -44,5 +47,9 @@ func (m *Memory) Put(_ context.Context, key, _ string, r io.Reader, _ int64) err
 }
 
 func (m *Memory) PresignGet(_ context.Context, key string, _ time.Duration) (string, error) {
+	return "memory://" + key, nil
+}
+
+func (m *Memory) PresignPut(_ context.Context, key string, _ time.Duration) (string, error) {
 	return "memory://" + key, nil
 }

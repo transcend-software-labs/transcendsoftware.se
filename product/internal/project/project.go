@@ -56,7 +56,8 @@ type Project struct {
 	Verdict        Verdict  // safety-gate outcome
 	RejectReason   string   // populated when Status == rejected
 	PreviewURL     string   // latest deployed preview link
-	RepoURL        string   // repository the agent built into
+	RepoURL        string   // reserved for GitHub mirroring (Phase 4); not populated yet
+	SnapshotKey    string   // object-storage key of the workspace snapshot from the last successful build
 	IterationsUsed int      // number of build passes consumed (1..MaxIterations)
 	CreatedAt      time.Time
 	UpdatedAt      time.Time

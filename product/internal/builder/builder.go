@@ -10,6 +10,7 @@ package builder
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
@@ -27,19 +28,29 @@ func deployAppName(projectID string) string {
 
 // Request is one build pass.
 type Request struct {
-	ProjectID     string
-	Brief         string
-	Plan          string
-	Prompt        string            // empty for the initial build; the change request on reiterations
-	RepoURL       string            // existing repo on reiterations
+	ProjectID string
+	Brief     string
+	Plan      string
+	Prompt    string // empty for the initial build; the change request on reiterations
+
+	// SnapshotGetURL, when set, is a presigned GET URL of the workspace snapshot
+	// from the previous successful build; it is restored into /workspace before
+	// the agent runs, so reiterations edit the existing site instead of
+	// rebuilding from scratch.
+	SnapshotGetURL string
+	// SnapshotPutURL, when set, is a presigned PUT URL the workspace is uploaded
+	// to after a successful build. Both URLs keep storage credentials out of the
+	// sandbox (same model as asset downloads).
+	SnapshotPutURL string
+
 	AssetManifest map[string]string // filename → short-lived presigned GET URL
 }
 
 // Result is the outcome of a build pass.
 type Result struct {
-	RepoURL    string
-	PreviewURL string
-	Log        string
+	PreviewURL    string
+	Log           string
+	SnapshotSaved bool // the workspace snapshot was uploaded to SnapshotPutURL
 }
 
 // Hooks observe a build pass.
@@ -98,9 +109,6 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 		env["LLM_BASE_URL"] = b.cfg.LLMBaseURL
 		env["LLM_MODEL"] = b.cfg.LLMModel
 	}
-	if req.RepoURL != "" {
-		env["REPO_URL"] = req.RepoURL
-	}
 	if len(req.AssetManifest) > 0 {
 		// Presigned GET URLs — the entrypoint downloads these into the workspace.
 		// No storage credentials enter the sandbox.
@@ -137,6 +145,16 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 	if hooks.OnSandbox != nil {
 		hooks.OnSandbox(sb.MachineID, sb.Addr)
 	}
+
+	// Reiterations continue from the previous build's workspace. The restore is
+	// orchestrator-driven (Machines exec), never left to the agent: without it
+	// the agent would rebuild a different site from scratch.
+	if req.SnapshotGetURL != "" {
+		emit(hooks.OnLog, "Restoring your site from the previous build…")
+		if err := b.restoreSnapshot(ctx, sb.MachineID, req.SnapshotGetURL); err != nil {
+			return Result{}, err
+		}
+	}
 	emit(hooks.OnLog, "Sandbox ready, starting the agent…")
 
 	instruction := req.Plan
@@ -154,10 +172,50 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 		return Result{Log: res.Log}, err
 	}
 
+	// Save the workspace so the next iteration can continue from it. A failed
+	// snapshot degrades the next change, not this build — the site is deployed.
+	snapshotSaved := false
+	if req.SnapshotPutURL != "" {
+		emit(hooks.OnLog, "Saving workspace snapshot…")
+		if err := b.saveSnapshot(ctx, sb.MachineID, req.SnapshotPutURL); err != nil {
+			emit(hooks.OnLog, "Warning: could not save the workspace snapshot.")
+		} else {
+			snapshotSaved = true
+		}
+	}
+
 	// The agent ran `fly deploy` inside the sandbox (per the operating spec); the
 	// app URL is deterministic.
 	preview := "https://" + appName + ".fly.dev"
-	return Result{RepoURL: req.RepoURL, PreviewURL: preview, Log: res.Log}, nil
+	return Result{PreviewURL: preview, Log: res.Log, SnapshotSaved: snapshotSaved}, nil
+}
+
+// restoreSnapshot unpacks the previous build's workspace into /workspace.
+func (b *Sandbox) restoreSnapshot(ctx context.Context, machineID, getURL string) error {
+	script := `curl -fsSL '` + getURL + `' | tar -xzf - -C /workspace`
+	res, err := b.machines.Exec(ctx, machineID, []string{"/bin/sh", "-c", script}, 60)
+	if err != nil {
+		return fmt.Errorf("restore snapshot: %w", err)
+	}
+	if res.ExitCode != 0 {
+		return fmt.Errorf("restore snapshot: exit %d: %s", res.ExitCode, res.Stderr)
+	}
+	return nil
+}
+
+// saveSnapshot uploads the workspace (minus reinstallable dependencies) to the
+// presigned PUT URL.
+func (b *Sandbox) saveSnapshot(ctx context.Context, machineID, putURL string) error {
+	script := `cd /workspace && tar --exclude=node_modules --exclude=.cache -czf /tmp/snapshot.tgz . && ` +
+		`curl -fsS -T /tmp/snapshot.tgz -o /dev/null '` + putURL + `'`
+	res, err := b.machines.Exec(ctx, machineID, []string{"/bin/sh", "-c", script}, 120)
+	if err != nil {
+		return fmt.Errorf("save snapshot: %w", err)
+	}
+	if res.ExitCode != 0 {
+		return fmt.Errorf("save snapshot: exit %d: %s", res.ExitCode, res.Stderr)
+	}
+	return nil
 }
 
 func emit(onLog func(string), line string) {

@@ -64,3 +64,11 @@ func (s *S3) PresignGet(ctx context.Context, key string, expiry time.Duration) (
 	}
 	return u.String(), nil
 }
+
+func (s *S3) PresignPut(ctx context.Context, key string, expiry time.Duration) (string, error) {
+	u, err := s.client.PresignedPutObject(ctx, s.bucket, key, expiry)
+	if err != nil {
+		return "", err
+	}
+	return u.String(), nil
+}

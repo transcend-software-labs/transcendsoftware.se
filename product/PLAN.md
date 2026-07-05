@@ -130,17 +130,21 @@ Milestones:
 - [ ] Sessions out of process memory (sessions table; keep cookie token) (S)
 - [ ] Provision Tigris bucket + set `STORAGE_*` — fixes prod asset uploads —
       *needs OK, usage-priced (§5.2)* (S)
-- [ ] **Workspace snapshots** (3.1): sandbox tars `/workspace` → presigned PUT
-      on success; entrypoint restores from `SNAPSHOT_URL` on reiteration;
-      remove/repurpose the dead `REPO_URL`/`GIT_TOKEN` path (M)
+- [x] **Workspace snapshots** (3.1): restore + save are orchestrator-driven via
+      the Fly Machines exec API (validated live) with presigned GET/PUT URLs —
+      no storage creds and no agent reliance; builder's dead `RepoURL`
+      threading removed (`REPO_URL` in the entrypoint stays, reserved for
+      Phase-4 GitHub mirroring) (M)
 - [x] **Deploy verification** (3.2): smoke-check before `preview_ready`;
       "Verified live ✓" stream line; failed check ⇒ failed iteration (S)
 - [x] Failed reiteration returns project to `preview_ready` (previous preview
       stands), not terminal `failed` — incl. the startup-recovery path; a
       failed attempt does not consume the change credit (S)
 - [ ] Fix the lying docs (3.5): README + builder.go + entrypoint.sh (S)
-- [ ] Reiteration test in dev fakes + one live run proving "change X" edits
-      the *same* site (S)
+- [x] Reiteration test in dev fakes: snapshot key persisted after build 1,
+      restore exec verified before build 2 (orchestrator + builder tests).
+      The live run proving "change X" edits the *same* site is **blocked on
+      Tigris** (§5.2) — presigned snapshot URLs need a real bucket (S)
 
 ### Phase 2 — safe to expose (M2 blockers)
 - [ ] Quotas: ≤3 projects/day/user, 1 concurrent build/user, global concurrent

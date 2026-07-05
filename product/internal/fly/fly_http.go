@@ -181,6 +181,26 @@ func (h *HTTP) waitStarted(ctx context.Context, machineID string) error {
 	}
 }
 
+// Exec runs a command inside a sandbox machine via the Machines exec API.
+// A non-zero exit code is returned in the result, not as an error.
+func (h *HTTP) Exec(ctx context.Context, machineID string, command []string, timeoutSec int) (ExecResult, error) {
+	if timeoutSec <= 0 {
+		timeoutSec = 30
+	}
+	var out struct {
+		ExitCode int32  `json:"exit_code"`
+		Stdout   string `json:"stdout"`
+		Stderr   string `json:"stderr"`
+	}
+	err := h.do(ctx, http.MethodPost,
+		fmt.Sprintf("/apps/%s/machines/%s/exec", h.sandboxApp, machineID),
+		map[string]any{"command": command, "timeout": timeoutSec}, &out)
+	if err != nil {
+		return ExecResult{}, err
+	}
+	return ExecResult{ExitCode: out.ExitCode, Stdout: out.Stdout, Stderr: out.Stderr}, nil
+}
+
 func (h *HTTP) DestroySandbox(ctx context.Context, s *Sandbox) error {
 	if s == nil || s.MachineID == "" {
 		return nil

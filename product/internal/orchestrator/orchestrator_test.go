@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,15 +21,16 @@ import (
 )
 
 func newTestOrch(st store.Store) *Orchestrator {
-	return newTestOrchWithVerifier(st, NoopVerifier{})
+	o, _ := newTestOrchWithVerifier(st, NoopVerifier{})
+	return o
 }
 
-func newTestOrchWithVerifier(st store.Store, v Verifier) *Orchestrator {
+func newTestOrchWithVerifier(st store.Store, v Verifier) (*Orchestrator, *fly.Fake) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	fake := llm.NewFake()
 	machines := fly.NewFake()
 	b := builder.NewSandbox(machines, func(string) opencode.Driver { return opencode.NewFake() }, builder.Config{})
-	return New(st, fake, fake, fake, b, machines, storage.NewMemory(), stream.NewBroker(100), v, log)
+	return New(st, fake, fake, fake, b, machines, storage.NewMemory(), stream.NewBroker(100), v, log), machines
 }
 
 // countingVerifier fails every call after the first okCalls calls.
@@ -212,9 +214,40 @@ func TestRecoverInterrupted(t *testing.T) {
 	}
 }
 
+func TestReiteration_ContinuesFromSnapshot(t *testing.T) {
+	st := store.NewMemory()
+	orch, machines := newTestOrchWithVerifier(st, NoopVerifier{})
+	id := seedProject(t, st, "A small site for an apple farm")
+
+	startThroughIntake(t, orch, st, id)
+	p := waitForIterations(t, st, id, 1)
+
+	// The first successful build must persist a workspace snapshot key.
+	if p.SnapshotKey == "" {
+		t.Fatal("expected a snapshot key after the first build")
+	}
+
+	orch.Reiterate(id, "make the hero bigger")
+	waitForIterations(t, st, id, 2)
+
+	// The reiteration must have restored the previous workspace before the
+	// agent ran (the restore exec references the presigned snapshot URL —
+	// memory storage presigns to memory://<key>).
+	var restored bool
+	for _, e := range machines.Execs() {
+		script := strings.Join(e.Command, " ")
+		if strings.Contains(script, "tar -xzf") && strings.Contains(script, "memory://"+p.SnapshotKey) {
+			restored = true
+		}
+	}
+	if !restored {
+		t.Errorf("reiteration did not restore the workspace snapshot; execs: %+v", machines.Execs())
+	}
+}
+
 func TestVerifyFailure_InitialBuildFails(t *testing.T) {
 	st := store.NewMemory()
-	orch := newTestOrchWithVerifier(st, &countingVerifier{okCalls: 0}) // always fails
+	orch, _ := newTestOrchWithVerifier(st, &countingVerifier{okCalls: 0}) // always fails
 	id := seedProject(t, st, "A small site for an apple farm")
 
 	startThroughIntake(t, orch, st, id)
@@ -227,7 +260,7 @@ func TestVerifyFailure_InitialBuildFails(t *testing.T) {
 
 func TestVerifyFailure_ReiterationKeepsPreview(t *testing.T) {
 	st := store.NewMemory()
-	orch := newTestOrchWithVerifier(st, &countingVerifier{okCalls: 1}) // build 1 ok, build 2 fails
+	orch, _ := newTestOrchWithVerifier(st, &countingVerifier{okCalls: 1}) // build 1 ok, build 2 fails
 	id := seedProject(t, st, "A small site for an apple farm")
 
 	startThroughIntake(t, orch, st, id)

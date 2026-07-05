@@ -286,13 +286,32 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 		}
 	}
 
+	// Workspace snapshots make reiterations continue from the previous build
+	// instead of starting over. Presigned URLs only — the sandbox never holds
+	// storage credentials.
+	snapshotKey := "projects/" + p.ID + "/snapshot.tgz"
+	var snapshotGet, snapshotPut string
+	if p.SnapshotKey != "" {
+		if u, err := o.storage.PresignGet(ctx, p.SnapshotKey, time.Hour); err == nil {
+			snapshotGet = u
+		} else {
+			o.log.Error("presign snapshot get", "project", p.ID, "err", err)
+		}
+	}
+	if u, err := o.storage.PresignPut(ctx, snapshotKey, time.Hour); err == nil {
+		snapshotPut = u
+	} else {
+		o.log.Error("presign snapshot put", "project", p.ID, "err", err)
+	}
+
 	res, err := o.builder.Build(ctx, builder.Request{
-		ProjectID:     p.ID,
-		Brief:         p.EffectiveBrief(),
-		Plan:          p.Plan,
-		Prompt:        prompt,
-		RepoURL:       p.RepoURL,
-		AssetManifest: o.assetManifest(ctx, p.ID),
+		ProjectID:      p.ID,
+		Brief:          p.EffectiveBrief(),
+		Plan:           p.Plan,
+		Prompt:         prompt,
+		SnapshotGetURL: snapshotGet,
+		SnapshotPutURL: snapshotPut,
+		AssetManifest:  o.assetManifest(ctx, p.ID),
 	}, builder.Hooks{
 		OnLog: onLog,
 		OnSandbox: func(machineID, _ string) {
@@ -333,8 +352,8 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 
 	p.IterationsUsed = number
 	p.PreviewURL = res.PreviewURL
-	if res.RepoURL != "" {
-		p.RepoURL = res.RepoURL
+	if res.SnapshotSaved {
+		p.SnapshotKey = snapshotKey
 	}
 	p.Status = project.StatusPreviewReady
 	return o.save(ctx, p)

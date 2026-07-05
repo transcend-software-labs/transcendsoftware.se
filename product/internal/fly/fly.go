@@ -7,7 +7,10 @@
 // token scoped to a single throwaway customer app (blast radius: that one app).
 package fly
 
-import "context"
+import (
+	"context"
+	"sync"
+)
 
 // SpawnSpec describes one sandbox to create.
 type SpawnSpec struct {
@@ -23,6 +26,13 @@ type Sandbox struct {
 	Addr      string // opencode base URL on the private network, e.g. http://[fdaa::3]:4096
 }
 
+// ExecResult is the outcome of a command run inside a sandbox machine.
+type ExecResult struct {
+	ExitCode int32
+	Stdout   string
+	Stderr   string
+}
+
 // Machines manages ephemeral sandboxes and per-customer app provisioning.
 type Machines interface {
 	// SpawnSandbox creates an isolated microVM for one build task and returns it
@@ -30,28 +40,59 @@ type Machines interface {
 	SpawnSandbox(ctx context.Context, spec SpawnSpec) (*Sandbox, error)
 	// DestroySandbox tears the microVM down.
 	DestroySandbox(ctx context.Context, s *Sandbox) error
+	// Exec runs a command inside a sandbox machine (Fly Machines exec API) and
+	// returns its output. Used for deterministic, orchestrator-driven steps —
+	// restoring and saving workspace snapshots — that must not rely on the agent.
+	Exec(ctx context.Context, machineID string, command []string, timeoutSec int) (ExecResult, error)
 	// EnsureApp creates the per-customer Fly app if it doesn't exist. Done by the
 	// orchestrator so app-creation privilege stays out of the sandbox.
 	EnsureApp(ctx context.Context, appName string) error
-	// AppDeployToken mints a deploy token scoped to appName only. Injected into
-	// the sandbox so the agent can deploy that one app and nothing else.
+	// AppDeployToken returns a deploy token for appName, injected into the
+	// sandbox so the agent can run `fly deploy`. Interim: org-scoped (see
+	// fly_http.go for the per-app hardening TODO and its blocker).
 	AppDeployToken(ctx context.Context, appName string) (string, error)
 }
 
 // DefaultPort is the opencode port used when a spec leaves Port unset.
 const DefaultPort = 4096
 
-// Fake is a dev-mode Machines that touches no real infra.
-type Fake struct{}
+// Fake is a dev-mode Machines that touches no real infra. It records Exec
+// calls so tests can assert the snapshot restore/save sequence.
+type Fake struct {
+	mu    sync.Mutex
+	execs []FakeExec
+}
+
+// FakeExec is one recorded Exec call.
+type FakeExec struct {
+	MachineID string
+	Command   []string
+}
 
 // NewFake returns a dev-mode Machines.
 func NewFake() *Fake { return &Fake{} }
 
-func (Fake) SpawnSandbox(_ context.Context, spec SpawnSpec) (*Sandbox, error) {
+func (f *Fake) SpawnSandbox(_ context.Context, spec SpawnSpec) (*Sandbox, error) {
 	// Addr empty → the driver factory uses the fake opencode driver (dev mode).
 	return &Sandbox{MachineID: "dev-machine-" + spec.TaskID, AppName: "dev-app", Addr: ""}, nil
 }
 
-func (Fake) DestroySandbox(_ context.Context, _ *Sandbox) error         { return nil }
-func (Fake) EnsureApp(_ context.Context, _ string) error                { return nil }
-func (Fake) AppDeployToken(_ context.Context, _ string) (string, error) { return "", nil }
+func (f *Fake) DestroySandbox(_ context.Context, _ *Sandbox) error         { return nil }
+func (f *Fake) EnsureApp(_ context.Context, _ string) error                { return nil }
+func (f *Fake) AppDeployToken(_ context.Context, _ string) (string, error) { return "", nil }
+
+func (f *Fake) Exec(_ context.Context, machineID string, command []string, _ int) (ExecResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.execs = append(f.execs, FakeExec{MachineID: machineID, Command: command})
+	return ExecResult{ExitCode: 0}, nil
+}
+
+// Execs returns the Exec calls recorded so far.
+func (f *Fake) Execs() []FakeExec {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]FakeExec, len(f.execs))
+	copy(out, f.execs)
+	return out
+}
