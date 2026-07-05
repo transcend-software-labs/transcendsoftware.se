@@ -39,12 +39,13 @@ type Orchestrator struct {
 	machines fly.Machines  // for reaping orphaned sandboxes on recovery
 	storage  storage.Store // for presigning asset URLs into builds
 	broker   *stream.Broker
+	verifier Verifier // smoke-checks the deployed preview before preview_ready
 	log      *slog.Logger
 }
 
 // New returns an orchestrator.
-func New(s store.Store, in llm.Intake, p llm.Planner, g llm.SafetyGate, b builder.Builder, m fly.Machines, as storage.Store, br *stream.Broker, log *slog.Logger) *Orchestrator {
-	return &Orchestrator{store: s, intake: in, planner: p, gate: g, builder: b, machines: m, storage: as, broker: br, log: log}
+func New(s store.Store, in llm.Intake, p llm.Planner, g llm.SafetyGate, b builder.Builder, m fly.Machines, as storage.Store, br *stream.Broker, v Verifier, log *slog.Logger) *Orchestrator {
+	return &Orchestrator{store: s, intake: in, planner: p, gate: g, builder: b, machines: m, storage: as, broker: br, verifier: v, log: log}
 }
 
 // assetManifest builds filename → presigned GET URL for a project's uploaded
@@ -85,8 +86,14 @@ func (o *Orchestrator) RecoverInterrupted(ctx context.Context) {
 		it.Status = project.StatusFailed
 		_ = o.store.UpdateIteration(ctx, it)
 		if p, err := o.store.ProjectByID(ctx, it.ProjectID); err == nil && p.Status == project.StatusBuilding {
-			p.Status = project.StatusFailed
-			p.RejectReason = "Build interrupted by a restart."
+			// Same rule as markFailed: an interrupted reiteration falls back to
+			// the still-live previous preview instead of bricking the project.
+			if p.IterationsUsed >= 1 && p.PreviewURL != "" {
+				p.Status = project.StatusPreviewReady
+			} else {
+				p.Status = project.StatusFailed
+				p.RejectReason = "Build interrupted by a restart."
+			}
 			_ = o.save(ctx, p)
 		}
 	}
@@ -295,6 +302,18 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 			_ = o.store.UpdateIteration(ctx, it)
 		},
 	})
+
+	// Never assert "preview ready" — verify it. The agent ran `fly deploy`
+	// inside the sandbox; a politely-failed deploy would otherwise hand the
+	// customer a dead link.
+	if err == nil && res.PreviewURL != "" {
+		onLog("Verifying the deployed site…")
+		if verr := o.verifier.Verify(ctx, res.PreviewURL); verr != nil {
+			err = verr
+		} else {
+			onLog("Verified live ✓")
+		}
+	}
 	if err != nil {
 		it.Status = project.StatusFailed
 		it.Log = logBuf.String()
@@ -334,6 +353,15 @@ func (o *Orchestrator) save(ctx context.Context, p *project.Project) error {
 func (o *Orchestrator) markFailed(ctx context.Context, projectID string, cause error) {
 	p, err := o.store.ProjectByID(ctx, projectID)
 	if err != nil {
+		return
+	}
+	// A failed reiteration must not brick the project: the previous preview is
+	// still live and the change credit was not consumed (IterationsUsed only
+	// advances on success). Return to preview_ready; the failed attempt stays
+	// visible in the iteration history.
+	if p.IterationsUsed >= 1 && p.PreviewURL != "" {
+		p.Status = project.StatusPreviewReady
+		_ = o.save(ctx, p)
 		return
 	}
 	p.Status = project.StatusFailed

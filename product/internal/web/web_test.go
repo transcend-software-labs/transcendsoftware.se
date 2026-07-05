@@ -35,7 +35,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	broker := stream.NewBroker(100)
 	assets := storage.NewMemory()
-	orch := orchestrator.New(st, fake, fake, fake, b, machines, assets, broker, log)
+	orch := orchestrator.New(st, fake, fake, fake, b, machines, assets, broker, orchestrator.NoopVerifier{}, log)
 	sessions := auth.NewSessions(time.Hour)
 	srv, err := web.NewServer(config.Config{AdminEmail: "admin@example.com"}, st, sessions, orch, broker, assets, log)
 	if err != nil {

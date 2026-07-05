@@ -2,8 +2,10 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,11 +20,32 @@ import (
 )
 
 func newTestOrch(st store.Store) *Orchestrator {
+	return newTestOrchWithVerifier(st, NoopVerifier{})
+}
+
+func newTestOrchWithVerifier(st store.Store, v Verifier) *Orchestrator {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	fake := llm.NewFake()
 	machines := fly.NewFake()
 	b := builder.NewSandbox(machines, func(string) opencode.Driver { return opencode.NewFake() }, builder.Config{})
-	return New(st, fake, fake, fake, b, machines, storage.NewMemory(), stream.NewBroker(100), log)
+	return New(st, fake, fake, fake, b, machines, storage.NewMemory(), stream.NewBroker(100), v, log)
+}
+
+// countingVerifier fails every call after the first okCalls calls.
+type countingVerifier struct {
+	mu      sync.Mutex
+	okCalls int
+	calls   int
+}
+
+func (v *countingVerifier) Verify(context.Context, string) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.calls++
+	if v.calls > v.okCalls {
+		return errors.New("site did not come up")
+	}
+	return nil
 }
 
 func seedProject(t *testing.T, st store.Store, brief string) string {
@@ -186,6 +209,83 @@ func TestRecoverInterrupted(t *testing.T) {
 	}
 	if active, _ := st.ActiveIterations(ctx); len(active) != 0 {
 		t.Errorf("expected no active builds after recovery, got %d", len(active))
+	}
+}
+
+func TestVerifyFailure_InitialBuildFails(t *testing.T) {
+	st := store.NewMemory()
+	orch := newTestOrchWithVerifier(st, &countingVerifier{okCalls: 0}) // always fails
+	id := seedProject(t, st, "A small site for an apple farm")
+
+	startThroughIntake(t, orch, st, id)
+	p := waitFor(t, st, id, project.StatusFailed)
+
+	if p.IterationsUsed != 0 {
+		t.Errorf("failed verification must not consume an iteration, got %d used", p.IterationsUsed)
+	}
+}
+
+func TestVerifyFailure_ReiterationKeepsPreview(t *testing.T) {
+	st := store.NewMemory()
+	orch := newTestOrchWithVerifier(st, &countingVerifier{okCalls: 1}) // build 1 ok, build 2 fails
+	id := seedProject(t, st, "A small site for an apple farm")
+
+	startThroughIntake(t, orch, st, id)
+	first := waitFor(t, st, id, project.StatusPreviewReady)
+
+	orch.Reiterate(id, "make the hero bigger")
+
+	// Wait for the failed second iteration to land, then check the project
+	// fell back to the previous, still-live preview.
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		its, _ := st.IterationsByProject(context.Background(), id)
+		if len(its) == 2 && its[1].Status == project.StatusFailed {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	p := waitFor(t, st, id, project.StatusPreviewReady)
+	if p.IterationsUsed != 1 {
+		t.Errorf("failed reiteration must not consume the change credit, got %d used", p.IterationsUsed)
+	}
+	if p.PreviewURL != first.PreviewURL {
+		t.Errorf("preview URL changed after a failed reiteration: %q → %q", first.PreviewURL, p.PreviewURL)
+	}
+	if !p.CanReiterate() {
+		t.Error("customer should still be able to retry the change")
+	}
+}
+
+func TestRecoverInterrupted_ReiterationRestoresPreview(t *testing.T) {
+	st := store.NewMemory()
+	orch := newTestOrch(st)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	// A reiteration left "building" by a crash — but the first build succeeded,
+	// so its preview is still live.
+	p := &project.Project{
+		ID: "p1", UserID: "u1", Name: "x", Brief: "b",
+		Status: project.StatusBuilding, PreviewURL: "https://forge-p1.fly.dev",
+		IterationsUsed: 1, CreatedAt: now, UpdatedAt: now,
+	}
+	_ = st.CreateProject(ctx, p)
+	it := &project.Iteration{
+		ID: "i2", ProjectID: "p1", Number: 2, Status: project.StatusBuilding,
+		MachineID: "m-456", CreatedAt: now,
+	}
+	_ = st.CreateIteration(ctx, it)
+
+	orch.RecoverInterrupted(ctx)
+
+	gotP, _ := st.ProjectByID(ctx, "p1")
+	if gotP.Status != project.StatusPreviewReady {
+		t.Errorf("expected project restored to preview_ready, got %q", gotP.Status)
+	}
+	its, _ := st.IterationsByProject(ctx, "p1")
+	if len(its) != 1 || its[0].Status != project.StatusFailed {
+		t.Errorf("expected the interrupted iteration marked failed, got %+v", its)
 	}
 }
 

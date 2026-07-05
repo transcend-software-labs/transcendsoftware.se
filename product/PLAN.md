@@ -133,10 +133,11 @@ Milestones:
 - [ ] **Workspace snapshots** (3.1): sandbox tars `/workspace` → presigned PUT
       on success; entrypoint restores from `SNAPSHOT_URL` on reiteration;
       remove/repurpose the dead `REPO_URL`/`GIT_TOKEN` path (M)
-- [ ] **Deploy verification** (3.2): smoke-check before `preview_ready`;
+- [x] **Deploy verification** (3.2): smoke-check before `preview_ready`;
       "Verified live ✓" stream line; failed check ⇒ failed iteration (S)
-- [ ] Failed reiteration returns project to `preview_ready` (previous preview
-      stands), not terminal `failed` — incl. the startup-recovery path (S)
+- [x] Failed reiteration returns project to `preview_ready` (previous preview
+      stands), not terminal `failed` — incl. the startup-recovery path; a
+      failed attempt does not consume the change credit (S)
 - [ ] Fix the lying docs (3.5): README + builder.go + entrypoint.sh (S)
 - [ ] Reiteration test in dev fakes + one live run proving "change X" edits
       the *same* site (S)

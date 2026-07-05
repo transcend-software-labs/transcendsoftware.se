@@ -55,7 +55,7 @@ func main() {
 	})
 	assets := newStorage(cfg, log)
 	broker := stream.NewBroker(500)
-	orch := orchestrator.New(st, intake, planner, gate, build, machines, assets, broker, log)
+	orch := orchestrator.New(st, intake, planner, gate, build, machines, assets, broker, newVerifier(cfg, log), log)
 	orch.RecoverInterrupted(context.Background()) // reap builds left running by a prior run
 	sessions := auth.NewSessions(cfg.SessionTTL)
 
@@ -159,6 +159,17 @@ func newStorage(cfg config.Config, log *slog.Logger) storage.Store {
 		os.Exit(1)
 	}
 	return s
+}
+
+// newVerifier picks the preview smoke check: a real HTTP probe when builds are
+// real (Fly configured), a no-op in dev mode where fake preview URLs don't exist.
+func newVerifier(cfg config.Config, log *slog.Logger) orchestrator.Verifier {
+	if cfg.FlyAPIToken == "" {
+		log.Info("verifier: noop (dev)")
+		return orchestrator.NoopVerifier{}
+	}
+	log.Info("verifier: http")
+	return orchestrator.HTTPVerifier{}
 }
 
 func newMachines(cfg config.Config, log *slog.Logger) fly.Machines {
