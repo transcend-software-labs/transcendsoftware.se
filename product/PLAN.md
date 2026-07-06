@@ -196,10 +196,11 @@ Milestones:
 - [x] Email (Resend): escalated → Rasmus, build failed → Rasmus, preview ready
       → customer. Interface + log-only fake (dev) + Resend impl; wired at all
       three lifecycle points, best-effort after state is persisted; tested with
-      a recording notifier. Key received 2026-07-06 and validated (test email
-      delivered to Rasmus). **Pending: set secrets + deploy (needs Fly token);
-      customer emails also need `transcendsoftware.se` verified in Resend —
-      until then only mail to the account owner delivers** (M)
+      a recording notifier. **Live in prod 2026-07-06** (`notify: resend`).
+      Caveat: no verified sender domain yet, so `onboarding@resend.dev` only
+      delivers to the Resend account owner (Rasmus) — operator notices work;
+      **customer "preview ready" emails need `transcendsoftware.se` verified in
+      Resend + `EMAIL_FROM` updated** (M)
 - [x] Escalated project page auto-updates after admin approval (slow 15s poll
       while held, fast 2s while building) (S)
 - [~] `app.transcendsoftware.se`: Fly cert **created** (pending validation).
@@ -233,13 +234,13 @@ Milestones:
       suggests 2-3 tailored design directions; the customer picks one or
       states their own; the choice flows into the plan (## Design) and the
       build agent, which restyles the design-neutral starter completely.
-      Stored via migration 0004. Verified in dev UI end to end.
+      Stored via migration 0004. Verified in dev UI, then **live in prod 2026-07-06** — Kimi produced 3 distinct tailored directions for a real brief.
 - [x] **Migrations run at startup** (2026-07-06, Rasmus's direction): embedded
       in the binary, applied by `store.NewPostgres` in one advisory-locked
       transaction, tracked in `schema_migrations`. Kills deploy-ordering
       footguns. Validated against local Postgres in all three states: legacy
       schema without tracking table (prod's state — backfills idempotently),
-      re-boot (0 applied), fresh empty DB (full bootstrap + working signup).
+      re-boot (0 applied), fresh empty DB (full bootstrap + working signup). **Live in prod 2026-07-06**: boot log applied 0001-0004 (0004 first-time), health green.
 
 ### Phase 4 — better product (post-M3; several are joint sessions)
 - [x] Project template/scaffold — built 2026-07-05 at Rasmus's direction
