@@ -237,6 +237,25 @@ Milestones:
       empty 200s once; permanent 4xx are not retried. Tested (S). _(Anthropic
       fallback client not yet covered — prod path is Kimi.)_
 
+### Added along the way (2026-07-06, built + tested, awaiting credentials to activate)
+- [x] **GitHub source mirror + CI deploy** (Rasmus's direction): each build
+      mirrors the project source to a private repo under
+      `transcend-software-labs` (one commit per build → reviewable diffs) and
+      writes `.github/workflows/deploy.yml` (flyctl deploy on push to main) with
+      an encrypted app-scoped `FLY_API_TOKEN` secret. `internal/github`
+      (interface+fake+REST). Validated the full REST flow against real GitHub.
+      **Activate:** `GITHUB_TOKEN` (needs `repo` + **`workflow`** scopes) +
+      `GITHUB_ORG`. Not deployed yet. (~14 throwaway test repos to delete.)
+- [x] **Login: magic link + Google (LinkedIn-ready)** (Rasmus's direction):
+      passwordless email login (single-use 20-min link, migration 0008) +
+      provider-generic OAuth2 (`internal/oauth`); email/password kept as a
+      collapsed fallback; accounts link by email. Tested (magic-link E2E, oauth
+      unit). **Activate:** `GOOGLE_CLIENT_ID/SECRET` (redirect
+      `<BASE_URL>/auth/google/callback`); magic-link delivery to *customers*
+      also needs the Resend domain verified. **Hold prod deploy** of this until
+      Resend domain is verified, else the magic-link-first login page can't
+      actually email customers.
+
 ### Added along the way
 - [x] **Per-project design choice** (2026-07-06, Rasmus's direction): intake
       suggests 2-3 tailored design directions; the customer picks one or
