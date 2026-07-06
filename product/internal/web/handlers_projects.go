@@ -328,3 +328,18 @@ func (s *Server) handleReiterate(w http.ResponseWriter, r *http.Request, u *user
 	s.orch.Reiterate(p.ID, prompt)
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 }
+
+// handleAccept records the customer accepting the preview, sending it to
+// Rasmus's final-review queue.
+func (s *Server) handleAccept(w http.ResponseWriter, r *http.Request, u *user.User) {
+	p, ok := s.ownedProject(w, r, u)
+	if !ok {
+		return
+	}
+	if p.CanAccept() {
+		if err := s.orch.AcceptPreview(p.ID); err != nil {
+			s.log.Error("accept preview", "err", err)
+		}
+	}
+	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+}

@@ -12,6 +12,7 @@ import (
 // adminView is the data for the operator dashboard.
 type adminView struct {
 	Escalated []*project.Project
+	Accepted  []*project.Project // accepted by the customer, awaiting delivery review
 	Active    []activeBuild
 	Previews  []*project.Project // live preview apps (cost money; can be destroyed)
 	Stats     buildStats
@@ -93,10 +94,13 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	var previews []*project.Project
+	var previews, accepted []*project.Project
 	for _, p := range all {
-		if p.Status == project.StatusPreviewReady {
+		switch p.Status {
+		case project.StatusPreviewReady:
 			previews = append(previews, p)
+		case project.StatusAccepted:
+			accepted = append(accepted, p)
 		}
 	}
 
@@ -108,7 +112,7 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 	}
 
 	s.render(w, http.StatusOK, "admin", s.view(r, "Operator review", adminView{
-		Escalated: escalated, Active: active, Previews: previews,
+		Escalated: escalated, Accepted: accepted, Active: active, Previews: previews,
 		Stats: computeStats(recent),
 	}))
 }
@@ -116,6 +120,26 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 // handleAdminDestroyPreview tears down a project's preview app immediately.
 func (s *Server) handleAdminDestroyPreview(w http.ResponseWriter, r *http.Request, _ *user.User) {
 	if err := s.orch.DestroyPreview(r.Context(), r.PathValue("id")); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
+// handleAdminDeliver completes the handover: Rasmus has reviewed + guaranteed
+// an accepted project.
+func (s *Server) handleAdminDeliver(w http.ResponseWriter, r *http.Request, _ *user.User) {
+	if err := s.orch.DeliverProject(r.PathValue("id")); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
+// handleAdminReturn sends an accepted project back to the customer for changes.
+func (s *Server) handleAdminReturn(w http.ResponseWriter, r *http.Request, _ *user.User) {
+	note := strings.TrimSpace(r.FormValue("note"))
+	if err := s.orch.ReturnToCustomer(r.PathValue("id"), note); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

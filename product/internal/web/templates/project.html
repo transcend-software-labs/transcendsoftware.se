@@ -83,6 +83,17 @@
 </section>
 {{end}}
 
+{{if .CanAccept}}
+<section class="panel accept-panel">
+  <h2>Happy with your site?</h2>
+  <p class="muted small">Accept it and Rasmus will personally review and guarantee it before it's delivered.</p>
+  <form method="post" action="/projects/{{.ID}}/accept">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <button class="btn" type="submit">Accept this site</button>
+  </form>
+</section>
+{{end}}
+
 {{if .CanReiterate}}
 <section class="panel">
   <h2>Request a change</h2>

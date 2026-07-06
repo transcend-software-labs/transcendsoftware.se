@@ -17,6 +17,35 @@
 </section>
 
 <section class="panel">
+  <h2>Ready for delivery</h2>
+  <p class="muted small">Accepted by the customer, waiting for your review + guarantee. Nothing is delivered until you approve.</p>
+  {{if .Data.Accepted}}
+  <ul class="project-list">
+    {{range .Data.Accepted}}
+    <li class="panel">
+      <h3>{{.Name}}</h3>
+      <p><a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{.PreviewURL}} ↗</a></p>
+      <p class="brief muted small">{{.Brief}}</p>
+      <div class="admin-actions">
+        <form method="post" action="/admin/projects/{{.ID}}/deliver" class="inline">
+          <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+          <button class="btn btn-sm" type="submit">Approve &amp; deliver</button>
+        </form>
+        <form method="post" action="/admin/projects/{{.ID}}/return" class="inline-actions">
+          <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+          <input type="text" name="note" placeholder="Send back with a note (optional)">
+          <button class="linklike" type="submit">Send back</button>
+        </form>
+      </div>
+    </li>
+    {{end}}
+  </ul>
+  {{else}}
+  <p class="muted small">Nothing awaiting delivery.</p>
+  {{end}}
+</section>
+
+<section class="panel">
   <h2>In progress</h2>
   {{if .Data.Active}}
   <ul class="project-list">

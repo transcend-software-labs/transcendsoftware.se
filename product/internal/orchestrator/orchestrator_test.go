@@ -356,6 +356,78 @@ func TestTemplate_SeedsFirstBuildNotReiterations(t *testing.T) {
 	}
 }
 
+func TestHandover_AcceptReviewDeliver(t *testing.T) {
+	st := store.NewMemory()
+	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
+	rec := &recordingNotifier{}
+	orch.SetNotifications(rec, "rasmus@example.com", "https://app.example")
+	if err := st.CreateUser(context.Background(),
+		&user.User{ID: "u1", Email: "customer@example.com", CreatedAt: time.Now().UTC()}); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	id := seedProject(t, st, "A small site for an apple farm")
+	startThroughIntake(t, orch, st, id)
+	waitFor(t, st, id, project.StatusPreviewReady)
+
+	// Customer accepts → operator queue + operator notified.
+	if err := orch.AcceptPreview(id); err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+	p, _ := st.ProjectByID(context.Background(), id)
+	if p.Status != project.StatusAccepted {
+		t.Fatalf("expected accepted, got %q", p.Status)
+	}
+	if p.CanReiterate() || p.CanAccept() {
+		t.Error("accepted project should not be re-acceptable or reiterable")
+	}
+	if !sentTo(rec, "rasmus@example.com", "review") {
+		t.Errorf("operator not notified on accept; sent: %+v", rec.all())
+	}
+
+	// Rasmus delivers → terminal + customer notified.
+	if err := orch.DeliverProject(id); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	p, _ = st.ProjectByID(context.Background(), id)
+	if p.Status != project.StatusDelivered {
+		t.Fatalf("expected delivered, got %q", p.Status)
+	}
+	if !sentTo(rec, "customer@example.com", "delivered") {
+		t.Errorf("customer not notified on delivery; sent: %+v", rec.all())
+	}
+}
+
+func TestHandover_ReturnToCustomerRestoresChanges(t *testing.T) {
+	st := store.NewMemory()
+	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
+	id := seedProject(t, st, "A small site for an apple farm")
+	startThroughIntake(t, orch, st, id)
+	waitFor(t, st, id, project.StatusPreviewReady)
+
+	if err := orch.AcceptPreview(id); err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+	// Rasmus sends it back — customer can change and accept again.
+	if err := orch.ReturnToCustomer(id, "add opening hours"); err != nil {
+		t.Fatalf("return: %v", err)
+	}
+	p, _ := st.ProjectByID(context.Background(), id)
+	if p.Status != project.StatusPreviewReady {
+		t.Fatalf("expected preview_ready after return, got %q", p.Status)
+	}
+	if !p.CanReiterate() || !p.CanAccept() {
+		t.Error("returned project should be reiterable and acceptable again")
+	}
+	// Deliver must refuse a non-accepted project.
+	if err := orch.DeliverProject(id); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	p, _ = st.ProjectByID(context.Background(), id)
+	if p.Status == project.StatusDelivered {
+		t.Error("delivery must only work from the accepted state")
+	}
+}
+
 func TestVerifyFailure_InitialBuildFails(t *testing.T) {
 	st := store.NewMemory()
 	orch, _ := newTestOrchWithVerifier(st, &countingVerifier{okCalls: 0}) // always fails

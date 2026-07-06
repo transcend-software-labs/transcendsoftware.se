@@ -87,12 +87,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /projects/{id}/answer", s.requireUser(s.handleAnswer))
 	mux.HandleFunc("POST /projects/{id}/assets", limitBody(maxUpload+(1<<20), s.requireUser(s.handleUploadAsset)))
 	mux.HandleFunc("POST /projects/{id}/reiterate", s.requireUser(s.handleReiterate))
+	mux.HandleFunc("POST /projects/{id}/accept", s.requireUser(s.handleAccept))
 
 	// Operator/admin views (gated by ADMIN_EMAIL).
 	mux.HandleFunc("GET /admin", s.requireAdmin(s.handleAdmin))
 	mux.HandleFunc("POST /admin/projects/{id}/approve", s.requireAdmin(s.handleAdminApprove))
 	mux.HandleFunc("POST /admin/projects/{id}/reject", s.requireAdmin(s.handleAdminReject))
 	mux.HandleFunc("POST /admin/projects/{id}/destroy-preview", s.requireAdmin(s.handleAdminDestroyPreview))
+	mux.HandleFunc("POST /admin/projects/{id}/deliver", s.requireAdmin(s.handleAdminDeliver))
+	mux.HandleFunc("POST /admin/projects/{id}/return", s.requireAdmin(s.handleAdminReturn))
 
 	return logRequests(s.log, mux)
 }
@@ -226,6 +229,10 @@ func statusLabel(s project.Status) string {
 		return "Building your site…"
 	case project.StatusPreviewReady:
 		return "Preview ready"
+	case project.StatusAccepted:
+		return "Accepted — final review by Rasmus"
+	case project.StatusDelivered:
+		return "Delivered & guaranteed"
 	case project.StatusRejected:
 		return "Declined"
 	case project.StatusFailed:
@@ -244,7 +251,7 @@ func statusLabel(s project.Status) string {
 // operator approves or declines — see pollEvery.
 func polling(p *project.Project) bool {
 	switch p.Status {
-	case project.StatusNeedsInput, project.StatusPreviewReady,
+	case project.StatusNeedsInput, project.StatusPreviewReady, project.StatusDelivered,
 		project.StatusRejected, project.StatusFailed, project.StatusExpired:
 		return false
 	default:
@@ -255,7 +262,8 @@ func polling(p *project.Project) bool {
 // pollEvery is the HTMX polling cadence: fast while a step is actively
 // running, slow while waiting on the operator (which can take hours).
 func pollEvery(p *project.Project) string {
-	if p.Status == project.StatusEscalated {
+	// Waiting on a human (Rasmus) — poll slowly; those states can take a while.
+	if p.Status == project.StatusEscalated || p.Status == project.StatusAccepted {
 		return "15s"
 	}
 	return "2s"

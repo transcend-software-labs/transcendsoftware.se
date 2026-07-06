@@ -216,6 +216,75 @@ func (o *Orchestrator) Reiterate(projectID, prompt string) {
 	})
 }
 
+// AcceptPreview records the customer accepting the current preview and moves
+// the project into Rasmus's final-review queue. Rasmus's personal guarantee is
+// now enforced by the state machine: nothing reaches "delivered" without his
+// approval.
+func (o *Orchestrator) AcceptPreview(projectID string) error {
+	ctx := context.Background()
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if !p.CanAccept() {
+		return nil
+	}
+	p.Status = project.StatusAccepted
+	if err := o.save(ctx, p); err != nil {
+		return err
+	}
+	o.notifyOperator(ctx, "Forge: a project is ready for your review",
+		"\""+p.Name+"\" was accepted by the customer and is waiting for your final review + guarantee.\n\n"+
+			"Preview: "+p.PreviewURL+"\nReview it: "+o.baseURLOr("/admin"))
+	return nil
+}
+
+// DeliverProject is the operator action completing the handover: Rasmus has
+// reviewed and guaranteed the site. Terminal.
+func (o *Orchestrator) DeliverProject(projectID string) error {
+	ctx := context.Background()
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if p.Status != project.StatusAccepted {
+		return nil
+	}
+	p.Status = project.StatusDelivered
+	if err := o.save(ctx, p); err != nil {
+		return err
+	}
+	o.notifyCustomer(ctx, p.UserID, "Your website is delivered",
+		"Good news — \""+p.Name+"\" has been reviewed and is now delivered:\n\n"+p.PreviewURL+"\n\n"+
+			"Rasmus has personally checked it. Reply to this email if you need anything.")
+	return nil
+}
+
+// ReturnToCustomer sends an accepted project back for more changes (Rasmus
+// wasn't satisfied, or the customer asked). It returns to preview_ready with
+// its remaining reiterations intact.
+func (o *Orchestrator) ReturnToCustomer(projectID, note string) error {
+	ctx := context.Background()
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if p.Status != project.StatusAccepted {
+		return nil
+	}
+	p.Status = project.StatusPreviewReady
+	if err := o.save(ctx, p); err != nil {
+		return err
+	}
+	body := "\"" + p.Name + "\" was sent back for another look."
+	if note != "" {
+		body += "\n\nNote: " + note
+	}
+	body += "\n\nOpen your project: " + o.projectLink(p.ID)
+	o.notifyCustomer(ctx, p.UserID, "An update on your website", body)
+	return nil
+}
+
 // ApproveEscalated lets an operator clear an escalated project to build.
 func (o *Orchestrator) ApproveEscalated(projectID string) {
 	o.async(projectID, func(ctx context.Context) error {

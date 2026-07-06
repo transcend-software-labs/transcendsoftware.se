@@ -3,6 +3,14 @@
   {{if eq .Status "preview_ready"}}
     <p><a class="btn" href="{{.PreviewURL}}" target="_blank" rel="noopener">Open preview ↗</a></p>
   {{end}}
+  {{if eq .Status "accepted"}}
+    <p><a class="btn" href="{{.PreviewURL}}" target="_blank" rel="noopener">Open preview ↗</a></p>
+    <p class="reason">Rasmus is giving it a final review — you'll hear as soon as it's guaranteed and delivered.</p>
+  {{end}}
+  {{if eq .Status "delivered"}}
+    <p><a class="btn" href="{{.PreviewURL}}" target="_blank" rel="noopener">Open your site ↗</a></p>
+    <p class="reason">Reviewed and guaranteed by Rasmus. 🎉</p>
+  {{end}}
   {{if eq .Status "rejected"}}<p class="reason">Declined: {{.RejectReason}}</p>{{end}}
   {{if eq .Status "failed"}}<p class="reason">Something went wrong: {{.RejectReason}}</p>{{end}}
   {{if eq .Status "expired"}}<p class="reason">{{.RejectReason}}</p>{{end}}

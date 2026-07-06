@@ -27,6 +27,8 @@ const (
 	StatusRejected     Status = "rejected"      // safety gate rejected the request (terminal)
 	StatusBuilding     Status = "building"      // a sandboxed build is running
 	StatusPreviewReady Status = "preview_ready" // a build finished, preview link attached
+	StatusAccepted     Status = "accepted"      // customer accepted the preview; awaiting Rasmus's final review
+	StatusDelivered    Status = "delivered"     // Rasmus reviewed + guaranteed it (terminal, the handover)
 	StatusFailed       Status = "failed"        // a build or pipeline step errored (terminal)
 	StatusExpired      Status = "expired"       // preview reaped after the retention window (terminal)
 )
@@ -87,8 +89,15 @@ func (p *Project) EffectiveBrief() string {
 }
 
 // CanReiterate reports whether the customer may request another build pass.
+// Accepting the site (or having it delivered) locks further changes.
 func (p *Project) CanReiterate() bool {
 	return p.Status == StatusPreviewReady && p.IterationsUsed < MaxIterations
+}
+
+// CanAccept reports whether the customer may accept the current preview and
+// send it to Rasmus for final review.
+func (p *Project) CanAccept() bool {
+	return p.Status == StatusPreviewReady
 }
 
 // IterationsLeft is the number of reiterations still available to the customer.
