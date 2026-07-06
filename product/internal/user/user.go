@@ -20,3 +20,12 @@ type Session struct {
 	ExpiresAt time.Time
 	CreatedAt time.Time
 }
+
+// LoginToken is a single-use passwordless ("magic link") login token. Only a
+// hash of the emailed token is stored.
+type LoginToken struct {
+	TokenHash string // hex SHA-256 of the token in the link
+	Email     string // the address the link was sent to
+	ExpiresAt time.Time
+	CreatedAt time.Time
+}

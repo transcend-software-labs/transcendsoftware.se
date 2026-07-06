@@ -25,6 +25,11 @@ type Store interface {
 	// DeleteExpiredSessions removes sessions past their expiry (housekeeping).
 	DeleteExpiredSessions(ctx context.Context) error
 
+	// Magic-link login tokens (single-use; stored hashed)
+	CreateLoginToken(ctx context.Context, t *user.LoginToken) error
+	LoginTokenByHash(ctx context.Context, tokenHash string) (*user.LoginToken, error)
+	DeleteLoginToken(ctx context.Context, tokenHash string) error
+
 	// Projects
 	CreateProject(ctx context.Context, p *project.Project) error
 	UpdateProject(ctx context.Context, p *project.Project) error

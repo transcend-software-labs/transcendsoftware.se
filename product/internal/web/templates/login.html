@@ -1,11 +1,30 @@
 {{define "login"}}{{template "head" .}}
 <section class="form-narrow">
   <h1>Log in</h1>
-  <form method="post" action="/login" class="stack">
-    <label>Email<input type="email" name="email" required autofocus></label>
-    <label>Password<input type="password" name="password" required></label>
-    <button class="btn" type="submit">Log in</button>
+
+  {{if .Providers}}
+  <div class="oauth-buttons">
+    {{range .Providers}}
+    <a class="btn btn-oauth" href="/auth/{{.Name}}">Continue with {{.Label}}</a>
+    {{end}}
+  </div>
+  <div class="or-divider"><span>or</span></div>
+  {{end}}
+
+  <form method="post" action="/auth/magic" class="stack">
+    <label>Email me a login link<input type="email" name="email" required autofocus placeholder="you@example.com"></label>
+    <button class="btn" type="submit">Send me a link</button>
   </form>
+
+  <details class="password-login">
+    <summary class="muted small">Use a password instead</summary>
+    <form method="post" action="/login" class="stack">
+      <label>Email<input type="email" name="email"></label>
+      <label>Password<input type="password" name="password"></label>
+      <button class="btn btn-sm" type="submit">Log in</button>
+    </form>
+  </details>
+
   <p class="muted">No account? <a href="/signup">Get started</a>.</p>
 </section>
 {{template "foot" .}}{{end}}

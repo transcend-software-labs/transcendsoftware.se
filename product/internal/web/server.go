@@ -11,6 +11,8 @@ import (
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/auth"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
+	"github.com/transcend-software-labs/rasmus-ai/internal/notify"
+	"github.com/transcend-software-labs/rasmus-ai/internal/oauth"
 	"github.com/transcend-software-labs/rasmus-ai/internal/orchestrator"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 	"github.com/transcend-software-labs/rasmus-ai/internal/storage"
@@ -33,6 +35,8 @@ type Server struct {
 	orch     *orchestrator.Orchestrator
 	broker   *stream.Broker
 	storage  storage.Store
+	oauth    *oauth.Registry // social login (nil → none configured)
+	notifier notify.Notifier // for magic-link emails
 	tmpl     *template.Template
 	log      *slog.Logger
 }
@@ -47,7 +51,18 @@ func NewServer(cfg config.Config, st store.Store, sessions *auth.Sessions, orch 
 	if err != nil {
 		return nil, err
 	}
-	return &Server{cfg: cfg, store: st, sessions: sessions, orch: orch, broker: broker, storage: assets, tmpl: tmpl, log: log}, nil
+	return &Server{cfg: cfg, store: st, sessions: sessions, orch: orch, broker: broker,
+		storage: assets, oauth: oauth.NewRegistry(), notifier: notify.Noop{}, tmpl: tmpl, log: log}, nil
+}
+
+// SetAuth wires social login and the notifier used for magic-link emails.
+func (s *Server) SetAuth(reg *oauth.Registry, notifier notify.Notifier) {
+	if reg != nil {
+		s.oauth = reg
+	}
+	if notifier != nil {
+		s.notifier = notifier
+	}
 }
 
 // maxUpload caps a single asset upload.
@@ -78,6 +93,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /signup", s.handleSignup)
 	mux.HandleFunc("POST /logout", s.handleLogout)
 
+	// Passwordless + social login.
+	mux.HandleFunc("POST /auth/magic", s.handleMagicRequest)
+	mux.HandleFunc("GET /auth/magic", s.handleMagicConsume)
+	mux.HandleFunc("GET /auth/{provider}", s.handleOAuthStart)
+	mux.HandleFunc("GET /auth/{provider}/callback", s.handleOAuthCallback)
+
 	mux.HandleFunc("GET /dashboard", s.requireUser(s.handleDashboard))
 	mux.HandleFunc("GET /projects/new", s.requireUser(s.handleNewProjectForm))
 	mux.HandleFunc("POST /projects", s.requireUser(s.handleCreateProject))
@@ -102,17 +123,19 @@ func (s *Server) Handler() http.Handler {
 
 // View is the data passed to every page template.
 type View struct {
-	Title   string
-	User    *user.User
-	IsAdmin bool
-	CSRF    string
-	Flash   string
-	Data    any
+	Title     string
+	User      *user.User
+	IsAdmin   bool
+	CSRF      string
+	Flash     string
+	Data      any
+	Providers []oauth.Provider // social-login buttons on auth pages
 }
 
 func (s *Server) view(r *http.Request, title string, data any) View {
 	u := s.currentUser(r)
-	return View{Title: title, User: u, IsAdmin: s.isAdmin(u), CSRF: s.csrfToken(r), Data: data}
+	return View{Title: title, User: u, IsAdmin: s.isAdmin(u), CSRF: s.csrfToken(r),
+		Data: data, Providers: s.oauth.Enabled()}
 }
 
 // csrfToken returns the CSRF token bound to the request's session, or "".

@@ -107,6 +107,8 @@ mode.** Each variable independently switches one piece from fake to real:
 | `EMAIL_FROM`          | verified sender for outgoing email                         |
 | `GITHUB_TOKEN`        | mirror each project's source to a private repo + deploy-on-push Action (needs `repo` + `workflow` scopes); empty → disabled |
 | `GITHUB_ORG`          | org the mirror repos live under (default `transcend-software-labs`) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | enable "Continue with Google" login (redirect URI `<BASE_URL>/auth/google/callback`) |
+| `LINKEDIN_CLIENT_ID` / `LINKEDIN_CLIENT_SECRET` | enable LinkedIn login (same callback pattern) |
 | `ANTHROPIC_API_KEY`   | use the real planner + safety gate (else a deterministic fake) |
 | `ANTHROPIC_MODEL`     | override the model (default `claude-sonnet-4-6`)           |
 | `LLM_API_KEY`         | OpenAI-compatible model for intake/plan/gate **and** the sandbox agent (takes precedence over Anthropic) |

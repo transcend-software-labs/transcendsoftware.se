@@ -232,6 +232,18 @@ label.design-option:hover { border-color: var(--accent); }
 .stat-row li { display: flex; flex-direction: column; gap: .15rem; }
 .stat-num { font-size: 1.5rem; font-weight: 600; color: var(--text); line-height: 1; }
 
+.oauth-buttons { display: flex; flex-direction: column; gap: .6rem; margin-bottom: 1rem; }
+.btn-oauth {
+  display: block; text-align: center; text-decoration: none;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border-2);
+}
+.btn-oauth:hover { border-color: var(--accent); }
+.or-divider { display: flex; align-items: center; gap: .8rem; color: var(--muted); font-size: .85rem; margin: .4rem 0 1rem; }
+.or-divider::before, .or-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.password-login { margin-top: 1rem; }
+.password-login summary { cursor: pointer; }
+.password-login .stack { margin-top: .6rem; }
+
 .table-scroll { overflow-x: auto; margin-top: 1rem; }
 .builds-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
 .builds-table th, .builds-table td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid var(--border); white-space: nowrap; }

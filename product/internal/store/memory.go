@@ -14,23 +14,51 @@ import (
 // Memory is an in-memory Store. It is the default in dev mode and keeps the
 // app fully runnable without a database. All data is lost on restart.
 type Memory struct {
-	mu         sync.RWMutex
-	users      map[string]*user.User
-	sessions   map[string]*user.Session
-	projects   map[string]*project.Project
-	iterations map[string]*project.Iteration
-	assets     map[string]*project.Asset
+	mu          sync.RWMutex
+	users       map[string]*user.User
+	sessions    map[string]*user.Session
+	loginTokens map[string]*user.LoginToken
+	projects    map[string]*project.Project
+	iterations  map[string]*project.Iteration
+	assets      map[string]*project.Asset
 }
 
 // NewMemory returns an empty in-memory store.
 func NewMemory() *Memory {
 	return &Memory{
-		users:      make(map[string]*user.User),
-		sessions:   make(map[string]*user.Session),
-		projects:   make(map[string]*project.Project),
-		iterations: make(map[string]*project.Iteration),
-		assets:     make(map[string]*project.Asset),
+		users:       make(map[string]*user.User),
+		sessions:    make(map[string]*user.Session),
+		loginTokens: make(map[string]*user.LoginToken),
+		projects:    make(map[string]*project.Project),
+		iterations:  make(map[string]*project.Iteration),
+		assets:      make(map[string]*project.Asset),
 	}
+}
+
+func (m *Memory) CreateLoginToken(_ context.Context, t *user.LoginToken) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cp := *t
+	m.loginTokens[t.TokenHash] = &cp
+	return nil
+}
+
+func (m *Memory) LoginTokenByHash(_ context.Context, tokenHash string) (*user.LoginToken, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	t, ok := m.loginTokens[tokenHash]
+	if !ok {
+		return nil, project.ErrNotFound
+	}
+	cp := *t
+	return &cp, nil
+}
+
+func (m *Memory) DeleteLoginToken(_ context.Context, tokenHash string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.loginTokens, tokenHash)
+	return nil
 }
 
 func (m *Memory) Close() error { return nil }

@@ -31,6 +31,12 @@ type Config struct {
 	GitHubToken string
 	GitHubOrg   string
 
+	// Social login (empty client id/secret → that provider is hidden).
+	GoogleClientID       string
+	GoogleClientSecret   string
+	LinkedInClientID     string
+	LinkedInClientSecret string
+
 	// Quotas — every build spends real money (sandbox machine + LLM tokens).
 	MaxProjectsPerDay   int // per user, rolling 24h (default 3)
 	MaxConcurrentBuilds int // across all users (default 3)
@@ -94,6 +100,11 @@ func Load() Config {
 		EmailFrom:    envOr("EMAIL_FROM", "Transcend Forge <onboarding@resend.dev>"),
 		GitHubToken:  os.Getenv("GITHUB_TOKEN"),
 		GitHubOrg:    envOr("GITHUB_ORG", "transcend-software-labs"),
+
+		GoogleClientID:       os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret:   os.Getenv("GOOGLE_CLIENT_SECRET"),
+		LinkedInClientID:     os.Getenv("LINKEDIN_CLIENT_ID"),
+		LinkedInClientSecret: os.Getenv("LINKEDIN_CLIENT_SECRET"),
 
 		MaxProjectsPerDay:   envIntOr("MAX_PROJECTS_PER_DAY", 3),
 		MaxConcurrentBuilds: envIntOr("MAX_CONCURRENT_BUILDS", 3),

@@ -199,6 +199,34 @@ func (p *Postgres) DeleteExpiredSessions(ctx context.Context) error {
 	return err
 }
 
+func (p *Postgres) CreateLoginToken(ctx context.Context, t *user.LoginToken) error {
+	// Opportunistic housekeeping.
+	_, _ = p.pool.Exec(ctx, `DELETE FROM login_tokens WHERE expires_at < now()`)
+	_, err := p.pool.Exec(ctx,
+		`INSERT INTO login_tokens (token_hash, email, expires_at, created_at) VALUES ($1,$2,$3,$4)`,
+		t.TokenHash, t.Email, t.ExpiresAt, t.CreatedAt)
+	return err
+}
+
+func (p *Postgres) LoginTokenByHash(ctx context.Context, tokenHash string) (*user.LoginToken, error) {
+	var t user.LoginToken
+	err := p.pool.QueryRow(ctx,
+		`SELECT token_hash, email, expires_at, created_at FROM login_tokens WHERE token_hash = $1`,
+		tokenHash).Scan(&t.TokenHash, &t.Email, &t.ExpiresAt, &t.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, project.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+func (p *Postgres) DeleteLoginToken(ctx context.Context, tokenHash string) error {
+	_, err := p.pool.Exec(ctx, `DELETE FROM login_tokens WHERE token_hash = $1`, tokenHash)
+	return err
+}
+
 func (p *Postgres) CreateProject(ctx context.Context, pr *project.Project) error {
 	_, err := p.pool.Exec(ctx,
 		`INSERT INTO projects

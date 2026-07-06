@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -33,6 +34,22 @@ func newTestServer(t *testing.T) *httptest.Server {
 
 func newTestServerWithConfig(t *testing.T, cfg config.Config) *httptest.Server {
 	t.Helper()
+	srv, _ := newTestServerAuth(t, cfg, nil)
+	return srv
+}
+
+// recNotifier records magic-link emails for tests.
+type recNotifier struct{ bodies []string }
+
+func (n *recNotifier) Send(_ context.Context, _, _, body string) error {
+	n.bodies = append(n.bodies, body)
+	return nil
+}
+
+// newTestServerAuth builds a server, optionally wiring a notifier for
+// magic-link tests, and returns the httptest server.
+func newTestServerAuth(t *testing.T, cfg config.Config, notifier *recNotifier) (*httptest.Server, *recNotifier) {
+	t.Helper()
 	st := store.NewMemory()
 	fake := llm.NewFake()
 	machines := fly.NewFake()
@@ -46,7 +63,10 @@ func newTestServerWithConfig(t *testing.T, cfg config.Config) *httptest.Server {
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
-	return httptest.NewServer(srv.Handler())
+	if notifier != nil {
+		srv.SetAuth(nil, notifier)
+	}
+	return httptest.NewServer(srv.Handler()), notifier
 }
 
 var csrfRe = regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
@@ -189,6 +209,47 @@ func TestFullFlow_IntakeToPreview(t *testing.T) {
 	}
 	if !strings.Contains(page, "Design direction") || !strings.Contains(page, "Clean &amp; minimal") {
 		t.Fatal("project page does not show the chosen design direction")
+	}
+}
+
+func TestMagicLink_RequestConsumeLogsIn(t *testing.T) {
+	rec := &recNotifier{}
+	srv, _ := newTestServerAuth(t, config.Config{BaseURL: "http://app.example"}, rec)
+	defer srv.Close()
+	jar, _ := cookiejar.New(nil)
+	c := &http.Client{Jar: jar}
+
+	// Request a magic link.
+	resp, err := c.PostForm(srv.URL+"/auth/magic", url.Values{"email": {"newuser@example.com"}})
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	resp.Body.Close()
+	if len(rec.bodies) != 1 {
+		t.Fatalf("expected one email, got %d", len(rec.bodies))
+	}
+
+	// Extract the link and follow it (points at BaseURL; hit our test server).
+	m := regexp.MustCompile(`/auth/magic\?token=[a-f0-9]+`).FindString(rec.bodies[0])
+	if m == "" {
+		t.Fatalf("no magic link in email: %q", rec.bodies[0])
+	}
+	resp, err = c.Get(srv.URL + m)
+	if err != nil {
+		t.Fatalf("consume: %v", err)
+	}
+	final := resp.Request.URL.Path
+	resp.Body.Close()
+	if final != "/dashboard" {
+		t.Fatalf("magic link should log in and land on /dashboard, got %s", final)
+	}
+
+	// A second use of the same link must fail (single-use).
+	resp, _ = c.Get(srv.URL + m)
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(string(b), "invalid or has expired") {
+		t.Error("magic link should be single-use")
 	}
 }
 

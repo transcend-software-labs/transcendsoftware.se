@@ -24,6 +24,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/github"
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
 	"github.com/transcend-software-labs/rasmus-ai/internal/notify"
+	"github.com/transcend-software-labs/rasmus-ai/internal/oauth"
 	"github.com/transcend-software-labs/rasmus-ai/internal/opencode"
 	"github.com/transcend-software-labs/rasmus-ai/internal/orchestrator"
 	"github.com/transcend-software-labs/rasmus-ai/internal/storage"
@@ -78,6 +79,14 @@ func main() {
 		log.Error("server init", "err", err)
 		os.Exit(1)
 	}
+	reg := oauth.NewRegistry(
+		oauth.Google(cfg.GoogleClientID, cfg.GoogleClientSecret),
+		oauth.LinkedIn(cfg.LinkedInClientID, cfg.LinkedInClientSecret),
+	)
+	if len(reg.Enabled()) > 0 {
+		log.Info("auth: social login enabled", "providers", len(reg.Enabled()))
+	}
+	srv.SetAuth(reg, newNotifier(cfg, log))
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,
