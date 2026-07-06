@@ -1,4 +1,4 @@
-# Deploy config for the product itself (app.transcendsoftware.se).
+# Deploy config for the product itself (forge.transcendsoftware.se).
 # NOT deployed yet — provided so `fly launch`/`fly deploy` is ready when you are.
 #
 # Secrets (set with `fly secrets set ...`, never commit):
@@ -26,5 +26,5 @@ primary_region = "arn"  # Stockholm (EU)
 
 [env]
   ADDR = ":8080"
-  BASE_URL = "https://app.transcendsoftware.se"
+  BASE_URL = "https://forge.transcendsoftware.se"
   SECURE_COOKIE = "true"

@@ -1,6 +1,6 @@
 # Transcend Forge — product
 
-The customer-facing application for `app.transcendsoftware.se`: a landing page,
+The customer-facing application for `forge.transcendsoftware.se`: a landing page,
 login, and a dashboard where a customer describes a website and an autonomous
 agent plans, builds, and deploys it — with every result reviewed and guaranteed
 by a human (Rasmus) before go-live.

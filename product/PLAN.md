@@ -28,7 +28,7 @@ not on any list yet — two of them design-level. They are the top of this plan.
 
 ## 1. What we're building (unchanged)
 
-Non-technical customers describe a website at `app.transcendsoftware.se`; an
+Non-technical customers describe a website at `forge.transcendsoftware.se`; an
 agent plans it, asks PO-level questions, builds it in an isolated sandbox,
 deploys a live preview; the customer gets 2 rounds of changes; Rasmus personally
 reviews and guarantees the result. Greenfield **websites** only (small → large,
@@ -219,12 +219,17 @@ Milestones:
       Resend + `EMAIL_FROM` updated** (M)
 - [x] Escalated project page auto-updates after admin approval (slow 15s poll
       while held, fast 2s while building) (S)
-- [~] `app.transcendsoftware.se`: Fly cert **created** (pending validation).
-      **Decision + action for Rasmus:** the subdomain currently resolves to
-      Hetzner (194.9.94.85/86) — repointing moves it to the product. Set one of:
-      - A `app` → 66.241.125.213 **and** AAAA `app` → 2a09:8280:1::13a:bc93:0,
-        or simply CNAME `app` → transcend-forge.fly.dev.
-      Then `fly certs check app.transcendsoftware.se`. BASE_URL already set (S)
+- [~] **Canonical domain = `forge.transcendsoftware.se`** (Rasmus chose forge
+      over app, 2026-07-06 — on-brand). DNS is at Loopia (ns1/ns2.loopia.se).
+      **Action for Rasmus:** in Loopia add subdomain `forge` with either
+      CNAME `forge` → transcend-forge.fly.dev, **or** A `forge` → 66.241.125.213
+      + AAAA `forge` → 2a09:8280:1::13a:bc93:0. Then I run `fly certs add
+      forge.transcendsoftware.se`, and **the forge callback must be added to the
+      Google OAuth client** (redirect `https://forge.transcendsoftware.se/auth/
+      google/callback`). Until cutover, BASE_URL = transcend-forge.fly.dev so
+      login works on the Fly domain (both fly.dev + app callbacks already
+      registered; forge is the one to add). At cutover, flip BASE_URL secret to
+      forge. Old `app` cert on the app can be removed. (S)
 - [x] Failure-rate visibility: `/admin` shows a last-24h row — builds,
       succeeded, failed, in-flight, avg build duration (verified rendering with
       a completed build). Email-on-failure still to come (S)

@@ -3,7 +3,7 @@ package user
 
 import "time"
 
-// User is a customer account on app.transcendsoftware.se.
+// User is a customer account on forge.transcendsoftware.se.
 type User struct {
 	ID           string
 	Email        string

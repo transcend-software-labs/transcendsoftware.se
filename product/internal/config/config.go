@@ -14,7 +14,7 @@ import (
 // Config is the resolved runtime configuration.
 type Config struct {
 	Addr         string        // listen address, e.g. ":8080"
-	BaseURL      string        // public base URL, e.g. https://app.transcendsoftware.se
+	BaseURL      string        // public base URL, e.g. https://forge.transcendsoftware.se
 	SessionTTL   time.Duration // session lifetime
 	SecureCookie bool          // mark the session cookie Secure (set true behind HTTPS)
 
