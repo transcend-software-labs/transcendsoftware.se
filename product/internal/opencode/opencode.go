@@ -29,6 +29,7 @@ type Spec struct {
 type Result struct {
 	Log       string // streamed/aggregated agent output
 	SessionID string // opencode session id, for resuming reiterations
+	Tokens    int    // total model tokens the build consumed (0 if unknown)
 }
 
 // Driver runs a build via opencode. onLog, if non-nil, receives progress lines
@@ -114,7 +115,38 @@ func (h *HTTP) Run(ctx context.Context, spec Spec, onLog func(string)) (Result, 
 	}
 
 	log, err := h.consume(sessionID, stream, onLog)
-	return Result{Log: log, SessionID: sessionID}, err
+	// Best-effort token accounting from the session (for cost visibility).
+	tokens := 0
+	if err == nil {
+		tokens = h.sessionTokens(ctx, sessionID)
+	}
+	return Result{Log: log, SessionID: sessionID, Tokens: tokens}, err
+}
+
+// sessionTokens reads the session's token totals (input + output + reasoning),
+// best-effort — a failure just yields 0.
+func (h *HTTP) sessionTokens(ctx context.Context, sessionID string) int {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, h.BaseURL+"/session/"+sessionID, nil)
+	if err != nil {
+		return 0
+	}
+	resp, err := h.client.Do(req)
+	if err != nil {
+		return 0
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	var s struct {
+		Tokens struct {
+			Input     int `json:"input"`
+			Output    int `json:"output"`
+			Reasoning int `json:"reasoning"`
+		} `json:"tokens"`
+	}
+	if json.Unmarshal(raw, &s) != nil {
+		return 0
+	}
+	return s.Tokens.Input + s.Tokens.Output + s.Tokens.Reasoning
 }
 
 func (h *HTTP) createSession(ctx context.Context) (string, error) {

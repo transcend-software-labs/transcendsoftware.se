@@ -68,6 +68,7 @@ type Result struct {
 	Log             string
 	SnapshotSaved   bool // the workspace snapshot was uploaded to SnapshotPutURL
 	ScreenshotSaved bool // a preview screenshot was uploaded to ScreenshotPutURL
+	Tokens          int  // model tokens consumed by the build agent
 }
 
 // Hooks observe a build pass.
@@ -226,7 +227,7 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 		}
 	}
 
-	return Result{PreviewURL: preview, Log: res.Log,
+	return Result{PreviewURL: preview, Log: res.Log, Tokens: res.Tokens,
 		SnapshotSaved: snapshotSaved, ScreenshotSaved: screenshotSaved}, nil
 }
 

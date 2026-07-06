@@ -377,10 +377,10 @@ func (p *Postgres) CreateIteration(ctx context.Context, it *project.Iteration) e
 	}
 	_, err := p.pool.Exec(ctx,
 		`INSERT INTO iterations
-		   (id, project_id, number, prompt, preview_url, status, log, machine_id, heartbeat_at, created_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		   (id, project_id, number, prompt, preview_url, status, log, machine_id, heartbeat_at, tokens, created_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 		it.ID, it.ProjectID, it.Number, it.Prompt, it.PreviewURL, it.Status, it.Log,
-		it.MachineID, hb, it.CreatedAt)
+		it.MachineID, hb, it.Tokens, it.CreatedAt)
 	return err
 }
 
@@ -391,8 +391,8 @@ func (p *Postgres) UpdateIteration(ctx context.Context, it *project.Iteration) e
 	}
 	tag, err := p.pool.Exec(ctx,
 		`UPDATE iterations SET prompt=$2, preview_url=$3, status=$4, log=$5,
-		   machine_id=$6, heartbeat_at=$7 WHERE id=$1`,
-		it.ID, it.Prompt, it.PreviewURL, it.Status, it.Log, it.MachineID, hb)
+		   machine_id=$6, heartbeat_at=$7, tokens=$8 WHERE id=$1`,
+		it.ID, it.Prompt, it.PreviewURL, it.Status, it.Log, it.MachineID, hb, it.Tokens)
 	if err != nil {
 		return err
 	}
@@ -403,12 +403,12 @@ func (p *Postgres) UpdateIteration(ctx context.Context, it *project.Iteration) e
 }
 
 const iterationColumns = `SELECT id, project_id, number, prompt, preview_url, status,
-	log, machine_id, heartbeat_at, created_at FROM iterations`
+	log, machine_id, heartbeat_at, tokens, created_at FROM iterations`
 
 func scanIteration(row rowScanner) (*project.Iteration, error) {
 	var it project.Iteration
 	err := row.Scan(&it.ID, &it.ProjectID, &it.Number, &it.Prompt, &it.PreviewURL,
-		&it.Status, &it.Log, &it.MachineID, &it.HeartbeatAt, &it.CreatedAt)
+		&it.Status, &it.Log, &it.MachineID, &it.HeartbeatAt, &it.Tokens, &it.CreatedAt)
 	if err != nil {
 		return nil, err
 	}

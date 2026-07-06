@@ -34,6 +34,11 @@ type Config struct {
 	// reaper destroys it and marks the project expired (default 14 days).
 	PreviewTTL time.Duration
 
+	// SandboxCostPerHour is the (estimated) $/hour a build sandbox machine
+	// costs, used only to show rough per-build cost in /admin. Tune to your
+	// machine size; default is a shared-cpu-2x/2GB ballpark.
+	SandboxCostPerHour float64
+
 	// TemplateKey is the object-storage key of the starter-app tarball that
 	// seeds first builds (empty → greenfield builds).
 	TemplateKey string
@@ -86,6 +91,7 @@ func Load() Config {
 		MaxProjectsPerDay:   envIntOr("MAX_PROJECTS_PER_DAY", 3),
 		MaxConcurrentBuilds: envIntOr("MAX_CONCURRENT_BUILDS", 3),
 		PreviewTTL:          time.Duration(envIntOr("PREVIEW_TTL_DAYS", 14)) * 24 * time.Hour,
+		SandboxCostPerHour:  envFloatOr("SANDBOX_COST_PER_HOUR", 0.02),
 		TemplateKey:         os.Getenv("TEMPLATE_KEY"),
 
 		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
@@ -139,6 +145,15 @@ func envIntOr(key string, def int) int {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			return n
+		}
+	}
+	return def
+}
+
+func envFloatOr(key string, def float64) float64 {
+	if v := os.Getenv(key); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f >= 0 {
+			return f
 		}
 	}
 	return def

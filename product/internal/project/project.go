@@ -121,7 +121,16 @@ type Iteration struct {
 	Log         string    // human-readable trace of what the build did
 	MachineID   string    // Fly Machine running this build (for recovery/reaping)
 	HeartbeatAt time.Time // last time the build reported progress
+	Tokens      int       // model tokens the build agent consumed (cost visibility)
 	CreatedAt   time.Time
+}
+
+// Duration is how long the build ran, approximated by the last heartbeat.
+func (it *Iteration) Duration() time.Duration {
+	if it.HeartbeatAt.After(it.CreatedAt) {
+		return it.HeartbeatAt.Sub(it.CreatedAt)
+	}
+	return 0
 }
 
 // Asset is a customer-uploaded file (photo, logo, content) for a project. The

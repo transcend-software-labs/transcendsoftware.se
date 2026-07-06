@@ -503,6 +503,8 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 	it.Status = project.StatusPreviewReady
 	it.PreviewURL = res.PreviewURL
 	it.Log = logBuf.String()
+	it.Tokens = res.Tokens
+	it.HeartbeatAt = time.Now().UTC() // final timestamp → accurate build duration
 	if err := o.store.UpdateIteration(ctx, it); err != nil {
 		return err
 	}

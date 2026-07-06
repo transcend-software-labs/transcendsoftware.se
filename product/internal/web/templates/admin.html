@@ -12,7 +12,29 @@
     <li><span class="stat-num">{{.Failed}}</span> <span class="muted small">failed</span></li>
     <li><span class="stat-num">{{.Building}}</span> <span class="muted small">in flight</span></li>
     <li><span class="stat-num">{{.AvgBuildStr}}</span> <span class="muted small">avg build</span></li>
+    <li><span class="stat-num">{{.TotalTokens}}</span> <span class="muted small">tokens</span></li>
+    <li><span class="stat-num">{{.CostStr}}</span> <span class="muted small">est. machine cost</span></li>
   </ul>
+  {{end}}
+  {{if .Data.Recent}}
+  <div class="table-scroll">
+    <table class="builds-table">
+      <thead><tr><th>Project</th><th>When</th><th>Duration</th><th>Tokens</th><th>Est. cost</th><th>Status</th></tr></thead>
+      <tbody>
+        {{range .Data.Recent}}
+        <tr>
+          <td>{{.Project}}</td>
+          <td class="muted small">{{.When.Format "15:04"}}</td>
+          <td>{{.Duration}}</td>
+          <td>{{if .Tokens}}{{.Tokens}}{{else}}—{{end}}</td>
+          <td>{{.CostStr}}</td>
+          <td><span class="badge badge-{{.Status}}">{{statusLabel .Status}}</span></td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted small">Est. cost is machine time only (LLM tokens shown separately); tune with <code>SANDBOX_COST_PER_HOUR</code>.</p>
   {{end}}
 </section>
 
