@@ -23,6 +23,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/oauth"
 	"github.com/transcend-software-labs/rasmus-ai/internal/opencode"
 	"github.com/transcend-software-labs/rasmus-ai/internal/orchestrator"
+	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 	"github.com/transcend-software-labs/rasmus-ai/internal/storage"
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
 	"github.com/transcend-software-labs/rasmus-ai/internal/stream"
@@ -36,7 +37,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 
 func newTestServerWithConfig(t *testing.T, cfg config.Config) *httptest.Server {
 	t.Helper()
-	srv, _ := newTestServerAuth(t, cfg, nil)
+	srv, _, _ := newTestServerAuth(t, cfg, nil)
 	return srv
 }
 
@@ -49,8 +50,9 @@ func (n *recNotifier) Send(_ context.Context, _, _, body string) error {
 }
 
 // newTestServerAuth builds a server, optionally wiring a notifier for
-// magic-link tests, and returns the httptest server.
-func newTestServerAuth(t *testing.T, cfg config.Config, notifier *recNotifier) (*httptest.Server, *recNotifier) {
+// magic-link tests, and returns the httptest server plus the backing store
+// (for tests that seed projects directly).
+func newTestServerAuth(t *testing.T, cfg config.Config, notifier *recNotifier) (*httptest.Server, store.Store, *recNotifier) {
 	t.Helper()
 	st := store.NewMemory()
 	fake := llm.NewFake()
@@ -76,7 +78,7 @@ func newTestServerAuth(t *testing.T, cfg config.Config, notifier *recNotifier) (
 		}
 		srv.SetAuth(reg, n)
 	}
-	return httptest.NewServer(srv.Handler()), notifier
+	return httptest.NewServer(srv.Handler()), st, notifier
 }
 
 var csrfRe = regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
@@ -274,9 +276,57 @@ func TestLoginPage_MethodGating(t *testing.T) {
 	}
 }
 
+// TestProjectStatus_BuildingStreamsInline guards the fix for "had to refresh
+// for live build streaming to start": the live-log element must live inside the
+// polled #status fragment (so the 2s poll swaps it in the moment a build
+// starts, no manual refresh), carry hx-preserve (so the SSE connection + logs
+// survive later polls), and NOT appear for other statuses.
+func TestProjectStatus_BuildingStreamsInline(t *testing.T) {
+	srv, st, _ := newTestServerAuth(t, config.Config{AdminEmail: "admin@example.com"}, nil)
+	defer srv.Close()
+	c := signedInClient(t, srv.URL)
+	ctx := context.Background()
+	u, err := st.UserByEmail(ctx, "neighbour@example.com")
+	if err != nil {
+		t.Fatalf("user: %v", err)
+	}
+	seed := func(status project.Status) string {
+		p := &project.Project{ID: "proj-" + string(status), UserID: u.ID, Name: "Test", Status: status}
+		if err := st.CreateProject(ctx, p); err != nil {
+			t.Fatalf("create %s: %v", status, err)
+		}
+		return p.ID
+	}
+	get := func(id string) string {
+		resp, err := c.Get(srv.URL + "/projects/" + id + "/status")
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return string(b)
+	}
+
+	buildingID := seed(project.StatusBuilding)
+	building := get(buildingID)
+	for _, want := range []string{
+		`sse-connect="/projects/` + buildingID + `/stream"`,
+		`hx-preserve="true"`,
+		`id="livelog"`,
+	} {
+		if !strings.Contains(building, want) {
+			t.Errorf("building status fragment missing %q:\n%s", want, building)
+		}
+	}
+	// A different polling status (escalated) must not carry the live log.
+	if esc := get(seed(project.StatusEscalated)); strings.Contains(esc, "livelog") {
+		t.Errorf("non-building status should not stream:\n%s", esc)
+	}
+}
+
 func TestMagicLink_RequestConsumeLogsIn(t *testing.T) {
 	rec := &recNotifier{}
-	srv, _ := newTestServerAuth(t, config.Config{BaseURL: "http://app.example"}, rec)
+	srv, _, _ := newTestServerAuth(t, config.Config{BaseURL: "http://app.example"}, rec)
 	defer srv.Close()
 	jar, _ := cookiejar.New(nil)
 	c := &http.Client{Jar: jar}

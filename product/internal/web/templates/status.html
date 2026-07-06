@@ -15,4 +15,9 @@
   {{if eq .Status "failed"}}<p class="reason">Something went wrong: {{.RejectReason}}</p>{{end}}
   {{if eq .Status "expired"}}<p class="reason">{{.RejectReason}}</p>{{end}}
   {{if eq .Status "escalated"}}<p class="reason">Held for a quick human review by Rasmus — this page updates on its own.</p>{{end}}
+  {{if eq .Status "building"}}
+  <div class="log livelog" id="livelog" hx-preserve="true"
+       hx-ext="sse" sse-connect="/projects/{{.ID}}/stream" sse-swap="log"
+       hx-swap="beforeend" hx-on::after-swap="this.scrollTop = this.scrollHeight"></div>
+  {{end}}
 </div>{{end}}
