@@ -235,9 +235,16 @@ label.design-option:hover { border-color: var(--accent); }
 .oauth-buttons { display: flex; flex-direction: column; gap: .6rem; margin-bottom: 1rem; }
 .btn-oauth {
   display: block; text-align: center; text-decoration: none;
-  background: var(--bg); color: var(--text); border: 1px solid var(--border-2);
+  background: var(--surface); color: var(--text); border: 1px solid var(--border-2);
+  box-shadow: none;
 }
-.btn-oauth:hover { border-color: var(--accent); }
+/* Override the gold .btn:hover (dark text + gold glow) — wrong on a dark,
+   bordered button. Keep text light, lift the surface, accent the border. */
+.btn-oauth:hover {
+  color: var(--text); background: var(--surface-2);
+  border-color: var(--accent);
+  box-shadow: 0 6px 16px rgba(0,0,0,.22);
+}
 .or-divider { display: flex; align-items: center; gap: .8rem; color: var(--muted); font-size: .85rem; margin: .4rem 0 1rem; }
 .or-divider::before, .or-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 .password-login { margin-top: 1rem; }
