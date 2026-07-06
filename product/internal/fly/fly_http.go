@@ -12,6 +12,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/superfly/macaroon"
+	"github.com/superfly/macaroon/flyio"
+	"github.com/superfly/macaroon/resset"
 )
 
 // machinesAPI is the Fly Machines API base.
@@ -88,30 +92,84 @@ func (h *HTTP) EnsureApp(ctx context.Context, appName string) error {
 // the configured org-scoped deploy token so builds keep working; that fallback
 // is logged because it is a security downgrade.
 func (h *HTTP) AppDeployToken(ctx context.Context, appName string) (string, error) {
-	tok, err := h.mintDeployToken(ctx, appName, "2h") // build-only; dies soon after
-	if err == nil {
-		return tok, nil
-	}
-	if h.deployToken != "" {
-		h.log.Warn("fly: per-app deploy token mint failed; using org-scoped fallback",
-			"app", appName, "err", err)
-		return h.deployToken, nil
-	}
-	return "", fmt.Errorf("fly: mint deploy token for %s: %w", appName, err)
+	return h.scopedToken(ctx, appName, 2*time.Hour) // build-only; dies soon after
 }
 
-// RepoDeployToken mints a longer-lived app-scoped deploy token for the project's
-// GitHub Action to redeploy on push. Refreshed on every build; falls back to
-// the configured org token like AppDeployToken.
+// RepoDeployToken returns a longer-lived app-scoped deploy token for the
+// project's GitHub Action to redeploy on push. Refreshed on every build.
 func (h *HTTP) RepoDeployToken(ctx context.Context, appName string) (string, error) {
-	tok, err := h.mintDeployToken(ctx, appName, "8760h") // ~1 year (re-minted each build)
-	if err == nil {
+	return h.scopedToken(ctx, appName, 365*24*time.Hour)
+}
+
+// scopedToken produces a deploy token restricted to appName with the given
+// lifetime. Preferred path is local macaroon ATTENUATION of our own API token —
+// pure computation, needs no minting authority (org tokens can't mint
+// sub-tokens; only user sessions can). Falls back to the GraphQL mint (works
+// if the runtime token is session-grade) and then to the configured org-wide
+// deploy token, logging the downgrade.
+func (h *HTTP) scopedToken(ctx context.Context, appName string, ttl time.Duration) (string, error) {
+	tok, attErr := h.attenuatedToken(ctx, appName, ttl)
+	if attErr == nil {
+		return tok, nil
+	}
+	tok, mintErr := h.mintDeployToken(ctx, appName, fmt.Sprintf("%dh", int(ttl.Hours())))
+	if mintErr == nil {
 		return tok, nil
 	}
 	if h.deployToken != "" {
+		h.log.Warn("fly: per-app token unavailable; using org-scoped fallback",
+			"app", appName, "attenuate_err", attErr, "mint_err", mintErr)
 		return h.deployToken, nil
 	}
-	return "", fmt.Errorf("fly: mint repo deploy token for %s: %w", appName, err)
+	return "", fmt.Errorf("fly: scoped token for %s: attenuate: %v; mint: %v", appName, attErr, mintErr)
+}
+
+// attenuatedToken narrows h.token (a Fly macaroon) to one app + a validity
+// window, mirroring the caveat structure of official `fly tokens create
+// deploy -a` tokens: full access to the app and the builder/wg features
+// (remote builds need them), read-only for anything else present.
+func (h *HTTP) attenuatedToken(ctx context.Context, appName string, ttl time.Duration) (string, error) {
+	appID, err := h.appNumericID(ctx, appName)
+	if err != nil {
+		return "", err
+	}
+	bun, err := flyio.ParseBundle(h.token)
+	if err != nil {
+		return "", fmt.Errorf("parse token: %w", err)
+	}
+	now := time.Now()
+	if err := bun.Attenuate(
+		&resset.IfPresent{
+			Ifs: macaroon.NewCaveatSet(
+				&flyio.Apps{Apps: resset.New(resset.ActionAll, appID)},
+				&flyio.FeatureSet{Features: resset.New(resset.ActionAll, "builder", "wg")},
+			),
+			Else: resset.ActionRead,
+		},
+		&macaroon.ValidityWindow{NotBefore: now.Add(-time.Minute).Unix(), NotAfter: now.Add(ttl).Unix()},
+	); err != nil {
+		return "", fmt.Errorf("attenuate: %w", err)
+	}
+	// flyctl and the APIs accept the header with the FlyV1 scheme.
+	hdr := bun.String()
+	if !strings.HasPrefix(hdr, "FlyV1 ") {
+		hdr = "FlyV1 " + hdr
+	}
+	return hdr, nil
+}
+
+// appNumericID resolves an app's internal numeric id (what app caveats key on).
+func (h *HTTP) appNumericID(ctx context.Context, appName string) (uint64, error) {
+	var out struct {
+		InternalNumericID uint64 `json:"internal_numeric_id"`
+	}
+	if err := h.do(ctx, http.MethodGet, "/apps/"+appName, nil, &out); err != nil {
+		return 0, err
+	}
+	if out.InternalNumericID == 0 {
+		return 0, fmt.Errorf("app %q has no numeric id", appName)
+	}
+	return out.InternalNumericID, nil
 }
 
 // mintDeployToken creates a Fly deploy token scoped to appName (the
