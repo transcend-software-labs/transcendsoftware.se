@@ -41,8 +41,9 @@ What works today:
   operator/admin review queue (`/admin`, gated by `ADMIN_EMAIL`)
 - Crash recovery: interrupted builds are reaped on startup; heartbeats + logs
   persisted per iteration
-- In-memory store (dev) **and** Postgres (Postgres not yet provisioned in prod
-  — see PLAN.md §3.3)
+- In-memory store (dev) **and** Postgres — embedded migrations apply
+  automatically at startup (tracked in `schema_migrations`, advisory-locked
+  against concurrent instances)
 - Health check (`/healthz`), graceful shutdown, single static binary
 
 Real build mode (`FLY_API_TOKEN` + `FLY_SANDBOX_APP`/`FLY_SANDBOX_IMAGE` set):
@@ -68,8 +69,7 @@ Against Postgres:
 
 ```sh
 make db-up          # start local Postgres in Docker
-make db-migrate     # apply all migrations/ in order (idempotent)
-make run-pg
+make run-pg         # migrations apply automatically at startup
 ```
 
 Asset uploads against local MinIO (S3-compatible, like Tigris in prod):

@@ -4,6 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -12,6 +16,7 @@ import (
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
+	"github.com/transcend-software-labs/rasmus-ai/migrations"
 )
 
 // Postgres is a Store backed by PostgreSQL via pgx.
@@ -19,7 +24,8 @@ type Postgres struct {
 	pool *pgxpool.Pool
 }
 
-// NewPostgres connects to the database at dsn and verifies the connection.
+// NewPostgres connects to the database at dsn, verifies the connection, and
+// applies any pending schema migrations.
 //
 // Fly Managed Postgres hands out a PgBouncer (transaction-pooling) endpoint,
 // which is incompatible with pgx's default prepared-statement caching — a
@@ -40,7 +46,77 @@ func NewPostgres(ctx context.Context, dsn string) (*Postgres, error) {
 		pool.Close()
 		return nil, err
 	}
+	if err := migrate(ctx, pool); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
 	return &Postgres{pool: pool}, nil
+}
+
+// migrationLockKey serializes concurrent migrators (e.g. two instances booting
+// during a deploy). Arbitrary but fixed; transaction-scoped advisory locks work
+// behind PgBouncer's transaction pooling.
+const migrationLockKey = "4242000001"
+
+// migrate applies embedded migrations in filename order inside one
+// transaction, tracking applied versions in schema_migrations. Databases that
+// were migrated manually (pre-tracking) backfill safely because every
+// migration is idempotent — see migrations/migrations.go for the rules.
+func migrate(ctx context.Context, pool *pgxpool.Pool) error {
+	entries, err := migrations.FS.ReadDir(".")
+	if err != nil {
+		return err
+	}
+	var names []string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".sql") {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names)
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// No-arg Execs run over the simple protocol, which allows the
+	// multi-statement bodies our migration files contain.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(`+migrationLockKey+`)`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		`CREATE TABLE IF NOT EXISTS schema_migrations (
+		   version    text PRIMARY KEY,
+		   applied_at timestamptz NOT NULL DEFAULT now()
+		 )`); err != nil {
+		return err
+	}
+
+	for _, name := range names {
+		var applied int
+		if err := tx.QueryRow(ctx,
+			`SELECT count(*) FROM schema_migrations WHERE version = $1`, name).Scan(&applied); err != nil {
+			return err
+		}
+		if applied > 0 {
+			continue
+		}
+		body, err := migrations.FS.ReadFile(name)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, string(body)); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO schema_migrations (version) VALUES ($1)`, name); err != nil {
+			return err
+		}
+		slog.Info("store: applied migration", "version", name)
+	}
+	return tx.Commit(ctx)
 }
 
 func (p *Postgres) Close() error {

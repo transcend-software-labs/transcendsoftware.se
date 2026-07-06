@@ -233,8 +233,13 @@ Milestones:
       suggests 2-3 tailored design directions; the customer picks one or
       states their own; the choice flows into the plan (## Design) and the
       build agent, which restyles the design-neutral starter completely.
-      Stored via migration 0004. **Deploy ordering: run 0004 on prod before
-      deploying this code.** Verified in dev UI end to end.
+      Stored via migration 0004. Verified in dev UI end to end.
+- [x] **Migrations run at startup** (2026-07-06, Rasmus's direction): embedded
+      in the binary, applied by `store.NewPostgres` in one advisory-locked
+      transaction, tracked in `schema_migrations`. Kills deploy-ordering
+      footguns. Validated against local Postgres in all three states: legacy
+      schema without tracking table (prod's state — backfills idempotently),
+      re-boot (0 applied), fresh empty DB (full bootstrap + working signup).
 
 ### Phase 4 — better product (post-M3; several are joint sessions)
 - [x] Project template/scaffold — built 2026-07-05 at Rasmus's direction

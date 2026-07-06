@@ -27,7 +27,9 @@ db-up:
 db-down:
 	docker compose down
 
-# Migrations are idempotent (IF NOT EXISTS), so applying all in order is safe.
+# Manual escape hatch only — the server applies migrations itself at startup
+# (embedded, tracked in schema_migrations). Files are idempotent, so this is
+# safe to run alongside; it just doesn't record versions.
 db-migrate:
 	for f in migrations/*.sql; do psql -v ON_ERROR_STOP=1 "$(DATABASE_URL)" -f $$f || exit 1; done
 
