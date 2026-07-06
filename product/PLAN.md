@@ -196,9 +196,10 @@ Milestones:
 - [x] Email (Resend): escalated → Rasmus, build failed → Rasmus, preview ready
       → customer. Interface + log-only fake (dev) + Resend impl; wired at all
       three lifecycle points, best-effort after state is persisted; tested with
-      a recording notifier. **Activates when `RESEND_API_KEY` + `EMAIL_FROM`
-      are set** (needs a Resend account + verified sender — currently log-only
-      in prod) (M)
+      a recording notifier. Key received 2026-07-06 and validated (test email
+      delivered to Rasmus). **Pending: set secrets + deploy (needs Fly token);
+      customer emails also need `transcendsoftware.se` verified in Resend —
+      until then only mail to the account owner delivers** (M)
 - [x] Escalated project page auto-updates after admin approval (slow 15s poll
       while held, fast 2s while building) (S)
 - [~] `app.transcendsoftware.se`: Fly cert **created** (pending validation).
@@ -226,6 +227,14 @@ Milestones:
       OpenAI-compatible (Kimi) client retries network blips, 429s, 5xx and
       empty 200s once; permanent 4xx are not retried. Tested (S). _(Anthropic
       fallback client not yet covered — prod path is Kimi.)_
+
+### Added along the way
+- [x] **Per-project design choice** (2026-07-06, Rasmus's direction): intake
+      suggests 2-3 tailored design directions; the customer picks one or
+      states their own; the choice flows into the plan (## Design) and the
+      build agent, which restyles the design-neutral starter completely.
+      Stored via migration 0004. **Deploy ordering: run 0004 on prod before
+      deploying this code.** Verified in dev UI end to end.
 
 ### Phase 4 — better product (post-M3; several are joint sessions)
 - [x] Project template/scaffold — built 2026-07-05 at Rasmus's direction
