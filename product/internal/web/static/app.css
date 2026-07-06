@@ -36,15 +36,23 @@ body {
   font-size: 15px;
   line-height: 1.65;
   -webkit-font-smoothing: antialiased;
+  /* Sticky footer: the page fills at least the viewport, main grows to take
+     the slack, so the footer sits at the bottom on short pages. Flexbox
+     accounts for the header height automatically (no vh math needed). */
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 a { color: var(--accent); text-decoration: none; transition: color .15s var(--ease); }
 a:hover { color: var(--accent-2); }
 
 .container {
+  width: 100%;
   max-width: 760px;
   margin: 0 auto;
   padding: 2.75rem 1.25rem 4rem;
+  flex: 1 0 auto; /* grow to push the footer down */
   animation: pageIn .4s var(--ease) both;
 }
 
@@ -135,14 +143,21 @@ textarea { resize: vertical; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
 
 /* Project list */
-.project-list { list-style: none; display: flex; flex-direction: column; gap: .6rem; }
+.project-list { list-style: none; display: flex; flex-direction: column; gap: .8rem; }
 .project-row {
-  border: 1px solid var(--border); border-radius: var(--radius-lg); padding: .9rem 1rem;
+  border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.1rem 1.25rem;
   background: var(--surface); transition: transform .14s var(--ease), border-color .14s var(--ease), box-shadow .2s var(--ease);
 }
 .project-row:hover { transform: translateY(-2px); border-color: var(--border-2); box-shadow: var(--shadow); }
 .project-row > a { display: flex; align-items: center; gap: .75rem; color: var(--text); }
 .project-name { font-weight: 500; }
+/* Admin cards (delivery/review) are list items that reuse .panel — render
+   them as self-contained bordered cards, not top-border-only sections. */
+.project-list > li.panel {
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 1.35rem 1.4rem; margin-top: 0; background: var(--surface);
+}
+.project-list > li.panel > h3 { margin-bottom: .5rem; }
 .empty { margin-top: 2rem; }
 
 /* Badges & status */
@@ -174,7 +189,12 @@ textarea { resize: vertical; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* Panels */
-.panel { border-top: 1px solid var(--border); padding-top: 1.5rem; margin-top: 1.5rem; }
+.panel { border-top: 1px solid var(--border); padding-top: 2rem; margin-top: 2rem; }
+/* A section's intro/description text needs space before the content it
+   introduces (lists, tables) — otherwise cards butt right against it. */
+.panel > p { margin-bottom: 1.1rem; }
+.panel > p:last-child { margin-bottom: 0; }
+.panel > h2 + p, .panel > h3 + p { margin-top: -.25rem; }
 .brief { color: var(--muted); }
 .questions { margin: .75rem 0 1rem 1.1rem; display: flex; flex-direction: column; gap: .5rem; }
 .questions li { color: var(--text); }
@@ -266,7 +286,7 @@ label.design-option:hover { border-color: var(--accent); }
 .builds-table th, .builds-table td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .builds-table th { color: var(--muted); font-weight: 500; }
 
-.foot { border-top: 1px solid var(--border); padding: 1.5rem 1.25rem; text-align: center; font-size: .8rem; }
+.foot { border-top: 1px solid var(--border); padding: 1.75rem 1.25rem; text-align: center; font-size: .8rem; flex-shrink: 0; }
 
 /* HTMX swap transitions (gentle; avoids flicker on polled swaps) */
 .htmx-indicator { opacity: 0; transition: opacity .2s var(--ease); }
