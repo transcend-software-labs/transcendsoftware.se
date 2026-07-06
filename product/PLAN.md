@@ -267,11 +267,13 @@ Milestones:
       --ha=false → **1 machine**, contact form → owner inbox verified on the
       live site. **Rasmus: taste review of the template still open.**
 - [ ] GitHub mirroring under `transcend-software-labs` (the code-review story)
-- [x] Screenshot into the admin review queue (2026-07-06, live): each build
-      captures a 1280×800 screenshot of the deployed site (headless Chromium,
-      playwright baked into sandbox image 20260706-1) and uploads it via
-      presigned PUT; `/admin` shows it full-width in the delivery review cards
-      and as a thumbnail in the previews list (migration 0005)
+- [x] Screenshot into the admin review queue (2026-07-06, live): after each
+      build the sandbox **crawls the deployed site and screenshots every page**
+      (full-page, same-origin links, one Chromium session; playwright baked
+      into sandbox image 20260706-1), uploading each to a presigned PUT slot
+      (up to 8). `/admin` shows all pages labeled by path in the delivery
+      review cards, first as the previews thumbnail (migrations 0005→0007).
+      Validated live against a real 6-page site
 - [ ] Custom-domain automation
 - [ ] Scale product app past 1 machine (unblocked by Postgres)
 - [x] Per-build cost + timing in `/admin` (2026-07-06, live): each build records
