@@ -194,9 +194,21 @@ Milestones:
       token 200s on its app, 403s on another. Graceful fallback to a configured
       org-scoped token (logged) if the runtime token can't mint. §5.3 resolved
       (M)
-- [ ] **Rotate the burned credentials:** the Kimi key and Fly tokens were
-      pasted in chat and must be treated as compromised — mint fresh ones,
-      update Fly secrets, revoke old (S)
+- [~] **Rotate the burned credentials** (S):
+  - [x] Fly tokens (2026-07-06): prod FLY_API_TOKEN + FLY_DEPLOY_TOKEN now a
+        fresh named 6-month org token ("forge-api-20260706", expires
+        2027-01-06) — prod no longer uses the chat-pasted token. **Rasmus:**
+        revoke the old unnamed "Organization Token"s in `fly tokens list -o
+        transcend-software` if nothing else (terraform? hermes?) uses them.
+  - [ ] Kimi key (Moonshot console), Resend key, Postgres/Tigris creds — need
+        Rasmus's accounts.
+- [x] **Per-app sandbox tokens, properly** (2026-07-06): org tokens can't mint
+      sub-tokens (only user sessions can), so the GraphQL mint could never work
+      from prod. Replaced with **local macaroon attenuation** (superfly/
+      macaroon): prod derives a one-app, TTL-bound deploy token from its own
+      API token by pure computation, mirroring official deploy-token caveats
+      (incl. builder/wg features for remote builds). Verified live (200 own
+      app, 403 others). Ships with the next code deploy.
 - [x] Email (Resend): escalated → Rasmus, build failed → Rasmus, preview ready
       → customer. Interface + log-only fake (dev) + Resend impl; wired at all
       three lifecycle points, best-effort after state is persisted; tested with
