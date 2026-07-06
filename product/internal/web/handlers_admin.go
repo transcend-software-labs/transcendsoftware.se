@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -12,10 +13,28 @@ import (
 // adminView is the data for the operator dashboard.
 type adminView struct {
 	Escalated []*project.Project
-	Accepted  []*project.Project // accepted by the customer, awaiting delivery review
+	Accepted  []reviewItem // accepted by the customer, awaiting delivery review
 	Active    []activeBuild
-	Previews  []*project.Project // live preview apps (cost money; can be destroyed)
+	Previews  []reviewItem // live preview apps (cost money; can be destroyed)
 	Stats     buildStats
+}
+
+// reviewItem is a project plus a short-lived presigned URL for its preview
+// screenshot (empty when none was captured), for visual review in /admin.
+type reviewItem struct {
+	*project.Project
+	ScreenshotURL string
+}
+
+// withScreenshot presigns a short-lived GET URL for p's screenshot, if any.
+func (s *Server) withScreenshot(ctx context.Context, p *project.Project) reviewItem {
+	item := reviewItem{Project: p}
+	if p.ScreenshotKey != "" {
+		if u, err := s.storage.PresignGet(ctx, p.ScreenshotKey, 10*time.Minute); err == nil {
+			item.ScreenshotURL = u
+		}
+	}
+	return item
 }
 
 // buildStats summarizes build activity over the last 24h (visibility until
@@ -94,13 +113,13 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	var previews, accepted []*project.Project
+	var previews, accepted []reviewItem
 	for _, p := range all {
 		switch p.Status {
 		case project.StatusPreviewReady:
-			previews = append(previews, p)
+			previews = append(previews, s.withScreenshot(ctx, p))
 		case project.StatusAccepted:
-			accepted = append(accepted, p)
+			accepted = append(accepted, s.withScreenshot(ctx, p))
 		}
 	}
 

@@ -29,6 +29,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # verify current pnpm releases.) Pin a version in production.
 RUN npm i -g pnpm
 
+# playwright CLI, pinned to the base image's browser version (v1.50.0) so the
+# baked /ms-playwright browsers match. Used to screenshot the deployed site for
+# Rasmus's review — the browsers are already present, so this is just the JS.
+RUN npm i -g playwright@1.50.0
+
 # Go — only needed if the canonical stack builds Go services; drop this layer
 # if your default stack is JS-only.
 RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" \
@@ -45,7 +50,8 @@ RUN curl -L https://fly.io/install.sh | FLYCTL_INSTALL=/usr/local sh
 
 # Verify the toolchain is installed and on PATH — fails the build early if not.
 RUN node --version && npm --version && pnpm --version && go version \
- && command -v opencode && command -v flyctl && command -v git && test -d /ms-playwright
+ && command -v opencode && command -v flyctl && command -v git \
+ && command -v playwright && test -d /ms-playwright
 
 # Warm the Go module + build caches with the starter template's dependency
 # tree (staged into .template/ by `make sandbox-build`). modernc SQLite alone

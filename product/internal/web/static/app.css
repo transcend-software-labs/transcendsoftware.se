@@ -213,6 +213,16 @@ label.design-option:hover { border-color: var(--accent); }
 .design-option input { accent-color: var(--accent); width: auto; }
 .design-options input[type="text"] { margin-left: 2rem; }
 
+.review-shot {
+  display: block; width: 100%; max-width: 40rem; height: auto;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  margin: .6rem 0; background: var(--bg-2);
+}
+.review-thumb {
+  width: 8rem; height: 5rem; object-fit: cover; object-position: top;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--bg-2);
+}
+
 .stat-row { list-style: none; display: flex; gap: 2rem; flex-wrap: wrap; }
 .stat-row li { display: flex; flex-direction: column; gap: .15rem; }
 .stat-num { font-size: 1.5rem; font-weight: 600; color: var(--text); line-height: 1; }

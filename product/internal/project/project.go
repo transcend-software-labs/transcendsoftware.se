@@ -70,6 +70,7 @@ type Project struct {
 	PreviewURL     string         // latest deployed preview link
 	RepoURL        string         // reserved for GitHub mirroring (Phase 4); not populated yet
 	SnapshotKey    string         // object-storage key of the workspace snapshot from the last successful build
+	ScreenshotKey  string         // object-storage key of the latest preview screenshot (for /admin review)
 	IterationsUsed int            // number of build passes consumed (1..MaxIterations)
 	CreatedAt      time.Time
 	UpdatedAt      time.Time

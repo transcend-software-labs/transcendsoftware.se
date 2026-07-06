@@ -55,15 +55,19 @@ type Request struct {
 	// to after a successful build. Both URLs keep storage credentials out of the
 	// sandbox (same model as asset downloads).
 	SnapshotPutURL string
+	// ScreenshotPutURL, when set, is a presigned PUT URL for a screenshot of the
+	// deployed site, captured in-sandbox (Playwright) for Rasmus's review.
+	ScreenshotPutURL string
 
 	AssetManifest map[string]string // filename → short-lived presigned GET URL
 }
 
 // Result is the outcome of a build pass.
 type Result struct {
-	PreviewURL    string
-	Log           string
-	SnapshotSaved bool // the workspace snapshot was uploaded to SnapshotPutURL
+	PreviewURL      string
+	Log             string
+	SnapshotSaved   bool // the workspace snapshot was uploaded to SnapshotPutURL
+	ScreenshotSaved bool // a preview screenshot was uploaded to ScreenshotPutURL
 }
 
 // Hooks observe a build pass.
@@ -209,7 +213,38 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 	// The agent ran `fly deploy` inside the sandbox (per the operating spec); the
 	// app URL is deterministic.
 	preview := "https://" + appName + ".fly.dev"
-	return Result{PreviewURL: preview, Log: res.Log, SnapshotSaved: snapshotSaved}, nil
+
+	// Capture a screenshot of the deployed site for Rasmus's review. Best-effort
+	// and done in-sandbox (it has Chromium); a miss just means no thumbnail.
+	screenshotSaved := false
+	if req.ScreenshotPutURL != "" {
+		emit(hooks.OnLog, "Capturing a screenshot…")
+		if err := b.captureScreenshot(ctx, sb.MachineID, preview, req.ScreenshotPutURL); err != nil {
+			emit(hooks.OnLog, "Warning: could not capture a screenshot.")
+		} else {
+			screenshotSaved = true
+		}
+	}
+
+	return Result{PreviewURL: preview, Log: res.Log,
+		SnapshotSaved: snapshotSaved, ScreenshotSaved: screenshotSaved}, nil
+}
+
+// captureScreenshot renders the deployed site with headless Chromium and
+// uploads the PNG to the presigned PUT URL. The sandbox image bakes in the
+// playwright CLI + browsers, so this needs no install.
+func (b *Sandbox) captureScreenshot(ctx context.Context, machineID, siteURL, putURL string) error {
+	script := `playwright screenshot --viewport-size=1280,800 --wait-for-timeout=2500 ` +
+		shellQuote(siteURL) + ` /tmp/screenshot.png && ` +
+		`curl -fsS -T /tmp/screenshot.png -o /dev/null ` + shellQuote(putURL)
+	res, err := b.machines.Exec(ctx, machineID, []string{"/bin/sh", "-c", script}, 90)
+	if err != nil {
+		return fmt.Errorf("screenshot: %w", err)
+	}
+	if res.ExitCode != 0 {
+		return fmt.Errorf("screenshot: exit %d: %s", res.ExitCode, res.Stderr)
+	}
+	return nil
 }
 
 // templatePreamble tells the agent the workspace is a working starter app, not
@@ -251,4 +286,9 @@ func emit(onLog func(string), line string) {
 	if onLog != nil {
 		onLog(line)
 	}
+}
+
+// shellQuote wraps s for safe interpolation into a /bin/sh -c command.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

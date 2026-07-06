@@ -132,6 +132,33 @@ func TestBuild_SnapshotWinsOverTemplate(t *testing.T) {
 	}
 }
 
+func TestBuild_CapturesScreenshot(t *testing.T) {
+	machines := fly.NewFake()
+	b := newTestBuilder(machines)
+
+	res, err := b.Build(context.Background(), Request{
+		ProjectID:        "p1",
+		Plan:             "build a site",
+		ScreenshotPutURL: "https://storage.example/shot?sig=xyz",
+	}, Hooks{})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if !res.ScreenshotSaved {
+		t.Error("expected a screenshot to be captured")
+	}
+	var found bool
+	for _, e := range machines.Execs() {
+		cmd := strings.Join(e.Command, " ")
+		if strings.Contains(cmd, "playwright screenshot") && strings.Contains(cmd, "storage.example/shot?sig=xyz") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a playwright screenshot exec, got: %+v", machines.Execs())
+	}
+}
+
 func TestBuild_NoSnapshotURLsNoExecs(t *testing.T) {
 	machines := fly.NewFake()
 	b := newTestBuilder(machines)

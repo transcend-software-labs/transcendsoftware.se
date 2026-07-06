@@ -24,6 +24,7 @@
     {{range .Data.Accepted}}
     <li class="panel">
       <h3>{{.Name}}</h3>
+      {{if .ScreenshotURL}}<a href="{{.PreviewURL}}" target="_blank" rel="noopener"><img class="review-shot" src="{{.ScreenshotURL}}" alt="Preview of {{.Name}}" loading="lazy"></a>{{end}}
       <p><a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{.PreviewURL}} ↗</a></p>
       <p class="brief muted small">{{.Brief}}</p>
       <div class="admin-actions">
@@ -71,6 +72,7 @@
   <ul class="project-list">
     {{range .Data.Previews}}
     <li class="project-row">
+      {{if .ScreenshotURL}}<a href="{{.PreviewURL}}" target="_blank" rel="noopener"><img class="review-thumb" src="{{.ScreenshotURL}}" alt="Preview of {{.Name}}" loading="lazy"></a>{{end}}
       <a href="/projects/{{.ID}}">
         <span class="project-name">{{.Name}}</span>
       </a>

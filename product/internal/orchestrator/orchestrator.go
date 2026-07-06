@@ -440,6 +440,14 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 		o.log.Error("presign snapshot put", "project", p.ID, "err", err)
 	}
 
+	screenshotKey := "projects/" + p.ID + "/screenshot.png"
+	var screenshotPut string
+	if u, err := o.storage.PresignPut(ctx, screenshotKey, time.Hour); err == nil {
+		screenshotPut = u
+	} else {
+		o.log.Error("presign screenshot put", "project", p.ID, "err", err)
+	}
+
 	// First build with a configured starter template: seed the workspace with
 	// it so the agent extends a working app instead of scaffolding.
 	var templateGet string
@@ -452,14 +460,15 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 	}
 
 	res, err := o.builder.Build(ctx, builder.Request{
-		ProjectID:      p.ID,
-		Brief:          p.EffectiveBrief(),
-		Plan:           p.Plan,
-		Prompt:         prompt,
-		SnapshotGetURL: snapshotGet,
-		SnapshotPutURL: snapshotPut,
-		TemplateGetURL: templateGet,
-		AssetManifest:  o.assetManifest(ctx, p.ID),
+		ProjectID:        p.ID,
+		Brief:            p.EffectiveBrief(),
+		Plan:             p.Plan,
+		Prompt:           prompt,
+		SnapshotGetURL:   snapshotGet,
+		SnapshotPutURL:   snapshotPut,
+		ScreenshotPutURL: screenshotPut,
+		TemplateGetURL:   templateGet,
+		AssetManifest:    o.assetManifest(ctx, p.ID),
 	}, builder.Hooks{
 		OnLog: onLog,
 		OnSandbox: func(machineID, _ string) {
@@ -502,6 +511,9 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 	p.PreviewURL = res.PreviewURL
 	if res.SnapshotSaved {
 		p.SnapshotKey = snapshotKey
+	}
+	if res.ScreenshotSaved {
+		p.ScreenshotKey = screenshotKey
 	}
 	p.Status = project.StatusPreviewReady
 	if err := o.save(ctx, p); err != nil {
