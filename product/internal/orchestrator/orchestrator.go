@@ -151,7 +151,7 @@ func (o *Orchestrator) RecoverInterrupted(ctx context.Context) {
 				p.Status = project.StatusPreviewReady
 			} else {
 				p.Status = project.StatusFailed
-				p.RejectReason = "Build interrupted by a restart."
+				p.RejectReason = "The build was interrupted by a server restart. Nothing was lost — press Retry to run it again."
 			}
 			_ = o.save(ctx, p)
 		}
@@ -216,6 +216,32 @@ func (o *Orchestrator) SubmitAnswers(projectID, answers, design string) {
 func (o *Orchestrator) Reiterate(projectID, prompt string) {
 	o.async(projectID, func(ctx context.Context) error {
 		return o.runBuild(ctx, projectID, prompt)
+	})
+}
+
+// RetryBuild re-runs a failed initial build. It's the recovery path for any
+// failure — an agent error, a crash, or a build interrupted by a deploy. It
+// consumes no change credit (IterationsUsed only advances on success) and, if
+// planning never completed, redoes plan + safety gate first.
+func (o *Orchestrator) RetryBuild(projectID string) {
+	o.async(projectID, func(ctx context.Context) error {
+		p, err := o.store.ProjectByID(ctx, projectID)
+		if err != nil {
+			return err
+		}
+		if !p.CanRetry() {
+			return nil // already recovered or not in a retryable state
+		}
+		p.RejectReason = ""
+		if err := o.save(ctx, p); err != nil {
+			return err
+		}
+		// If planning never produced a plan, redo the whole plan→gate→build;
+		// otherwise just re-run the build from the existing plan.
+		if p.Plan == "" {
+			return o.runPlanGateBuild(ctx, projectID)
+		}
+		return o.runBuild(ctx, projectID, "")
 	})
 }
 

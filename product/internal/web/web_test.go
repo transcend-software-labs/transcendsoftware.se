@@ -324,6 +324,66 @@ func TestProjectStatus_BuildingStreamsInline(t *testing.T) {
 	}
 }
 
+// TestRetry_FailedBuildRerun guards the recovery path: a build left in the
+// terminal failed state (e.g. interrupted by a deploy) can be retried by the
+// customer and runs to a live preview again.
+func TestRetry_FailedBuildRerun(t *testing.T) {
+	srv, st, _ := newTestServerAuth(t, config.Config{AdminEmail: "admin@example.com"}, nil)
+	defer srv.Close()
+	c := signedInClient(t, srv.URL)
+	ctx := context.Background()
+	u, err := st.UserByEmail(ctx, "neighbour@example.com")
+	if err != nil {
+		t.Fatalf("user: %v", err)
+	}
+	p := &project.Project{
+		ID: "proj-retry", UserID: u.ID, Name: "Retry me",
+		Brief:        "A brochure site for an apple farm selling juice locally",
+		Plan:         "Static brochure site with a hero and contact section.",
+		Status:       project.StatusFailed,
+		RejectReason: "The build was interrupted by a server restart.",
+	}
+	if err := st.CreateProject(ctx, p); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// A non-failed project can't be retried (gating): make a preview_ready one.
+	ready := &project.Project{ID: "proj-ready", UserID: u.ID, Name: "Ready", Status: project.StatusPreviewReady}
+	_ = st.CreateProject(ctx, ready)
+
+	tok := csrfToken(t, c, srv.URL)
+	post := func(id string) {
+		resp, err := c.PostForm(srv.URL+"/projects/"+id+"/retry", url.Values{"csrf_token": {tok}})
+		if err != nil {
+			t.Fatalf("retry post: %v", err)
+		}
+		resp.Body.Close()
+	}
+
+	// Retrying the ready project is a no-op.
+	post(ready.ID)
+	if got, _ := st.ProjectByID(ctx, ready.ID); got.Status != project.StatusPreviewReady {
+		t.Fatalf("non-failed retry should be a no-op, status = %q", got.Status)
+	}
+
+	// Retrying the failed project re-runs the build to a live preview.
+	post(p.ID)
+	deadline := time.Now().Add(8 * time.Second)
+	var final project.Status
+	for time.Now().Before(deadline) {
+		if got, err := st.ProjectByID(ctx, p.ID); err == nil {
+			final = got.Status
+		}
+		if final == project.StatusPreviewReady {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if final != project.StatusPreviewReady {
+		t.Fatalf("retry did not reach preview_ready, got %q", final)
+	}
+}
+
 func TestMagicLink_RequestConsumeLogsIn(t *testing.T) {
 	rec := &recNotifier{}
 	srv, _, _ := newTestServerAuth(t, config.Config{BaseURL: "http://app.example"}, rec)

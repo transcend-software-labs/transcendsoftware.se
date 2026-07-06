@@ -108,6 +108,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /projects/{id}/answer", s.requireUser(s.handleAnswer))
 	mux.HandleFunc("POST /projects/{id}/assets", limitBody(maxUpload+(1<<20), s.requireUser(s.handleUploadAsset)))
 	mux.HandleFunc("POST /projects/{id}/reiterate", s.requireUser(s.handleReiterate))
+	mux.HandleFunc("POST /projects/{id}/retry", s.requireUser(s.handleRetry))
 	mux.HandleFunc("POST /projects/{id}/accept", s.requireUser(s.handleAccept))
 
 	// Operator/admin views (gated by ADMIN_EMAIL).

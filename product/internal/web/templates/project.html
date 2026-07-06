@@ -75,6 +75,17 @@
 </section>
 {{end}}
 
+{{if .CanRetry}}
+<section class="panel">
+  <h2>Build didn't finish</h2>
+  <p class="muted small">Nothing was lost. Run it again — a retry doesn't use up one of your changes.</p>
+  <form method="post" action="/projects/{{.ID}}/retry">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <button class="btn" type="submit">Retry build</button>
+  </form>
+</section>
+{{end}}
+
 {{if .CanAccept}}
 <section class="panel accept-panel">
   <h2>Happy with your site?</h2>

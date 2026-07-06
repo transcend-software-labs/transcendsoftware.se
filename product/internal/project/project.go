@@ -108,6 +108,14 @@ func (p *Project) CanAccept() bool {
 	return p.Status == StatusPreviewReady
 }
 
+// CanRetry reports whether a failed build can be retried. A build only reaches
+// the terminal failed state when the *initial* build never produced a preview
+// (a failed reiteration falls back to the still-live preview instead), so a
+// retry re-runs that first build and consumes no change credit.
+func (p *Project) CanRetry() bool {
+	return p.Status == StatusFailed
+}
+
 // IterationsLeft is the number of reiterations still available to the customer.
 func (p *Project) IterationsLeft() int {
 	left := MaxIterations - p.IterationsUsed

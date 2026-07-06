@@ -329,6 +329,28 @@ func (s *Server) handleReiterate(w http.ResponseWriter, r *http.Request, u *user
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 }
 
+// handleRetry re-runs a failed build (e.g. an agent error, or a build
+// interrupted by a crash or deploy). It consumes no change credit.
+func (s *Server) handleRetry(w http.ResponseWriter, r *http.Request, u *user.User) {
+	p, ok := s.ownedProject(w, r, u)
+	if !ok {
+		return
+	}
+	if !p.CanRetry() {
+		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+		return
+	}
+	// A retry spawns a build too — respect the global capacity cap.
+	if s.cfg.MaxConcurrentBuilds > 0 {
+		if active, err := s.store.ActiveIterations(r.Context()); err == nil && len(active) >= s.cfg.MaxConcurrentBuilds {
+			http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+			return
+		}
+	}
+	s.orch.RetryBuild(p.ID)
+	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+}
+
 // handleAccept records the customer accepting the preview, sending it to
 // Rasmus's final-review queue.
 func (s *Server) handleAccept(w http.ResponseWriter, r *http.Request, u *user.User) {
