@@ -104,25 +104,12 @@ func (a *Anthropic) complete(ctx context.Context, system, user string, maxTokens
 }
 
 // Questions implements Intake.
-func (a *Anthropic) Questions(ctx context.Context, brief string) ([]string, error) {
-	out, err := a.complete(ctx, IntakeSystemPrompt, brief, 500)
+func (a *Anthropic) Questions(ctx context.Context, brief string) (IntakeResult, error) {
+	out, err := a.complete(ctx, IntakeSystemPrompt, brief, 1000)
 	if err != nil {
-		return nil, err
+		return IntakeResult{}, err
 	}
-	start := strings.Index(out, "[")
-	end := strings.LastIndex(out, "]")
-	if start < 0 || end < start {
-		return nil, nil // no questions → proceed straight to planning
-	}
-	var qs []string
-	if err := json.Unmarshal([]byte(out[start:end+1]), &qs); err != nil {
-		return nil, fmt.Errorf("intake: bad JSON: %w", err)
-	}
-	// Cap defensively.
-	if len(qs) > 3 {
-		qs = qs[:3]
-	}
-	return qs, nil
+	return parseIntakeJSON(out)
 }
 
 // Plan implements Planner.

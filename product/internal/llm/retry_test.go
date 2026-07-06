@@ -23,16 +23,20 @@ func TestComplete_RetriesTransientThenSucceeds(t *testing.T) {
 			http.Error(w, "upstream hiccup", http.StatusBadGateway) // 502 → retryable
 			return
 		}
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"[\"q1?\"]"}}]}`))
+		content := `{\"questions\":[\"q1?\"],\"design_options\":[{\"name\":\"Clean\",\"description\":\"minimal\"}]}`
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"` + content + `"}}]}`))
 	}))
 	defer srv.Close()
 
-	qs, err := retryTestClient(srv.URL).Questions(context.Background(), "a bakery site")
+	res, err := retryTestClient(srv.URL).Questions(context.Background(), "a bakery site")
 	if err != nil {
 		t.Fatalf("expected success after one retry, got %v", err)
 	}
-	if len(qs) != 1 || qs[0] != "q1?" {
-		t.Fatalf("unexpected questions: %v", qs)
+	if len(res.Questions) != 1 || res.Questions[0] != "q1?" {
+		t.Fatalf("unexpected questions: %v", res.Questions)
+	}
+	if len(res.DesignOptions) != 1 || res.DesignOptions[0].Name != "Clean" {
+		t.Fatalf("unexpected design options: %v", res.DesignOptions)
 	}
 	if got := calls.Load(); got != 2 {
 		t.Fatalf("expected exactly 2 calls (fail + retry), got %d", got)

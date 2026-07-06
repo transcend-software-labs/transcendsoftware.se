@@ -126,10 +126,12 @@ func (p *Postgres) DeleteExpiredSessions(ctx context.Context) error {
 func (p *Postgres) CreateProject(ctx context.Context, pr *project.Project) error {
 	_, err := p.pool.Exec(ctx,
 		`INSERT INTO projects
-		   (id, user_id, name, brief, status, questions, answers, plan, verdict,
-		    reject_reason, preview_url, repo_url, snapshot_key, iterations_used, created_at, updated_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+		   (id, user_id, name, brief, status, questions, design_options, design_brief,
+		    answers, plan, verdict, reject_reason, preview_url, repo_url, snapshot_key,
+		    iterations_used, created_at, updated_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
 		pr.ID, pr.UserID, pr.Name, pr.Brief, pr.Status, marshalQuestions(pr.Questions),
+		marshalJSON(pr.DesignOptions), pr.DesignBrief,
 		pr.Answers, pr.Plan, pr.Verdict, pr.RejectReason, pr.PreviewURL, pr.RepoURL,
 		pr.SnapshotKey, pr.IterationsUsed, pr.CreatedAt, pr.UpdatedAt)
 	return err
@@ -138,10 +140,12 @@ func (p *Postgres) CreateProject(ctx context.Context, pr *project.Project) error
 func (p *Postgres) UpdateProject(ctx context.Context, pr *project.Project) error {
 	tag, err := p.pool.Exec(ctx,
 		`UPDATE projects SET
-		   name=$2, brief=$3, status=$4, questions=$5, answers=$6, plan=$7, verdict=$8,
-		   reject_reason=$9, preview_url=$10, repo_url=$11, snapshot_key=$12, iterations_used=$13, updated_at=$14
+		   name=$2, brief=$3, status=$4, questions=$5, design_options=$6, design_brief=$7,
+		   answers=$8, plan=$9, verdict=$10, reject_reason=$11, preview_url=$12,
+		   repo_url=$13, snapshot_key=$14, iterations_used=$15, updated_at=$16
 		 WHERE id=$1`,
-		pr.ID, pr.Name, pr.Brief, pr.Status, marshalQuestions(pr.Questions), pr.Answers,
+		pr.ID, pr.Name, pr.Brief, pr.Status, marshalQuestions(pr.Questions),
+		marshalJSON(pr.DesignOptions), pr.DesignBrief, pr.Answers,
 		pr.Plan, pr.Verdict, pr.RejectReason, pr.PreviewURL, pr.RepoURL,
 		pr.SnapshotKey, pr.IterationsUsed, pr.UpdatedAt)
 	if err != nil {
@@ -224,8 +228,9 @@ func (p *Postgres) EscalatedProjects(ctx context.Context) ([]*project.Project, e
 	return out, rows.Err()
 }
 
-const projectColumns = `SELECT id, user_id, name, brief, status, questions, answers, plan, verdict,
-	reject_reason, preview_url, repo_url, snapshot_key, iterations_used, created_at, updated_at
+const projectColumns = `SELECT id, user_id, name, brief, status, questions, design_options, design_brief,
+	answers, plan, verdict, reject_reason, preview_url, repo_url, snapshot_key,
+	iterations_used, created_at, updated_at
 	FROM projects`
 
 // rowScanner is satisfied by both pgx.Row and pgx.Rows.
@@ -235,8 +240,9 @@ type rowScanner interface {
 
 func scanProject(row rowScanner) (*project.Project, error) {
 	var pr project.Project
-	var questionsJSON string
+	var questionsJSON, designJSON string
 	err := row.Scan(&pr.ID, &pr.UserID, &pr.Name, &pr.Brief, &pr.Status, &questionsJSON,
+		&designJSON, &pr.DesignBrief,
 		&pr.Answers, &pr.Plan, &pr.Verdict, &pr.RejectReason, &pr.PreviewURL, &pr.RepoURL,
 		&pr.SnapshotKey, &pr.IterationsUsed, &pr.CreatedAt, &pr.UpdatedAt)
 	if err != nil {
@@ -245,7 +251,19 @@ func scanProject(row rowScanner) (*project.Project, error) {
 	if questionsJSON != "" && questionsJSON != "[]" {
 		_ = json.Unmarshal([]byte(questionsJSON), &pr.Questions)
 	}
+	if designJSON != "" && designJSON != "[]" {
+		_ = json.Unmarshal([]byte(designJSON), &pr.DesignOptions)
+	}
 	return &pr, nil
+}
+
+// marshalJSON renders v as JSON for a text column, "[]" on failure/empty.
+func marshalJSON(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil || string(b) == "null" {
+		return "[]"
+	}
+	return string(b)
 }
 
 func (p *Postgres) CreateAsset(ctx context.Context, a *project.Asset) error {

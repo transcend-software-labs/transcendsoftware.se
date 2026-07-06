@@ -202,6 +202,16 @@ details summary { cursor: pointer; }
 .inline-actions { display: flex; align-items: center; gap: .5rem; }
 .inline-actions input { width: auto; }
 
+.design-options { display: flex; flex-direction: column; gap: .5rem; }
+label.design-option {
+  display: flex; flex-direction: row; align-items: baseline; gap: .6rem;
+  padding: .6rem .8rem; border: 1px solid var(--border); border-radius: var(--radius);
+  cursor: pointer;
+}
+label.design-option:hover { border-color: var(--accent); }
+.design-option input { accent-color: var(--accent); width: auto; }
+.design-options input[type="text"] { margin-left: 2rem; }
+
 .stat-row { list-style: none; display: flex; gap: 2rem; flex-wrap: wrap; }
 .stat-row li { display: flex; flex-direction: column; gap: .15rem; }
 .stat-num { font-size: 1.5rem; font-weight: 600; color: var(--text); line-height: 1; }

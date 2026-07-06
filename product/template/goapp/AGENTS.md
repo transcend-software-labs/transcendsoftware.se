@@ -39,6 +39,19 @@ that implements the plan.
   and `static/app.css` variables. Write real, complete copy in the customer's
   language (Swedish unless the brief says otherwise).
 
+## Design — decided per project, not by this template
+
+This starter provides **boilerplate, not a look**. Its neutral styling exists
+only so the app works before you touch it. Every project's plan carries a
+Design section with the customer's chosen direction — implement *that*:
+
+- Restyle `static/app.css` completely: palette, typography, spacing, layout.
+  Replace the CSS variables and go far beyond them if the direction calls for
+  it. Nothing about the starter's look should survive unless it happens to fit.
+- Redesign the landing page structure freely (hero, sections, imagery).
+- Keep: semantic HTML, accessibility (contrast, focus states, labels), and the
+  responsive behavior. Beauty never trumps usability.
+
 ## Rules
 
 - Keep `/healthz` working — the platform health check depends on it.

@@ -147,9 +147,12 @@ func TestFullFlow_IntakeToPreview(t *testing.T) {
 		t.Fatal("expected clarifying questions after create")
 	}
 
-	// Answer them.
+	// Answer them, picking one of the suggested design directions (the fake
+	// intake suggests "Clean & minimal").
 	resp, err = c.PostForm(srv.URL+"/projects/"+pid+"/answer", url.Values{
-		"answers": {"brochure only; I have photos; Swedish"}, "csrf_token": {tok},
+		"answers":       {"brochure only; I have photos; Swedish"},
+		"design_choice": {"Clean & minimal"},
+		"csrf_token":    {tok},
 	})
 	if err != nil {
 		t.Fatalf("answer: %v", err)
@@ -175,12 +178,17 @@ func TestFullFlow_IntakeToPreview(t *testing.T) {
 		t.Fatal("project never left the building state")
 	}
 
-	// The full project page should now show the ready preview.
+	// The full project page should now show the ready preview and the design
+	// direction that was picked.
 	r, _ := c.Get(srv.URL + "/projects/" + pid)
 	b, _ := io.ReadAll(r.Body)
 	r.Body.Close()
-	if !strings.Contains(string(b), "Preview ready") {
+	page := string(b)
+	if !strings.Contains(page, "Preview ready") {
 		t.Fatal("project page does not show preview ready after build")
+	}
+	if !strings.Contains(page, "Design direction") || !strings.Contains(page, "Clean &amp; minimal") {
+		t.Fatal("project page does not show the chosen design direction")
 	}
 }
 

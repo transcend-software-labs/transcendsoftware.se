@@ -84,12 +84,41 @@ func (s *Server) handleAnswer(w http.ResponseWriter, r *http.Request, u *user.Us
 		return
 	}
 	answers := strings.TrimSpace(r.FormValue("answers"))
-	if p.Status != project.StatusNeedsInput || answers == "" || len(answers) > maxBriefLen {
+	design := resolveDesign(p, r.FormValue("design_choice"), r.FormValue("design_custom"))
+	// Require answers when questions were asked; design-only submissions are
+	// fine when intake had no questions.
+	if p.Status != project.StatusNeedsInput || len(answers) > maxBriefLen ||
+		(len(p.Questions) > 0 && answers == "") || (answers == "" && design == "") {
 		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 		return
 	}
-	s.orch.SubmitAnswers(p.ID, answers)
+	s.orch.SubmitAnswers(p.ID, answers, design)
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+}
+
+// resolveDesign turns the design form fields into the design brief: a picked
+// suggestion (name + description, so the builder gets the full direction) or
+// the customer's own words. Only offered options are accepted as picks.
+func resolveDesign(p *project.Project, choice, custom string) string {
+	choice = strings.TrimSpace(choice)
+	custom = strings.TrimSpace(custom)
+	if len(custom) > 500 {
+		custom = custom[:500]
+	}
+	// Own words win whenever provided — customers often type without
+	// re-selecting the radio.
+	if custom != "" && (choice == "__custom" || choice == "") {
+		return custom
+	}
+	for _, o := range p.DesignOptions {
+		if o.Name == choice {
+			return o.Name + " — " + o.Description
+		}
+	}
+	if choice == "__custom" {
+		return custom
+	}
+	return ""
 }
 
 // quotaBlock reports why a new build must not start right now ("" = go ahead):

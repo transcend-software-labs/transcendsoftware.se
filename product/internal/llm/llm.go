@@ -29,10 +29,19 @@ type GateResult struct {
 	Reason  string
 }
 
-// Intake produces a short list of PO-level clarifying questions for a brief,
-// asked before any planning or building happens.
+// IntakeResult is the output of the intake step: clarifying questions plus
+// suggested design directions the customer picks from (or overrides with their
+// own words). Design is decided per-project — the starter template is
+// boilerplate, not a look.
+type IntakeResult struct {
+	Questions     []string
+	DesignOptions []project.DesignOption
+}
+
+// Intake produces PO-level clarifying questions and design suggestions for a
+// brief, asked before any planning or building happens.
 type Intake interface {
-	Questions(ctx context.Context, brief string) ([]string, error)
+	Questions(ctx context.Context, brief string) (IntakeResult, error)
 }
 
 // Planner turns a brief into a build plan.
@@ -63,6 +72,9 @@ Decisions to default to (override only with a clear reason):
 Return markdown with these sections:
 ## Summary        — one paragraph of what we will build
 ## Pages          — the pages/sections and their purpose
+## Design         — the visual direction: honor the customer's chosen design
+                    direction if one is stated in the brief; translate it into
+                    concrete guidance (palette, typography, mood, imagery)
 ## Stack          — the concrete tech choices
 ## Data & assets  — what the customer must provide (esp. real photos)
 ## Open questions — anything that must be clarified before/at build time
@@ -70,17 +82,27 @@ Return markdown with these sections:
 Begin the response with a single line: "NAME: <a short 2-4 word project name>".`
 
 // IntakeSystemPrompt drives the clarifying-questions step. The questions are
-// what separate this from a tool that confidently builds the wrong thing.
+// what separate this from a tool that confidently builds the wrong thing, and
+// the design options are how the customer decides the look instead of us
+// guessing it.
 const IntakeSystemPrompt = `You are the intake step of an autonomous web agency. A non-technical customer
-has described a website they want. Ask the few highest-value questions a product
-owner must answer before building — the ones that would most change the result
-if you guessed wrong (e.g. brochure vs. online ordering, who provides photos,
-languages, key pages).
+has described a website they want. Two jobs:
 
-Ask at most 3 questions. Be concrete and in plain language; no jargon.
-Respond with STRICT JSON and nothing else: a JSON array of question strings,
-e.g. ["Do you want customers to buy online, or just contact you?", "..."].
-If the brief is already complete, return [].`
+1. questions: the few highest-value questions a product owner must answer
+   before building — the ones that would most change the result if you guessed
+   wrong (e.g. brochure vs. online ordering, who provides photos, languages,
+   key pages). At most 3. Concrete, plain language, no jargon. Empty array if
+   the brief is already complete.
+
+2. design_options: 2-3 distinct visual directions FOR THIS SPECIFIC SITE that
+   the customer will choose between (they may also state their own). Each has
+   a short evocative name and one sentence covering mood, colors and
+   typography. Make them genuinely different from each other, and fitting for
+   the business. Always provide these.
+
+Write questions and design options in the customer's language.
+Respond with STRICT JSON and nothing else, exactly this shape:
+{"questions":["..."],"design_options":[{"name":"...","description":"..."}]}`
 
 // BuildSystemPrompt drives the build agent (opencode) inside the sandbox: build
 // the site from the plan, then deploy it. The FLY_APP/FLY_DEPLOY_TOKEN env vars
@@ -91,6 +113,10 @@ website described below in the current working directory (/workspace).
 How to build:
 - Static site by default: plain, valid HTML/CSS. Fast, accessible, Swedish unless
   told otherwise. Write real, complete files — never just describe them.
+- Design is decided per-project: follow the plan's Design section (which carries
+  the customer's chosen direction). If you started from a starter app, its look
+  is a neutral placeholder — restyle the CSS completely to match; do not let the
+  starter's styling constrain the design.
 - Use the customer's uploaded files in /workspace/assets/ if present; copy the
   ones you use into the site. Only use placeholders if assets/ is empty.
 
@@ -136,11 +162,17 @@ type Fake struct{}
 // NewFake returns a deterministic dev planner/gate.
 func NewFake() *Fake { return &Fake{} }
 
-func (Fake) Questions(_ context.Context, _ string) ([]string, error) {
-	return []string{
-		"Do you want customers to buy online, or just see the site and contact you?",
-		"Do you have your own photos and logo, or should we use placeholders for now?",
-		"What language(s) should the site be in?",
+func (Fake) Questions(_ context.Context, _ string) (IntakeResult, error) {
+	return IntakeResult{
+		Questions: []string{
+			"Do you want customers to buy online, or just see the site and contact you?",
+			"Do you have your own photos and logo, or should we use placeholders for now?",
+			"What language(s) should the site be in?",
+		},
+		DesignOptions: []project.DesignOption{
+			{Name: "Clean & minimal", Description: "Lots of white space, dark text, a single accent color, modern sans-serif."},
+			{Name: "Warm & rustic", Description: "Cream tones, earthy accents, serif headings — handmade and inviting."},
+		},
 	}, nil
 }
 

@@ -166,8 +166,9 @@ func (o *Orchestrator) async(projectID string, fn func(context.Context) error) {
 	}()
 }
 
-// StartIntake generates clarifying questions for a freshly created project. If
-// the intake returns no questions, it proceeds straight to planning.
+// StartIntake generates clarifying questions + design suggestions for a
+// freshly created project. If the intake returns neither, it proceeds straight
+// to planning.
 func (o *Orchestrator) StartIntake(projectID string) {
 	o.async(projectID, func(ctx context.Context) error {
 		p, err := o.store.ProjectByID(ctx, projectID)
@@ -177,27 +178,30 @@ func (o *Orchestrator) StartIntake(projectID string) {
 		if err := o.setStatus(ctx, p, project.StatusClarifying); err != nil {
 			return err
 		}
-		qs, err := o.intake.Questions(ctx, p.Brief)
+		res, err := o.intake.Questions(ctx, p.Brief)
 		if err != nil {
 			return err
 		}
-		if len(qs) == 0 {
+		if len(res.Questions) == 0 && len(res.DesignOptions) == 0 {
 			return o.runPlanGateBuild(ctx, projectID)
 		}
-		p.Questions = qs
+		p.Questions = res.Questions
+		p.DesignOptions = res.DesignOptions
 		p.Status = project.StatusNeedsInput
 		return o.save(ctx, p)
 	})
 }
 
-// SubmitAnswers records the customer's answers and proceeds to plan→gate→build.
-func (o *Orchestrator) SubmitAnswers(projectID, answers string) {
+// SubmitAnswers records the customer's answers and chosen design direction,
+// then proceeds to plan→gate→build.
+func (o *Orchestrator) SubmitAnswers(projectID, answers, design string) {
 	o.async(projectID, func(ctx context.Context) error {
 		p, err := o.store.ProjectByID(ctx, projectID)
 		if err != nil {
 			return err
 		}
 		p.Answers = answers
+		p.DesignBrief = design
 		if err := o.save(ctx, p); err != nil {
 			return err
 		}

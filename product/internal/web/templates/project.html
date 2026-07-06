@@ -21,12 +21,32 @@
 <section class="panel">
   <h2>A few quick questions</h2>
   <p class="muted small">Answering these helps the agent build the right thing the first time.</p>
-  <ol class="questions">
-    {{range .Questions}}<li>{{.}}</li>{{end}}
-  </ol>
   <form method="post" action="/projects/{{.ID}}/answer" class="stack">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    {{if .Questions}}
+    <ol class="questions">
+      {{range .Questions}}<li>{{.}}</li>{{end}}
+    </ol>
     <textarea name="answers" rows="6" required placeholder="Answer the questions above in your own words."></textarea>
+    {{end}}
+    {{if .DesignOptions}}
+    <h3>How should it look?</h3>
+    <p class="muted small">Pick a direction — or describe your own.</p>
+    <div class="design-options">
+      {{range .DesignOptions}}
+      <label class="design-option">
+        <input type="radio" name="design_choice" value="{{.Name}}">
+        <span><strong>{{.Name}}</strong> — {{.Description}}</span>
+      </label>
+      {{end}}
+      <label class="design-option">
+        <input type="radio" name="design_choice" value="__custom">
+        <span><strong>My own preference:</strong></span>
+      </label>
+      <input type="text" name="design_custom" maxlength="500"
+        placeholder="e.g. dark and dramatic, gold accents, elegant serif headings">
+    </div>
+    {{end}}
     <button class="btn" type="submit">Submit &amp; build</button>
   </form>
 </section>
@@ -36,6 +56,7 @@
   <h2>Your brief</h2>
   <p class="brief">{{.Brief}}</p>
   {{if .Answers}}<h3 class="muted small" style="margin-top:1rem">Your answers</h3><p class="brief">{{.Answers}}</p>{{end}}
+  {{if .DesignBrief}}<h3 class="muted small" style="margin-top:1rem">Design direction</h3><p class="brief">{{.DesignBrief}}</p>{{end}}
 </section>
 
 <section class="panel">

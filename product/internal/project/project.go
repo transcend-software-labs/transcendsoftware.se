@@ -44,6 +44,13 @@ const (
 	VerdictEscalate Verdict = "escalate" // ambiguous — route to a human (Rasmus)
 )
 
+// DesignOption is one suggested visual direction from the intake step. The
+// customer picks one — or states their own preference — before building.
+type DesignOption struct {
+	Name        string `json:"name"`        // short label, e.g. "Varmt & rustikt"
+	Description string `json:"description"` // one sentence: mood, colors, typography
+}
+
 // Project is a single customer request to have a website built.
 type Project struct {
 	ID             string
@@ -51,26 +58,32 @@ type Project struct {
 	Name           string
 	Brief          string // the customer's description of what they want
 	Status         Status
-	Questions      []string // clarifying questions from the intake step
-	Answers        string   // the customer's answers to those questions
-	Plan           string   // generated build plan (markdown)
-	Verdict        Verdict  // safety-gate outcome
-	RejectReason   string   // populated when Status == rejected
-	PreviewURL     string   // latest deployed preview link
-	RepoURL        string   // reserved for GitHub mirroring (Phase 4); not populated yet
-	SnapshotKey    string   // object-storage key of the workspace snapshot from the last successful build
-	IterationsUsed int      // number of build passes consumed (1..MaxIterations)
+	Questions      []string       // clarifying questions from the intake step
+	DesignOptions  []DesignOption // suggested design directions from intake
+	DesignBrief    string         // the customer's chosen/stated design direction
+	Answers        string         // the customer's answers to those questions
+	Plan           string         // generated build plan (markdown)
+	Verdict        Verdict        // safety-gate outcome
+	RejectReason   string         // populated when Status == rejected
+	PreviewURL     string         // latest deployed preview link
+	RepoURL        string         // reserved for GitHub mirroring (Phase 4); not populated yet
+	SnapshotKey    string         // object-storage key of the workspace snapshot from the last successful build
+	IterationsUsed int            // number of build passes consumed (1..MaxIterations)
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
 
-// EffectiveBrief is the brief enriched with the customer's clarifying answers,
-// as fed to the planner and safety gate.
+// EffectiveBrief is the brief enriched with the customer's clarifying answers
+// and chosen design direction, as fed to the planner and safety gate.
 func (p *Project) EffectiveBrief() string {
-	if p.Answers == "" {
-		return p.Brief
+	b := p.Brief
+	if p.Answers != "" {
+		b += "\n\nClarifications from the customer:\n" + p.Answers
 	}
-	return p.Brief + "\n\nClarifications from the customer:\n" + p.Answers
+	if p.DesignBrief != "" {
+		b += "\n\nDesign direction chosen by the customer:\n" + p.DesignBrief
+	}
+	return b
 }
 
 // CanReiterate reports whether the customer may request another build pass.

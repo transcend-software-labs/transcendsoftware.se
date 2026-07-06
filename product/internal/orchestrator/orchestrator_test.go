@@ -117,8 +117,9 @@ func waitForIterations(t *testing.T, st store.Store, id string, n int) *project.
 	return nil
 }
 
-// startThroughIntake runs intake, answers the questions, and returns once the
-// project is past intake (the fake intake always asks questions).
+// startThroughIntake runs intake, answers the questions (picking a suggested
+// design), and returns once the project is past intake (the fake intake always
+// asks questions and suggests designs).
 func startThroughIntake(t *testing.T, o *Orchestrator, st store.Store, id string) {
 	t.Helper()
 	o.StartIntake(id)
@@ -126,7 +127,11 @@ func startThroughIntake(t *testing.T, o *Orchestrator, st store.Store, id string
 	if len(p.Questions) == 0 {
 		t.Fatal("expected clarifying questions from intake")
 	}
-	o.SubmitAnswers(id, "brochure only; I have photos; Swedish")
+	if len(p.DesignOptions) == 0 {
+		t.Fatal("expected design suggestions from intake")
+	}
+	o.SubmitAnswers(id, "brochure only; I have photos; Swedish",
+		p.DesignOptions[0].Name+" — "+p.DesignOptions[0].Description)
 }
 
 func TestPipeline_HappyPath(t *testing.T) {
@@ -145,6 +150,12 @@ func TestPipeline_HappyPath(t *testing.T) {
 	}
 	if p.Answers == "" {
 		t.Error("expected the customer's answers to be recorded")
+	}
+	if p.DesignBrief == "" {
+		t.Error("expected the chosen design direction to be recorded")
+	}
+	if !strings.Contains(p.EffectiveBrief(), "Design direction") {
+		t.Error("expected the design direction to reach the planner via the brief")
 	}
 	if !p.CanReiterate() {
 		t.Error("expected reiterations to be available after first build")

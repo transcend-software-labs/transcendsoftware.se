@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 )
 
 // OpenAICompat implements Intake, Planner and SafetyGate against any
@@ -138,24 +140,44 @@ func (o *OpenAICompat) completeOnce(ctx context.Context, system, user string, ma
 }
 
 // Questions implements Intake.
-func (o *OpenAICompat) Questions(ctx context.Context, brief string) ([]string, error) {
+func (o *OpenAICompat) Questions(ctx context.Context, brief string) (IntakeResult, error) {
 	out, err := o.complete(ctx, IntakeSystemPrompt, brief, 3000)
 	if err != nil {
-		return nil, err
+		return IntakeResult{}, err
 	}
-	start := strings.Index(out, "[")
-	end := strings.LastIndex(out, "]")
+	return parseIntakeJSON(out)
+}
+
+// parseIntakeJSON extracts the intake JSON object (questions + design options)
+// from a model response, capping both defensively. Shared by all LLM clients.
+func parseIntakeJSON(out string) (IntakeResult, error) {
+	start := strings.Index(out, "{")
+	end := strings.LastIndex(out, "}")
 	if start < 0 || end < start {
-		return nil, nil
+		return IntakeResult{}, nil
 	}
-	var qs []string
-	if err := json.Unmarshal([]byte(out[start:end+1]), &qs); err != nil {
-		return nil, fmt.Errorf("intake: bad JSON: %w", err)
+	var parsed struct {
+		Questions     []string `json:"questions"`
+		DesignOptions []struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+		} `json:"design_options"`
 	}
-	if len(qs) > 3 {
-		qs = qs[:3]
+	if err := json.Unmarshal([]byte(out[start:end+1]), &parsed); err != nil {
+		return IntakeResult{}, fmt.Errorf("intake: bad JSON: %w", err)
 	}
-	return qs, nil
+	res := IntakeResult{Questions: parsed.Questions}
+	if len(res.Questions) > 3 {
+		res.Questions = res.Questions[:3]
+	}
+	for i, d := range parsed.DesignOptions {
+		if i == 3 || d.Name == "" {
+			break
+		}
+		res.DesignOptions = append(res.DesignOptions,
+			project.DesignOption{Name: d.Name, Description: d.Description})
+	}
+	return res, nil
 }
 
 // Plan implements Planner.
