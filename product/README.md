@@ -53,9 +53,11 @@ can deploy), waits for opencode to accept connections, and drives it at its
 private address. **The orchestrator must run on the Fly private (6PN) network**
 to reach the sandbox.
 
-Not yet built (by design): the payment gate. Known hardening TODO: the deploy
-token in the sandbox is org-scoped; per-app minting is blocked on a
-token-authority decision (PLAN.md §5.3).
+The deploy token the sandbox receives is minted per build, scoped to that one
+customer app (Fly's `createLimitedAccessToken`), so a compromised agent can
+only deploy its own throwaway app. If the runtime token can't mint sub-tokens,
+it falls back to a configured org-scoped token (logged). Not yet built (by
+design): the payment gate.
 
 ## Run it
 
@@ -162,9 +164,10 @@ The pipeline is built around a trusted/untrusted split:
   storage keys). App creation, snapshot restore/save, and deploy verification
   all run on this side.
 - **Inside the sandbox** (what a compromised build could leak): the LLM API key
-  and a Fly **deploy token** — currently **org-scoped**, so a prompt-injected
-  agent could deploy to any app in the org. Per-app minting is a documented
-  hardening TODO blocked on a token-authority decision (PLAN.md §5.3).
+  and a Fly **deploy token minted per build, scoped to that one customer app**
+  — a prompt-injected agent can deploy only its own throwaway app, not anything
+  else in the org (falls back to a configured org-scoped token, logged, if the
+  runtime token can't mint).
 - **Storage is never credentialed in the sandbox**: assets arrive and snapshots
   travel via short-lived presigned URLs only.
 - The **safety gate is tool-less**: it only classifies, so a jailbreak of it

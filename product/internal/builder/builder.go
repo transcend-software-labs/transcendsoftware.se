@@ -8,10 +8,10 @@
 // fake driver) and in real mode (a Fly Machine → private address → HTTP driver).
 //
 // Credentials in the sandbox: the LLM API key (opencode needs it) and FLY_APP +
-// FLY_DEPLOY_TOKEN so the agent can run `fly deploy`. The deploy token is
-// currently org-scoped (interim — see fly_http.go for the per-app hardening
-// TODO and its blocker). Storage is never credentialed: assets and snapshots
-// move through short-lived presigned URLs only.
+// FLY_DEPLOY_TOKEN so the agent can run `fly deploy`. The deploy token is minted
+// per build, scoped to that one customer app (see fly.HTTP.AppDeployToken).
+// Storage is never credentialed: assets and snapshots move through short-lived
+// presigned URLs only.
 package builder
 
 import (
@@ -135,8 +135,8 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 	}
 
 	// Provision the per-customer app (orchestrator side) and inject the app name
-	// + a deploy token so the agent can `fly deploy` it. The token is org-scoped
-	// for now (per-app minting is blocked — see fly.HTTP.AppDeployToken).
+	// + a deploy token scoped to just that app (minted per build) so the agent
+	// can `fly deploy` it and nothing else — see fly.HTTP.AppDeployToken.
 	appName := DeployAppName(req.ProjectID)
 	if err := b.machines.EnsureApp(ctx, appName); err != nil {
 		return Result{}, err

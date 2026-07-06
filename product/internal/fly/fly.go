@@ -5,10 +5,10 @@
 //
 // Each Fly Machine is a Firecracker microVM, so one Machine per task is the
 // isolation boundary. The org *API* token stays on the trusted side and never
-// enters the sandbox. The *deploy* token the sandbox receives is, for now,
-// org-scoped — a misbehaving agent could deploy to any app in the org. Scoping
-// it per-app is a documented hardening TODO blocked on a token-minting
-// decision; see HTTP.AppDeployToken in fly_http.go.
+// enters the sandbox. The *deploy* token the sandbox receives is minted per
+// build, scoped to that one throwaway customer app (see HTTP.AppDeployToken),
+// so a compromised agent can only deploy its own app — with a configured
+// org-scoped token as a fallback if minting isn't available.
 package fly
 
 import (
@@ -61,8 +61,8 @@ type Machines interface {
 	// timeout, so anything older is a leak (e.g. manual testing leftovers).
 	SweepSandboxes(ctx context.Context, olderThan time.Duration) (int, error)
 	// AppDeployToken returns a deploy token for appName, injected into the
-	// sandbox so the agent can run `fly deploy`. Interim: org-scoped (see
-	// fly_http.go for the per-app hardening TODO and its blocker).
+	// sandbox so the agent can run `fly deploy`. Scoped to appName alone, minted
+	// per build (see HTTP.AppDeployToken).
 	AppDeployToken(ctx context.Context, appName string) (string, error)
 }
 

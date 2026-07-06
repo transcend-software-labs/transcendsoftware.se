@@ -6,23 +6,33 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 // machinesAPI is the Fly Machines API base.
 const machinesAPI = "https://api.machines.dev/v1"
 
-// HTTP is a real Fly client (Machines + Apps API).
+// graphqlAPI is the Fly GraphQL endpoint (used to mint per-app deploy tokens).
+const graphqlAPI = "https://api.fly.io/graphql"
+
+// HTTP is a real Fly client (Machines + Apps + GraphQL APIs).
 type HTTP struct {
 	token        string // Fly API token (org — trusted side only, never the sandbox)
-	org          string // org slug for app creation
-	deployToken  string // deploy-scoped token injected into the sandbox for `fly deploy`
+	org          string // org slug for app creation + token minting
+	deployToken  string // fallback deploy token if per-app minting isn't available
 	sandboxApp   string // Fly app the per-task sandbox machines run under
 	sandboxImage string // OCI image containing opencode + toolchains
+	graphqlURL   string // Fly GraphQL endpoint (overridable in tests)
+	log          *slog.Logger
 	client       *http.Client
+
+	mu      sync.Mutex
+	orgNode string // cached GraphQL node id of org
 }
 
 // Options configures the real Fly client.
@@ -32,16 +42,28 @@ type Options struct {
 	DeployToken  string
 	SandboxApp   string
 	SandboxImage string
+	GraphQLURL   string // optional; defaults to Fly's GraphQL endpoint
+	Logger       *slog.Logger
 }
 
 // NewHTTP returns a real Fly client.
 func NewHTTP(o Options) *HTTP {
+	gql := o.GraphQLURL
+	if gql == "" {
+		gql = graphqlAPI
+	}
+	log := o.Logger
+	if log == nil {
+		log = slog.Default()
+	}
 	return &HTTP{
 		token:        o.Token,
 		org:          o.Org,
 		deployToken:  o.DeployToken,
 		sandboxApp:   o.SandboxApp,
 		sandboxImage: o.SandboxImage,
+		graphqlURL:   gql,
+		log:          log,
 		client:       &http.Client{Timeout: 120 * time.Second}, // covers the machine wait endpoint
 	}
 }
@@ -59,22 +81,115 @@ func (h *HTTP) EnsureApp(ctx context.Context, appName string) error {
 
 // AppDeployToken returns a token the sandbox agent uses to run `fly deploy`.
 //
-// Interim: returns the configured deploy-scoped token. It is a limited token
-// (deploy operations only, no org admin or secret reads), never the org API
-// token. But it is scoped to the *org*, so a misbehaving or prompt-injected
-// build agent could deploy to (or destroy) any app in the org, not just its own.
-//
-// Hardening TODO: mint a token scoped to appName alone, per task, with a short
-// expiry (~1h), and let it expire after the build. The mechanism is Fly's
-// `createLimitedAccessToken` GraphQL mutation (what `fly tokens create deploy
-// -a <app>` calls): profile "deploy", the app as the resource, organizationId
-// from the org. The blocker is authority: minting sub-tokens requires an
-// org-privileged token — a deploy-scoped token like this one gets "Not
-// authorized to access this createlimitedaccesstoken". So enabling per-app
-// scoping means giving the (trusted) orchestrator a token that can mint tokens,
-// which is a deliberate trade-off to make explicitly, not silently.
-func (h *HTTP) AppDeployToken(_ context.Context, _ string) (string, error) {
-	return h.deployToken, nil
+// It mints a token scoped to appName alone, per build, with a short expiry —
+// so a prompt-injected or misbehaving agent can only deploy its own throwaway
+// app, not anything else in the org. If minting isn't available (the runtime
+// token can't create sub-tokens, or GraphQL is unreachable) it falls back to
+// the configured org-scoped deploy token so builds keep working; that fallback
+// is logged because it is a security downgrade.
+func (h *HTTP) AppDeployToken(ctx context.Context, appName string) (string, error) {
+	tok, err := h.mintDeployToken(ctx, appName)
+	if err == nil {
+		return tok, nil
+	}
+	if h.deployToken != "" {
+		h.log.Warn("fly: per-app deploy token mint failed; using org-scoped fallback",
+			"app", appName, "err", err)
+		return h.deployToken, nil
+	}
+	return "", fmt.Errorf("fly: mint deploy token for %s: %w", appName, err)
+}
+
+// mintDeployToken creates a Fly deploy token scoped to appName (the
+// createLimitedAccessToken mutation that `fly tokens create deploy -a` uses).
+func (h *HTTP) mintDeployToken(ctx context.Context, appName string) (string, error) {
+	orgNode, err := h.orgID(ctx)
+	if err != nil {
+		return "", err
+	}
+	const mutation = `mutation($input: CreateLimitedAccessTokenInput!){` +
+		`createLimitedAccessToken(input:$input){limitedAccessToken{tokenHeader}}}`
+	vars := map[string]any{"input": map[string]any{
+		"name":           "forge-deploy-" + appName,
+		"organizationId": orgNode,
+		"profile":        "deploy",
+		"profileParams":  map[string]any{"app_id": appName},
+		"expiry":         "2h", // comfortably longer than a build, then it dies
+	}}
+	var out struct {
+		CreateLimitedAccessToken struct {
+			LimitedAccessToken struct {
+				TokenHeader string `json:"tokenHeader"`
+			} `json:"limitedAccessToken"`
+		} `json:"createLimitedAccessToken"`
+	}
+	if err := h.graphql(ctx, mutation, vars, &out); err != nil {
+		return "", err
+	}
+	tok := out.CreateLimitedAccessToken.LimitedAccessToken.TokenHeader
+	if tok == "" {
+		return "", fmt.Errorf("empty token returned")
+	}
+	return tok, nil
+}
+
+// orgID resolves and caches the org's GraphQL node id.
+func (h *HTTP) orgID(ctx context.Context) (string, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.orgNode != "" {
+		return h.orgNode, nil
+	}
+	var out struct {
+		Organization struct {
+			ID string `json:"id"`
+		} `json:"organization"`
+	}
+	if err := h.graphql(ctx, `query($slug:String!){organization(slug:$slug){id}}`,
+		map[string]any{"slug": h.org}, &out); err != nil {
+		return "", err
+	}
+	if out.Organization.ID == "" {
+		return "", fmt.Errorf("org %q not found", h.org)
+	}
+	h.orgNode = out.Organization.ID
+	return h.orgNode, nil
+}
+
+// graphql runs a Fly GraphQL query/mutation, decoding data into out.
+func (h *HTTP) graphql(ctx context.Context, query string, vars map[string]any, out any) error {
+	body, err := json.Marshal(map[string]any{"query": query, "variables": vars})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.graphqlURL, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+h.token)
+	req.Header.Set("content-type", "application/json")
+	resp, err := h.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	var env struct {
+		Data   json.RawMessage `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return fmt.Errorf("fly graphql: decode (status %d): %w", resp.StatusCode, err)
+	}
+	if len(env.Errors) > 0 {
+		return fmt.Errorf("fly graphql: %s", env.Errors[0].Message)
+	}
+	if resp.StatusCode/100 != 2 {
+		return fmt.Errorf("fly graphql: status %d", resp.StatusCode)
+	}
+	return json.Unmarshal(env.Data, out)
 }
 
 func (h *HTTP) SpawnSandbox(ctx context.Context, spec SpawnSpec) (*Sandbox, error) {

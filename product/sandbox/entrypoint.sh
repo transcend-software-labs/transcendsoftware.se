@@ -9,8 +9,8 @@
 #   ASSETS_MANIFEST JSON {filename: presigned-GET-url} of customer uploads
 #   LLM_API_KEY / LLM_BASE_URL / LLM_MODEL   opencode's model provider
 #   FLY_APP / FLY_DEPLOY_TOKEN   let the agent `fly deploy` the customer app.
-#     The token is org-scoped for now (per-app minting is a documented TODO,
-#     see internal/fly) — treat this sandbox as able to deploy org-wide.
+#     The token is minted per build, scoped to FLY_APP alone — this sandbox
+#     can deploy only its own app (see internal/fly).
 #
 # Storage is never credentialed here: assets arrive via presigned GET URLs, and
 # workspace snapshots are restored/saved by the orchestrator over the Machines

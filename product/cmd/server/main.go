@@ -204,5 +204,6 @@ func newMachines(cfg config.Config, log *slog.Logger) fly.Machines {
 		DeployToken:  cfg.FlyDeployToken,
 		SandboxApp:   cfg.FlySandboxApp,
 		SandboxImage: cfg.FlySandboxImage,
+		Logger:       log,
 	})
 }
