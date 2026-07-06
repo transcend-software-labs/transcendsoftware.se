@@ -346,20 +346,40 @@ func (h *HTTP) SweepSandboxes(ctx context.Context, olderThan time.Duration) (int
 }
 
 // Exec runs a command inside a sandbox machine via the Machines exec API.
-// A non-zero exit code is returned in the result, not as an error.
+// A non-zero exit code is returned in the result, not as an error. The request
+// uses a client whose timeout tracks the exec timeout (the default 120s client
+// would abort long execs like the multi-page screenshot crawl).
 func (h *HTTP) Exec(ctx context.Context, machineID string, command []string, timeoutSec int) (ExecResult, error) {
 	if timeoutSec <= 0 {
 		timeoutSec = 30
+	}
+	body, err := json.Marshal(map[string]any{"command": command, "timeout": timeoutSec})
+	if err != nil {
+		return ExecResult{}, err
+	}
+	url := fmt.Sprintf("%s/apps/%s/machines/%s/exec", machinesAPI, h.sandboxApp, machineID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return ExecResult{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+h.token)
+	req.Header.Set("content-type", "application/json")
+	client := &http.Client{Timeout: time.Duration(timeoutSec+30) * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return ExecResult{}, err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode/100 != 2 {
+		return ExecResult{}, fmt.Errorf("fly: exec returned %d: %s", resp.StatusCode, string(raw))
 	}
 	var out struct {
 		ExitCode int32  `json:"exit_code"`
 		Stdout   string `json:"stdout"`
 		Stderr   string `json:"stderr"`
 	}
-	err := h.do(ctx, http.MethodPost,
-		fmt.Sprintf("/apps/%s/machines/%s/exec", h.sandboxApp, machineID),
-		map[string]any{"command": command, "timeout": timeoutSec}, &out)
-	if err != nil {
+	if err := json.Unmarshal(raw, &out); err != nil {
 		return ExecResult{}, err
 	}
 	return ExecResult{ExitCode: out.ExitCode, Stdout: out.Stdout, Stderr: out.Stderr}, nil

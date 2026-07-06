@@ -12,6 +12,7 @@ package orchestrator
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -440,12 +441,20 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 		o.log.Error("presign snapshot put", "project", p.ID, "err", err)
 	}
 
-	screenshotKey := "projects/" + p.ID + "/screenshot.png"
-	var screenshotPut string
-	if u, err := o.storage.PresignPut(ctx, screenshotKey, time.Hour); err == nil {
-		screenshotPut = u
-	} else {
-		o.log.Error("presign screenshot put", "project", p.ID, "err", err)
+	// Pre-mint presigned PUT URLs for up to maxScreenshots pages; the crawler
+	// fills as many as the site has. Slot i ↔ key screenshots/<i>.png.
+	const maxScreenshots = 8
+	screenshotPuts := make([]string, 0, maxScreenshots)
+	screenshotKeys := make([]string, 0, maxScreenshots)
+	for i := 0; i < maxScreenshots; i++ {
+		key := fmt.Sprintf("projects/%s/screenshots/%d.png", p.ID, i)
+		u, err := o.storage.PresignPut(ctx, key, time.Hour)
+		if err != nil {
+			o.log.Error("presign screenshot put", "project", p.ID, "err", err)
+			break
+		}
+		screenshotPuts = append(screenshotPuts, u)
+		screenshotKeys = append(screenshotKeys, key)
 	}
 
 	// First build with a configured starter template: seed the workspace with
@@ -460,15 +469,15 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 	}
 
 	res, err := o.builder.Build(ctx, builder.Request{
-		ProjectID:        p.ID,
-		Brief:            p.EffectiveBrief(),
-		Plan:             p.Plan,
-		Prompt:           prompt,
-		SnapshotGetURL:   snapshotGet,
-		SnapshotPutURL:   snapshotPut,
-		ScreenshotPutURL: screenshotPut,
-		TemplateGetURL:   templateGet,
-		AssetManifest:    o.assetManifest(ctx, p.ID),
+		ProjectID:         p.ID,
+		Brief:             p.EffectiveBrief(),
+		Plan:              p.Plan,
+		Prompt:            prompt,
+		SnapshotGetURL:    snapshotGet,
+		SnapshotPutURL:    snapshotPut,
+		ScreenshotPutURLs: screenshotPuts,
+		TemplateGetURL:    templateGet,
+		AssetManifest:     o.assetManifest(ctx, p.ID),
 	}, builder.Hooks{
 		OnLog: onLog,
 		OnSandbox: func(machineID, _ string) {
@@ -514,8 +523,14 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 	if res.SnapshotSaved {
 		p.SnapshotKey = snapshotKey
 	}
-	if res.ScreenshotSaved {
-		p.ScreenshotKey = screenshotKey
+	if len(res.Screenshots) > 0 {
+		shots := make([]project.Screenshot, 0, len(res.Screenshots))
+		for _, s := range res.Screenshots {
+			if s.Slot >= 0 && s.Slot < len(screenshotKeys) {
+				shots = append(shots, project.Screenshot{Path: s.Path, Key: screenshotKeys[s.Slot]})
+			}
+		}
+		p.Screenshots = shots
 	}
 	p.Status = project.StatusPreviewReady
 	if err := o.save(ctx, p); err != nil {

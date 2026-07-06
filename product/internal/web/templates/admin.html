@@ -46,8 +46,17 @@
     {{range .Data.Accepted}}
     <li class="panel">
       <h3>{{.Name}}</h3>
-      {{if .ScreenshotURL}}<a href="{{.PreviewURL}}" target="_blank" rel="noopener"><img class="review-shot" src="{{.ScreenshotURL}}" alt="Preview of {{.Name}}" loading="lazy"></a>{{end}}
       <p><a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{.PreviewURL}} ↗</a></p>
+      {{if .Shots}}
+      <div class="review-shots">
+        {{range .Shots}}
+        <figure>
+          <figcaption class="muted small">{{.Path}}</figcaption>
+          <a href="{{.URL}}" target="_blank" rel="noopener"><img class="review-shot" src="{{.URL}}" alt="Page {{.Path}}" loading="lazy"></a>
+        </figure>
+        {{end}}
+      </div>
+      {{end}}
       <p class="brief muted small">{{.Brief}}</p>
       <div class="admin-actions">
         <form method="post" action="/admin/projects/{{.ID}}/deliver" class="inline">
@@ -94,7 +103,7 @@
   <ul class="project-list">
     {{range .Data.Previews}}
     <li class="project-row">
-      {{if .ScreenshotURL}}<a href="{{.PreviewURL}}" target="_blank" rel="noopener"><img class="review-thumb" src="{{.ScreenshotURL}}" alt="Preview of {{.Name}}" loading="lazy"></a>{{end}}
+      {{if .Thumb}}<a href="{{.PreviewURL}}" target="_blank" rel="noopener"><img class="review-thumb" src="{{.Thumb}}" alt="Preview of {{.Name}}" loading="lazy"></a>{{end}}
       <a href="/projects/{{.ID}}">
         <span class="project-name">{{.Name}}</span>
       </a>

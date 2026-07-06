@@ -16,6 +16,7 @@ package builder
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -55,20 +56,28 @@ type Request struct {
 	// to after a successful build. Both URLs keep storage credentials out of the
 	// sandbox (same model as asset downloads).
 	SnapshotPutURL string
-	// ScreenshotPutURL, when set, is a presigned PUT URL for a screenshot of the
-	// deployed site, captured in-sandbox (Playwright) for Rasmus's review.
-	ScreenshotPutURL string
+	// ScreenshotPutURLs are presigned PUT URLs (one per slot) for screenshots of
+	// the deployed site's pages, captured in-sandbox (Playwright) for Rasmus's
+	// review. The crawler fills as many slots as there are pages, up to len().
+	ScreenshotPutURLs []string
 
 	AssetManifest map[string]string // filename → short-lived presigned GET URL
 }
 
+// CapturedPage is one screenshot the crawler produced: which slot (PUT URL
+// index) it was uploaded to and the site path it shows.
+type CapturedPage struct {
+	Slot int    `json:"slot"`
+	Path string `json:"path"`
+}
+
 // Result is the outcome of a build pass.
 type Result struct {
-	PreviewURL      string
-	Log             string
-	SnapshotSaved   bool // the workspace snapshot was uploaded to SnapshotPutURL
-	ScreenshotSaved bool // a preview screenshot was uploaded to ScreenshotPutURL
-	Tokens          int  // model tokens consumed by the build agent
+	PreviewURL    string
+	Log           string
+	SnapshotSaved bool           // the workspace snapshot was uploaded to SnapshotPutURL
+	Screenshots   []CapturedPage // pages captured (slot → path)
+	Tokens        int            // model tokens consumed by the build agent
 }
 
 // Hooks observe a build pass.
@@ -215,37 +224,94 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 	// app URL is deterministic.
 	preview := "https://" + appName + ".fly.dev"
 
-	// Capture a screenshot of the deployed site for Rasmus's review. Best-effort
-	// and done in-sandbox (it has Chromium); a miss just means no thumbnail.
-	screenshotSaved := false
-	if req.ScreenshotPutURL != "" {
-		emit(hooks.OnLog, "Capturing a screenshot…")
-		if err := b.captureScreenshot(ctx, sb.MachineID, preview, req.ScreenshotPutURL); err != nil {
-			emit(hooks.OnLog, "Warning: could not capture a screenshot.")
+	// Capture a screenshot of every page of the deployed site for Rasmus's
+	// review. Best-effort and done in-sandbox (it has Chromium); a miss just
+	// means no thumbnails.
+	var shots []CapturedPage
+	if len(req.ScreenshotPutURLs) > 0 {
+		emit(hooks.OnLog, "Capturing screenshots of each page…")
+		captured, err := b.captureScreenshots(ctx, sb.MachineID, preview, req.ScreenshotPutURLs)
+		if err != nil {
+			emit(hooks.OnLog, "Warning: could not capture screenshots.")
 		} else {
-			screenshotSaved = true
+			shots = captured
+			emit(hooks.OnLog, fmt.Sprintf("Captured %d page(s).", len(captured)))
 		}
 	}
 
 	return Result{PreviewURL: preview, Log: res.Log, Tokens: res.Tokens,
-		SnapshotSaved: snapshotSaved, ScreenshotSaved: screenshotSaved}, nil
+		SnapshotSaved: snapshotSaved, Screenshots: shots}, nil
 }
 
-// captureScreenshot renders the deployed site with headless Chromium and
-// uploads the PNG to the presigned PUT URL. The sandbox image bakes in the
-// playwright CLI + browsers, so this needs no install.
-func (b *Sandbox) captureScreenshot(ctx context.Context, machineID, siteURL, putURL string) error {
-	script := `playwright screenshot --viewport-size=1280,800 --wait-for-timeout=2500 ` +
-		shellQuote(siteURL) + ` /tmp/screenshot.png && ` +
-		`curl -fsS -T /tmp/screenshot.png -o /dev/null ` + shellQuote(putURL)
-	res, err := b.machines.Exec(ctx, machineID, []string{"/bin/sh", "-c", script}, 90)
+// crawlerJS crawls a deployed site's same-origin pages and screenshots each
+// (one browser session), uploading to the presigned PUT URLs passed as argv.
+// It prints a JSON manifest [{slot,path}] of what it captured.
+const crawlerJS = `const { chromium } = require('playwright');
+const https = require('https');
+const { URL } = require('url');
+const [baseURL, ...putURLs] = process.argv.slice(2);
+function put(url, buf) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(new URL(url), { method: 'PUT',
+      headers: { 'content-type': 'image/png', 'content-length': buf.length } }, res => {
+      res.resume();
+      res.on('end', () => (res.statusCode < 300 ? resolve() : reject(new Error('PUT ' + res.statusCode))));
+    });
+    req.on('error', reject); req.end(buf);
+  });
+}
+(async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const origin = new URL(baseURL).origin;
+  await page.goto(baseURL, { waitUntil: 'networkidle', timeout: 30000 });
+  const hrefs = await page.$$eval('a[href]', els => els.map(a => a.href));
+  const paths = ['/'];
+  for (const h of hrefs) {
+    try {
+      const u = new URL(h);
+      if (u.origin !== origin) continue;
+      if (/\.[a-z0-9]{2,4}$/i.test(u.pathname) && !/\.html?$/i.test(u.pathname)) continue;
+      const p = u.pathname.replace(/\/+$/, '') || '/';
+      if (!paths.includes(p)) paths.push(p);
+    } catch {}
+  }
+  const list = paths.slice(0, putURLs.length);
+  const captured = [];
+  for (let i = 0; i < list.length; i++) {
+    try {
+      await page.goto(origin + list[i], { waitUntil: 'networkidle', timeout: 30000 });
+      const buf = await page.screenshot({ fullPage: true });
+      await put(putURLs[i], buf);
+      captured.push({ slot: i, path: list[i] });
+    } catch {}
+  }
+  await browser.close();
+  console.log(JSON.stringify(captured));
+})().catch(e => { console.error(e.message || String(e)); process.exit(1); });`
+
+// captureScreenshots writes the crawler into the sandbox and runs it, returning
+// the pages it captured. playwright + browsers are baked into the image; the
+// global module path is on NODE_PATH so require('playwright') resolves.
+func (b *Sandbox) captureScreenshots(ctx context.Context, machineID, siteURL string, putURLs []string) ([]CapturedPage, error) {
+	args := shellQuote(siteURL)
+	for _, u := range putURLs {
+		args += " " + shellQuote(u)
+	}
+	script := "echo " + shellQuote(base64.StdEncoding.EncodeToString([]byte(crawlerJS))) +
+		" | base64 -d > /tmp/crawl.js && NODE_PATH=/usr/lib/node_modules node /tmp/crawl.js " + args
+	res, err := b.machines.Exec(ctx, machineID, []string{"/bin/sh", "-c", script}, 150)
 	if err != nil {
-		return fmt.Errorf("screenshot: %w", err)
+		return nil, fmt.Errorf("screenshots: %w", err)
 	}
 	if res.ExitCode != 0 {
-		return fmt.Errorf("screenshot: exit %d: %s", res.ExitCode, res.Stderr)
+		return nil, fmt.Errorf("screenshots: exit %d: %s", res.ExitCode, res.Stderr)
 	}
-	return nil
+	var pages []CapturedPage
+	if err := json.Unmarshal([]byte(strings.TrimSpace(res.Stdout)), &pages); err != nil {
+		return nil, fmt.Errorf("screenshots: bad manifest %q: %w", res.Stdout, err)
+	}
+	return pages, nil
 }
 
 // templatePreamble tells the agent the workspace is a working starter app, not

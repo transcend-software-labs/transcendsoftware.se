@@ -53,6 +53,13 @@ type DesignOption struct {
 	Description string `json:"description"` // one sentence: mood, colors, typography
 }
 
+// Screenshot is a captured page of a deployed site: its URL path and the
+// object-storage key of the PNG.
+type Screenshot struct {
+	Path string `json:"path"` // e.g. "/", "/kontakt"
+	Key  string `json:"key"`  // object-storage key of the PNG
+}
+
 // Project is a single customer request to have a website built.
 type Project struct {
 	ID             string
@@ -70,7 +77,7 @@ type Project struct {
 	PreviewURL     string         // latest deployed preview link
 	RepoURL        string         // reserved for GitHub mirroring (Phase 4); not populated yet
 	SnapshotKey    string         // object-storage key of the workspace snapshot from the last successful build
-	ScreenshotKey  string         // object-storage key of the latest preview screenshot (for /admin review)
+	Screenshots    []Screenshot   // one per page of the deployed site (for /admin review)
 	IterationsUsed int            // number of build passes consumed (1..MaxIterations)
 	CreatedAt      time.Time
 	UpdatedAt      time.Time

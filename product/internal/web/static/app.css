@@ -213,10 +213,15 @@ label.design-option:hover { border-color: var(--accent); }
 .design-option input { accent-color: var(--accent); width: auto; }
 .design-options input[type="text"] { margin-left: 2rem; }
 
+.review-shots {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 1rem; margin: .8rem 0;
+}
+.review-shots figure { margin: 0; }
+.review-shots figcaption { margin-bottom: .25rem; font-family: monospace; }
 .review-shot {
-  display: block; width: 100%; max-width: 40rem; height: auto;
-  border: 1px solid var(--border); border-radius: var(--radius);
-  margin: .6rem 0; background: var(--bg-2);
+  display: block; width: 100%; height: 18rem; object-fit: cover; object-position: top;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-2);
 }
 .review-thumb {
   width: 8rem; height: 5rem; object-fit: cover; object-position: top;

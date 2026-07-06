@@ -13,6 +13,7 @@ package fly
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 )
@@ -117,6 +118,11 @@ func (f *Fake) Exec(_ context.Context, machineID string, command []string, _ int
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.execs = append(f.execs, FakeExec{MachineID: machineID, Command: command})
+	// The screenshot crawler expects a JSON manifest on stdout; return a
+	// deterministic two-page one so dev/tests exercise the capture path.
+	if strings.Contains(strings.Join(command, " "), "crawl.js") {
+		return ExecResult{ExitCode: 0, Stdout: `[{"slot":0,"path":"/"},{"slot":1,"path":"/kontakt"}]`}, nil
+	}
 	return ExecResult{ExitCode: 0}, nil
 }
 

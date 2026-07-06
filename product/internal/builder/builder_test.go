@@ -137,25 +137,25 @@ func TestBuild_CapturesScreenshot(t *testing.T) {
 	b := newTestBuilder(machines)
 
 	res, err := b.Build(context.Background(), Request{
-		ProjectID:        "p1",
-		Plan:             "build a site",
-		ScreenshotPutURL: "https://storage.example/shot?sig=xyz",
+		ProjectID:         "p1",
+		Plan:              "build a site",
+		ScreenshotPutURLs: []string{"https://storage.example/0?sig=a", "https://storage.example/1?sig=b"},
 	}, Hooks{})
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
-	if !res.ScreenshotSaved {
-		t.Error("expected a screenshot to be captured")
+	if len(res.Screenshots) != 2 || res.Screenshots[0].Path != "/" || res.Screenshots[1].Path != "/kontakt" {
+		t.Errorf("expected the crawler's two-page manifest, got %+v", res.Screenshots)
 	}
 	var found bool
 	for _, e := range machines.Execs() {
 		cmd := strings.Join(e.Command, " ")
-		if strings.Contains(cmd, "playwright screenshot") && strings.Contains(cmd, "storage.example/shot?sig=xyz") {
+		if strings.Contains(cmd, "node /tmp/crawl.js") && strings.Contains(cmd, "storage.example/0?sig=a") {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("expected a playwright screenshot exec, got: %+v", machines.Execs())
+		t.Errorf("expected a crawler exec with the put URLs, got: %+v", machines.Execs())
 	}
 }
 

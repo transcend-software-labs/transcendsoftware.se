@@ -31,19 +31,33 @@ type recentBuild struct {
 	Status   project.Status
 }
 
-// reviewItem is a project plus a short-lived presigned URL for its preview
-// screenshot (empty when none was captured), for visual review in /admin.
+// reviewItem is a project plus short-lived presigned URLs for its per-page
+// preview screenshots, for visual review in /admin.
 type reviewItem struct {
 	*project.Project
-	ScreenshotURL string
+	Shots []reviewShot
 }
 
-// withScreenshot presigns a short-lived GET URL for p's screenshot, if any.
-func (s *Server) withScreenshot(ctx context.Context, p *project.Project) reviewItem {
+// reviewShot is one page screenshot with a presigned URL.
+type reviewShot struct {
+	Path string
+	URL  string
+}
+
+// Thumb returns the first shot's URL (for compact listings), or "".
+func (r reviewItem) Thumb() string {
+	if len(r.Shots) > 0 {
+		return r.Shots[0].URL
+	}
+	return ""
+}
+
+// withScreenshots presigns short-lived GET URLs for each of p's page shots.
+func (s *Server) withScreenshots(ctx context.Context, p *project.Project) reviewItem {
 	item := reviewItem{Project: p}
-	if p.ScreenshotKey != "" {
-		if u, err := s.storage.PresignGet(ctx, p.ScreenshotKey, 10*time.Minute); err == nil {
-			item.ScreenshotURL = u
+	for _, sc := range p.Screenshots {
+		if u, err := s.storage.PresignGet(ctx, sc.Key, 10*time.Minute); err == nil {
+			item.Shots = append(item.Shots, reviewShot{Path: sc.Path, URL: u})
 		}
 	}
 	return item
@@ -140,9 +154,9 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 		names[p.ID] = p.Name
 		switch p.Status {
 		case project.StatusPreviewReady:
-			previews = append(previews, s.withScreenshot(ctx, p))
+			previews = append(previews, s.withScreenshots(ctx, p))
 		case project.StatusAccepted:
-			accepted = append(accepted, s.withScreenshot(ctx, p))
+			accepted = append(accepted, s.withScreenshots(ctx, p))
 		}
 	}
 
