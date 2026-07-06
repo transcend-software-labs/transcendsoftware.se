@@ -188,8 +188,12 @@ Milestones:
         dev: list → destroy → project expired)
   - [x] one-off cleanup 2026-07-05: destroyed the three zombie test apps
         (forge-appelmust-demo, forge-06e6dbdd2900, forge-4d012fcb1bba)
-- [ ] Per-app deploy tokens *or* explicitly accepted org-token risk — decision
-      §5.3 (M)
+- [x] Per-app deploy tokens (2026-07-06, live): the sandbox gets a token scoped
+      to its own customer app, minted per build (2h expiry) via Fly's
+      `createLimitedAccessToken` — verified against the live API that such a
+      token 200s on its app, 403s on another. Graceful fallback to a configured
+      org-scoped token (logged) if the runtime token can't mint. §5.3 resolved
+      (M)
 - [ ] **Rotate the burned credentials:** the Kimi key and Fly tokens were
       pasted in chat and must be treated as compromised — mint fresh ones,
       update Fly secrets, revoke old (S)
@@ -214,10 +218,14 @@ Milestones:
       a completed build). Email-on-failure still to come (S)
 
 ### Phase 3 — sellable (M3)
-- [ ] Handover flow: customer **Accept** on preview → Rasmus review gate in
-      `/admin` (the personal guarantee, now enforced by the state machine) →
-      `delivered`; site stays on `forge-*` under the Transcend org; custom
-      domains as a manual service initially (M)
+- [x] Handover flow (2026-07-06, live): customer **Accept** on preview →
+      `accepted` state in Rasmus's `/admin` "Ready for delivery" queue (emails
+      him) → **Approve & deliver** → `delivered` (customer emailed "reviewed and
+      guaranteed"), or **Send back** with a note → `preview_ready` with
+      remaining changes. Nothing reaches delivered without his approval — the
+      personal guarantee is now enforced by the state machine. Site stays on
+      `forge-*`; custom domains still a manual service. Verified E2E over HTTP +
+      browser (M)
 - [ ] Payments at the accept-or-build step — trigger decision §5.4;
       implementation stays deferred until Rasmus says go (M)
 - [ ] Pricing + ToS + privacy pages (GDPR/EU angle is the brand; mostly
@@ -259,10 +267,18 @@ Milestones:
       --ha=false → **1 machine**, contact form → owner inbox verified on the
       live site. **Rasmus: taste review of the template still open.**
 - [ ] GitHub mirroring under `transcend-software-labs` (the code-review story)
-- [ ] Screenshot verification into the admin review queue
+- [x] Screenshot into the admin review queue (2026-07-06, live): each build
+      captures a 1280×800 screenshot of the deployed site (headless Chromium,
+      playwright baked into sandbox image 20260706-1) and uploads it via
+      presigned PUT; `/admin` shows it full-width in the delivery review cards
+      and as a thumbnail in the previews list (migration 0005)
 - [ ] Custom-domain automation
 - [ ] Scale product app past 1 machine (unblocked by Postgres)
-- [ ] Per-build cost tracking (machine-seconds + tokens) surfaced in `/admin`
+- [x] Per-build cost + timing in `/admin` (2026-07-06, live): each build records
+      tokens (from the opencode session) + duration (migration 0006); admin
+      shows a per-build table (project, when, duration, tokens, est. machine
+      cost, status) + 24h totals. Cost = machine-time at configurable
+      `SANDBOX_COST_PER_HOUR`. Feeds the Kimi-vs-Claude call with real numbers
 
 ## 5. Decisions needed from Rasmus
 

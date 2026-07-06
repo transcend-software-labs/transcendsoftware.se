@@ -103,6 +103,7 @@ mode.** Each variable independently switches one piece from fake to real:
 | `PREVIEW_TTL_DAYS`    | days an untouched preview app stays up before the reaper destroys it (default 14) |
 | `TEMPLATE_KEY`        | object-storage key of the starter-app tarball seeding first builds (empty → greenfield); push with `make template-push` |
 | `RESEND_API_KEY`      | send real email via Resend (else notifications are log-only) |
+| `SANDBOX_COST_PER_HOUR` | est. $/hour for a build sandbox, for /admin cost display (default ~0.02) |
 | `EMAIL_FROM`          | verified sender for outgoing email                         |
 | `ANTHROPIC_API_KEY`   | use the real planner + safety gate (else a deterministic fake) |
 | `ANTHROPIC_MODEL`     | override the model (default `claude-sonnet-4-6`)           |
