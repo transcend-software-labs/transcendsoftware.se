@@ -219,17 +219,12 @@ Milestones:
       Resend + `EMAIL_FROM` updated** (M)
 - [x] Escalated project page auto-updates after admin approval (slow 15s poll
       while held, fast 2s while building) (S)
-- [~] **Canonical domain = `forge.transcendsoftware.se`** (Rasmus chose forge
-      over app, 2026-07-06 — on-brand). DNS is at Loopia (ns1/ns2.loopia.se).
-      **Action for Rasmus:** in Loopia add subdomain `forge` with either
-      CNAME `forge` → transcend-forge.fly.dev, **or** A `forge` → 66.241.125.213
-      + AAAA `forge` → 2a09:8280:1::13a:bc93:0. Then I run `fly certs add
-      forge.transcendsoftware.se`, and **the forge callback must be added to the
-      Google OAuth client** (redirect `https://forge.transcendsoftware.se/auth/
-      google/callback`). Until cutover, BASE_URL = transcend-forge.fly.dev so
-      login works on the Fly domain (both fly.dev + app callbacks already
-      registered; forge is the one to add). At cutover, flip BASE_URL secret to
-      forge. Old `app` cert on the app can be removed. (S)
+- [x] **Canonical domain = `forge.transcendsoftware.se`** — LIVE 2026-07-06
+      (Rasmus chose forge over app — on-brand). Loopia CNAME `forge` →
+      transcend-forge.fly.dev; Fly cert Issued (Let's Encrypt, serving HTTPS
+      200); old `app` cert removed; Google OAuth forge callback registered;
+      BASE_URL secret flipped to forge. Google login deployed + verified live.
+      (Google Workspace MX untouched.) (S)
 - [x] Failure-rate visibility: `/admin` shows a last-24h row — builds,
       succeeded, failed, in-flight, avg build duration (verified rendering with
       a completed build). Email-on-failure still to come (S)
@@ -254,7 +249,14 @@ Milestones:
       empty 200s once; permanent 4xx are not retried. Tested (S). _(Anthropic
       fallback client not yet covered — prod path is Kimi.)_
 
-### Added along the way (2026-07-06, built + tested, awaiting credentials to activate)
+### Added along the way (2026-07-06)
+**Login (Google + magic-link) + attenuation per-app tokens: DEPLOYED & LIVE.**
+Google login verified end-to-end up to Google's consent screen at
+forge.transcendsoftware.se; migration 0008 applied; magic-link UI gated off via
+MAGIC_LINK_ENABLED=false until Resend sender domain verified. GitHub mirror
+still inert (no GITHUB_TOKEN).
+
+
 - [x] **GitHub source mirror + CI deploy** (Rasmus's direction): each build
       mirrors the project source to a private repo under
       `transcend-software-labs` (one commit per build → reviewable diffs) and
