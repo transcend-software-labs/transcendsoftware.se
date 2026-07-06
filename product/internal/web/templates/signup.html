@@ -11,6 +11,7 @@
   <div class="or-divider"><span>or</span></div>
   {{end}}
 
+  {{if .MagicLink}}
   <form method="post" action="/auth/magic" class="stack">
     <label>Sign up with your email<input type="email" name="email" required autofocus placeholder="you@example.com"></label>
     <button class="btn" type="submit">Email me a link</button>
@@ -26,6 +27,14 @@
       <button class="btn btn-sm" type="submit">Create account</button>
     </form>
   </details>
+  {{else}}
+  <form method="post" action="/signup" class="stack">
+    <label>Email<input type="email" name="email" required autofocus></label>
+    <label>Password<input type="password" name="password" minlength="8" required>
+      <span class="hint">At least 8 characters.</span></label>
+    <button class="btn" type="submit">Create account</button>
+  </form>
+  {{end}}
 
   <p class="muted">Already have an account? <a href="/login">Log in</a>.</p>
 </section>

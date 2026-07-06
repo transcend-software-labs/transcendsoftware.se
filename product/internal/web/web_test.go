@@ -19,6 +19,8 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
+	"github.com/transcend-software-labs/rasmus-ai/internal/notify"
+	"github.com/transcend-software-labs/rasmus-ai/internal/oauth"
 	"github.com/transcend-software-labs/rasmus-ai/internal/opencode"
 	"github.com/transcend-software-labs/rasmus-ai/internal/orchestrator"
 	"github.com/transcend-software-labs/rasmus-ai/internal/storage"
@@ -63,8 +65,16 @@ func newTestServerAuth(t *testing.T, cfg config.Config, notifier *recNotifier) (
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
-	if notifier != nil {
-		srv.SetAuth(nil, notifier)
+	var reg *oauth.Registry
+	if cfg.GoogleClientID != "" {
+		reg = oauth.NewRegistry(oauth.Google(cfg.GoogleClientID, cfg.GoogleClientSecret))
+	}
+	if notifier != nil || reg != nil {
+		var n notify.Notifier
+		if notifier != nil {
+			n = notifier
+		}
+		srv.SetAuth(reg, n)
 	}
 	return httptest.NewServer(srv.Handler()), notifier
 }
@@ -209,6 +219,58 @@ func TestFullFlow_IntakeToPreview(t *testing.T) {
 	}
 	if !strings.Contains(page, "Design direction") || !strings.Contains(page, "Clean &amp; minimal") {
 		t.Fatal("project page does not show the chosen design direction")
+	}
+}
+
+func TestLoginPage_MethodGating(t *testing.T) {
+	cases := []struct {
+		name              string
+		cfg               config.Config
+		wantGoogle        bool
+		wantMagic         bool
+		wantVisiblePwForm bool // password form shown directly (not in <details>)
+	}{
+		{
+			name:              "google on, magic off",
+			cfg:               config.Config{GoogleClientID: "gid", GoogleClientSecret: "gsec"},
+			wantGoogle:        true,
+			wantMagic:         false,
+			wantVisiblePwForm: true,
+		},
+		{
+			name:       "google on, magic on",
+			cfg:        config.Config{GoogleClientID: "gid", GoogleClientSecret: "gsec", MagicLinkEnabled: true},
+			wantGoogle: true,
+			wantMagic:  true,
+		},
+		{
+			name:       "no google, magic on",
+			cfg:        config.Config{MagicLinkEnabled: true},
+			wantGoogle: false,
+			wantMagic:  true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := newTestServerWithConfig(t, tc.cfg)
+			defer srv.Close()
+			resp, err := http.Get(srv.URL + "/login")
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			body := string(b)
+			if got := strings.Contains(body, "Continue with Google"); got != tc.wantGoogle {
+				t.Errorf("Google button present=%v, want %v", got, tc.wantGoogle)
+			}
+			if got := strings.Contains(body, "Email me a login link"); got != tc.wantMagic {
+				t.Errorf("magic-link form present=%v, want %v", got, tc.wantMagic)
+			}
+			if tc.wantVisiblePwForm && strings.Contains(body, "password-login") {
+				t.Error("password form should be shown directly when magic-link is off, not tucked in <details>")
+			}
+		})
 	}
 }
 

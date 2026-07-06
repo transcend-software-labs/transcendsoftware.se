@@ -130,12 +130,22 @@ type View struct {
 	Flash     string
 	Data      any
 	Providers []oauth.Provider // social-login buttons on auth pages
+	MagicLink bool             // advertise passwordless email login
 }
 
 func (s *Server) view(r *http.Request, title string, data any) View {
 	u := s.currentUser(r)
 	return View{Title: title, User: u, IsAdmin: s.isAdmin(u), CSRF: s.csrfToken(r),
-		Data: data, Providers: s.oauth.Enabled()}
+		Data: data, Providers: s.oauth.Enabled(), MagicLink: s.cfg.MagicLinkEnabled}
+}
+
+// authView builds a View for the login/signup pages with a flash message,
+// keeping the social-login providers and magic-link availability so error
+// re-renders still show every login method.
+func (s *Server) authView(r *http.Request, title, flash string) View {
+	v := s.view(r, title, nil)
+	v.Flash = flash
+	return v
 }
 
 // csrfToken returns the CSRF token bound to the request's session, or "".

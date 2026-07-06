@@ -30,7 +30,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	u, err := s.store.UserByEmail(r.Context(), email)
 	if err != nil || !auth.CheckPassword(u.PasswordHash, password) {
-		s.render(w, http.StatusUnauthorized, "login", View{Title: "Log in", Flash: "Wrong email or password."})
+		s.render(w, http.StatusUnauthorized, "login", s.authView(r, "Log in", "Wrong email or password."))
 		return
 	}
 	if !s.startSession(w, r, u.ID) {
@@ -48,8 +48,8 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 
 	if !strings.Contains(email, "@") || len(password) < 8 {
-		s.render(w, http.StatusBadRequest, "signup", View{Title: "Get started",
-			Flash: "Enter a valid email and a password of at least 8 characters."})
+		s.render(w, http.StatusBadRequest, "signup", s.authView(r, "Get started",
+			"Enter a valid email and a password of at least 8 characters."))
 		return
 	}
 
@@ -61,8 +61,8 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	u := &user.User{ID: id.New(), Email: email, PasswordHash: hash, CreatedAt: time.Now().UTC()}
 	if err := s.store.CreateUser(r.Context(), u); err != nil {
 		if errors.Is(err, store.ErrEmailTaken) {
-			s.render(w, http.StatusConflict, "signup", View{Title: "Get started",
-				Flash: "That email is already registered."})
+			s.render(w, http.StatusConflict, "signup", s.authView(r, "Get started",
+				"That email is already registered."))
 			return
 		}
 		http.Error(w, "internal error", http.StatusInternalServerError)

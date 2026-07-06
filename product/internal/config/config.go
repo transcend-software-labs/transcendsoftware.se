@@ -37,6 +37,12 @@ type Config struct {
 	LinkedInClientID     string
 	LinkedInClientSecret string
 
+	// MagicLinkEnabled advertises passwordless email login on the auth pages.
+	// Off until email can actually be delivered to arbitrary customers (a
+	// verified sender domain) — otherwise the page offers a method that
+	// silently fails. Default on; set MAGIC_LINK_ENABLED=false to hide it.
+	MagicLinkEnabled bool
+
 	// Quotas — every build spends real money (sandbox machine + LLM tokens).
 	MaxProjectsPerDay   int // per user, rolling 24h (default 3)
 	MaxConcurrentBuilds int // across all users (default 3)
@@ -105,6 +111,7 @@ func Load() Config {
 		GoogleClientSecret:   os.Getenv("GOOGLE_CLIENT_SECRET"),
 		LinkedInClientID:     os.Getenv("LINKEDIN_CLIENT_ID"),
 		LinkedInClientSecret: os.Getenv("LINKEDIN_CLIENT_SECRET"),
+		MagicLinkEnabled:     os.Getenv("MAGIC_LINK_ENABLED") != "false",
 
 		MaxProjectsPerDay:   envIntOr("MAX_PROJECTS_PER_DAY", 3),
 		MaxConcurrentBuilds: envIntOr("MAX_CONCURRENT_BUILDS", 3),
