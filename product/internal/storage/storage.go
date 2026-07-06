@@ -18,6 +18,8 @@ import (
 type Store interface {
 	// Put stores an object under key with the given content type.
 	Put(ctx context.Context, key, contentType string, r io.Reader, size int64) error
+	// Get returns the object's bytes (used to read a snapshot for GitHub mirroring).
+	Get(ctx context.Context, key string) ([]byte, error)
 	// PresignGet returns a short-lived, read-only URL for the object.
 	PresignGet(ctx context.Context, key string, expiry time.Duration) (string, error)
 	// PresignPut returns a short-lived, write-only URL for the object — how the
@@ -44,6 +46,16 @@ func (m *Memory) Put(_ context.Context, key, _ string, r io.Reader, _ int64) err
 	m.objects[key] = b
 	m.mu.Unlock()
 	return nil
+}
+
+func (m *Memory) Get(_ context.Context, key string) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	b, ok := m.objects[key]
+	if !ok {
+		return nil, io.EOF
+	}
+	return b, nil
 }
 
 func (m *Memory) PresignGet(_ context.Context, key string, _ time.Duration) (string, error) {

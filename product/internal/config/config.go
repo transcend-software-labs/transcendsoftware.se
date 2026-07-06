@@ -26,6 +26,11 @@ type Config struct {
 	ResendAPIKey string // Resend API key
 	EmailFrom    string // verified sender, e.g. "Transcend Forge <hello@transcendsoftware.se>"
 
+	// GitHub source mirroring (empty token → disabled). Token needs repo +
+	// workflow scopes on the org.
+	GitHubToken string
+	GitHubOrg   string
+
 	// Quotas — every build spends real money (sandbox machine + LLM tokens).
 	MaxProjectsPerDay   int // per user, rolling 24h (default 3)
 	MaxConcurrentBuilds int // across all users (default 3)
@@ -87,6 +92,8 @@ func Load() Config {
 		AdminEmail:   os.Getenv("ADMIN_EMAIL"),
 		ResendAPIKey: os.Getenv("RESEND_API_KEY"),
 		EmailFrom:    envOr("EMAIL_FROM", "Transcend Forge <onboarding@resend.dev>"),
+		GitHubToken:  os.Getenv("GITHUB_TOKEN"),
+		GitHubOrg:    envOr("GITHUB_ORG", "transcend-software-labs"),
 
 		MaxProjectsPerDay:   envIntOr("MAX_PROJECTS_PER_DAY", 3),
 		MaxConcurrentBuilds: envIntOr("MAX_CONCURRENT_BUILDS", 3),

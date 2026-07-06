@@ -88,7 +88,7 @@ func (h *HTTP) EnsureApp(ctx context.Context, appName string) error {
 // the configured org-scoped deploy token so builds keep working; that fallback
 // is logged because it is a security downgrade.
 func (h *HTTP) AppDeployToken(ctx context.Context, appName string) (string, error) {
-	tok, err := h.mintDeployToken(ctx, appName)
+	tok, err := h.mintDeployToken(ctx, appName, "2h") // build-only; dies soon after
 	if err == nil {
 		return tok, nil
 	}
@@ -100,9 +100,23 @@ func (h *HTTP) AppDeployToken(ctx context.Context, appName string) (string, erro
 	return "", fmt.Errorf("fly: mint deploy token for %s: %w", appName, err)
 }
 
+// RepoDeployToken mints a longer-lived app-scoped deploy token for the project's
+// GitHub Action to redeploy on push. Refreshed on every build; falls back to
+// the configured org token like AppDeployToken.
+func (h *HTTP) RepoDeployToken(ctx context.Context, appName string) (string, error) {
+	tok, err := h.mintDeployToken(ctx, appName, "8760h") // ~1 year (re-minted each build)
+	if err == nil {
+		return tok, nil
+	}
+	if h.deployToken != "" {
+		return h.deployToken, nil
+	}
+	return "", fmt.Errorf("fly: mint repo deploy token for %s: %w", appName, err)
+}
+
 // mintDeployToken creates a Fly deploy token scoped to appName (the
 // createLimitedAccessToken mutation that `fly tokens create deploy -a` uses).
-func (h *HTTP) mintDeployToken(ctx context.Context, appName string) (string, error) {
+func (h *HTTP) mintDeployToken(ctx context.Context, appName, expiry string) (string, error) {
 	orgNode, err := h.orgID(ctx)
 	if err != nil {
 		return "", err
@@ -114,7 +128,7 @@ func (h *HTTP) mintDeployToken(ctx context.Context, appName string) (string, err
 		"organizationId": orgNode,
 		"profile":        "deploy",
 		"profileParams":  map[string]any{"app_id": appName},
-		"expiry":         "2h", // comfortably longer than a build, then it dies
+		"expiry":         expiry,
 	}}
 	var out struct {
 		CreateLimitedAccessToken struct {

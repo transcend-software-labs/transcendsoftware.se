@@ -57,6 +57,15 @@ func (s *S3) Put(ctx context.Context, key, contentType string, r io.Reader, size
 	return err
 }
 
+func (s *S3) Get(ctx context.Context, key string) ([]byte, error) {
+	obj, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer obj.Close()
+	return io.ReadAll(obj)
+}
+
 func (s *S3) PresignGet(ctx context.Context, key string, expiry time.Duration) (string, error) {
 	u, err := s.client.PresignedGetObject(ctx, s.bucket, key, expiry, url.Values{})
 	if err != nil {

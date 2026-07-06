@@ -46,7 +46,8 @@
     {{range .Data.Accepted}}
     <li class="panel">
       <h3>{{.Name}}</h3>
-      <p><a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{.PreviewURL}} ↗</a></p>
+      <p><a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{.PreviewURL}} ↗</a>
+        {{if .RepoURL}}· <a class="muted small" href="{{.RepoURL}}" target="_blank" rel="noopener">source ↗</a>{{end}}</p>
       {{if .Shots}}
       <div class="review-shots">
         {{range .Shots}}

@@ -65,6 +65,9 @@ type Machines interface {
 	// sandbox so the agent can run `fly deploy`. Scoped to appName alone, minted
 	// per build (see HTTP.AppDeployToken).
 	AppDeployToken(ctx context.Context, appName string) (string, error)
+	// RepoDeployToken returns a longer-lived app-scoped deploy token for the
+	// project's GitHub Action (deploy-on-push). "" if not available.
+	RepoDeployToken(ctx context.Context, appName string) (string, error)
 }
 
 // DefaultPort is the opencode port used when a spec leaves Port unset.
@@ -92,9 +95,10 @@ func (f *Fake) SpawnSandbox(_ context.Context, spec SpawnSpec) (*Sandbox, error)
 	return &Sandbox{MachineID: "dev-machine-" + spec.TaskID, AppName: "dev-app", Addr: ""}, nil
 }
 
-func (f *Fake) DestroySandbox(_ context.Context, _ *Sandbox) error         { return nil }
-func (f *Fake) EnsureApp(_ context.Context, _ string) error                { return nil }
-func (f *Fake) AppDeployToken(_ context.Context, _ string) (string, error) { return "", nil }
+func (f *Fake) DestroySandbox(_ context.Context, _ *Sandbox) error          { return nil }
+func (f *Fake) EnsureApp(_ context.Context, _ string) error                 { return nil }
+func (f *Fake) AppDeployToken(_ context.Context, _ string) (string, error)  { return "", nil }
+func (f *Fake) RepoDeployToken(_ context.Context, _ string) (string, error) { return "", nil }
 
 func (f *Fake) DestroyApp(_ context.Context, appName string) error {
 	f.mu.Lock()

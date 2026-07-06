@@ -105,6 +105,8 @@ mode.** Each variable independently switches one piece from fake to real:
 | `RESEND_API_KEY`      | send real email via Resend (else notifications are log-only) |
 | `SANDBOX_COST_PER_HOUR` | est. $/hour for a build sandbox, for /admin cost display (default ~0.02) |
 | `EMAIL_FROM`          | verified sender for outgoing email                         |
+| `GITHUB_TOKEN`        | mirror each project's source to a private repo + deploy-on-push Action (needs `repo` + `workflow` scopes); empty → disabled |
+| `GITHUB_ORG`          | org the mirror repos live under (default `transcend-software-labs`) |
 | `ANTHROPIC_API_KEY`   | use the real planner + safety gate (else a deterministic fake) |
 | `ANTHROPIC_MODEL`     | override the model (default `claude-sonnet-4-6`)           |
 | `LLM_API_KEY`         | OpenAI-compatible model for intake/plan/gate **and** the sandbox agent (takes precedence over Anthropic) |
