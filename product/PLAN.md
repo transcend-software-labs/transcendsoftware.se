@@ -433,7 +433,7 @@ must not constrain the agent's data model). The admin discovers the schema:
       the template (the contact `messages` table stays — the admin now renders
       it like any other table). Template tests; template re-push.
 
-### 7.4 Phase B — hooks on any table: email-on-insert (M)
+### 7.4 Phase B — hooks on any table: email-on-insert (M) — DONE 2026-07-07 (19ca14e)
 
 How "data came into the db" is detected generically: modernc's pure-Go SQLite
 driver exposes no update-hook, and polling every table is lossy — so
@@ -442,21 +442,21 @@ driver exposes no update-hook, and polling every table is lossy — so
 (dropped on disable). Capture is transactional with the insert — nothing
 missed across restarts — and the app polls only `_outbox`.
 
-- [ ] `_hooks` (`id, table_name, event, type, target, enabled`) + `_outbox` +
+- [x] `_hooks` (`id, table_name, event, type, target, enabled`) + `_outbox` +
       trigger create/drop on hook toggle in `/admin`.
-- [ ] Dispatcher: poll `_outbox` (few seconds), fire enabled hooks async,
+- [x] Dispatcher: poll `_outbox` (few seconds), fire enabled hooks async,
       retry once, log failures, mark processed — never blocks or fails the
       visitor's request. v1 hook type: email — row rendered as key/values via
       introspection; Reply-To = the row's email-ish column when present.
       Structured so webhook/Slack are new cases, not new schema.
-- [ ] Email via env (`EMAIL_API_KEY`, `EMAIL_FROM`): Resend-compatible; unset
+- [x] Email via env (`EMAIL_API_KEY`, `EMAIL_FROM`): Resend-compatible; unset
       → hooks UI shows "email not configured".
-- [ ] Forge side: inject `EMAIL_*` + `OWNER_EMAIL` app secrets alongside
+- [x] Forge side: inject `EMAIL_*` + `OWNER_EMAIL` app secrets alongside
       `LITESTREAM_*` in the builder (customer email flows through
       builder.Request); orchestrator holds one sending-only, domain-restricted
       Resend key (`SITES_EMAIL_KEY` secret). Delivery email tells the customer
       about their admin + how to claim it.
-- [ ] E2E check on the next real build: enable hook on the contact table →
+- [x] E2E check on the next real build: enable hook on the contact table →
       submit the form → row in `/admin` → owner email arrives.
 
 ### 7.5 Phase C — impeccable design quality (M)
