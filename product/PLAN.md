@@ -459,19 +459,19 @@ missed across restarts — and the app polls only `_outbox`.
 - [x] E2E check on the next real build: enable hook on the contact table →
       submit the form → row in `/admin` → owner email arrives.
 
-### 7.5 Phase C — impeccable design quality (M)
+### 7.5 Phase C — impeccable design quality (M) — DONE 2026-07-07 (646e41b); admin restyle 58277cc
 
-- [ ] Sandbox image: bake the `impeccable` npm package (pinned) — node is
+- [x] Sandbox image: bake the `impeccable` npm package (pinned) — node is
       already there for the screenshot crawler. No network installs mid-build.
-- [ ] Template: ship impeccable's opencode payload (`.opencode/` from
+- [x] Template: ship impeccable's opencode payload (`.opencode/` from
       `dist/opencode`) + a skeleton `DESIGN.md`/`PRODUCT.md`.
-- [ ] Build flow: the agent fills `DESIGN.md`/`PRODUCT.md` from the brief +
+- [x] Build flow: the agent fills `DESIGN.md`/`PRODUCT.md` from the brief +
       chosen design direction before building UI (the design-picker output
       finally has a durable home the tools understand), uses impeccable
       guidance while building, and before deploying runs
       `impeccable detect --json .` and fixes findings — **capped at 2 fix
       rounds** to protect the build-time budget.
-- [ ] Keep it switchable (env/template flag) so we can A/B build time and
+- [x] Keep it switchable (env/template flag) so we can A/B build time and
       quality against non-impeccable builds.
 
 ### 7.6 Phase D — hardening + review aids (later, S–M each)
