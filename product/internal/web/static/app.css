@@ -111,6 +111,22 @@ h3 { font-size: 1rem; font-weight: 500; }
 .steps { margin: 1rem 0 0 1.1rem; display: flex; flex-direction: column; gap: .6rem; color: var(--muted); }
 .steps strong { color: var(--text); font-weight: 500; }
 .how { margin-top: 3rem; border-top: 1px solid var(--border); padding-top: 2rem; }
+/* "How it works" as numbered cards (CSS counters — no markup change). */
+.how .steps {
+  margin: 1.5rem 0 0; padding: 0; list-style: none; counter-reset: step;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem;
+}
+.how .steps li {
+  counter-increment: step; color: var(--muted);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 1.25rem 1.35rem;
+}
+.how .steps li::before {
+  content: counter(step); display: flex; align-items: center; justify-content: center;
+  width: 2rem; height: 2rem; margin-bottom: .8rem; border-radius: 50%;
+  background: rgba(224,169,60,.14); color: var(--accent); font-weight: 600; font-size: .95rem;
+}
+.how .steps li strong { display: block; color: var(--text); font-weight: 500; margin-bottom: .25rem; }
 
 /* Credibility strip */
 .about { margin-top: 3rem; border-top: 1px solid var(--border); padding-top: 2rem; }
