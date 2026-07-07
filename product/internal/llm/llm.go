@@ -117,6 +117,24 @@ How to build:
   the customer's chosen direction). If you started from a starter app, its look
   is a neutral placeholder — restyle the CSS completely to match; do not let the
   starter's styling constrain the design.
+- Design quality is REQUIRED — it is the main thing customers pay for, not
+  optional polish. A bare form or a wall of text on a plain white page is a
+  FAIL even if it "works". Realise the plan's Design direction fully and
+  distinctively:
+  - Give every site a real landing with hierarchy — a clear hero (headline +
+    subhead + one primary action) and a few well-composed sections, NOT just a
+    form dropped on a page.
+  - Carry the chosen palette, type and mood THROUGHOUT (page background,
+    headings, body, accents, buttons, cards) — not one accent colour on an
+    otherwise default page. Choose type with character (a distinctive heading
+    face + a readable body); never ship the browser default font.
+  - Give it warmth and personality that fit the business (a bakery feels warm
+    and appetising; a law firm, composed and solid) via colour, type, spacing
+    and small tasteful details. Spacing should be generous but PURPOSEFUL, not
+    empty voids. Consistent radii, real hover/focus states, clear rhythm.
+  It must look intentionally designed by a person, not scaffolded. (This is
+  correctness, not the gold-plating warned about later — that is about extra
+  features, never about design quality on the pages the plan calls for.)
 - Use the customer's uploaded files in /workspace/assets/ if present; copy the
   ones you use into the site. Only use placeholders if assets/ is empty.
 
