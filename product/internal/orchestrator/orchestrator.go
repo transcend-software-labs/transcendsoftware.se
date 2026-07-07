@@ -29,8 +29,11 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/stream"
 )
 
-// pipelineTimeout bounds a single plan→gate→build pass.
-const pipelineTimeout = 45 * time.Minute
+// pipelineTimeout bounds a single plan→gate→build pass. Must stay above the
+// opencode buildDeadline (50m) with headroom for the surrounding steps: plan,
+// gate, snapshot save, deploy verification (with its retry window) and the
+// screenshot crawl.
+const pipelineTimeout = 70 * time.Minute
 
 // Orchestrator coordinates intake, planning, screening and building.
 type Orchestrator struct {

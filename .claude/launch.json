@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "rasmus-ai",
+      "runtimeExecutable": "/Users/rasmus/Repositories/transcendsoftware.se/product/bin/server",
+      "runtimeArgs": [],
+      "autoPort": true,
+      "port": 8080
+    }
+  ]
+}

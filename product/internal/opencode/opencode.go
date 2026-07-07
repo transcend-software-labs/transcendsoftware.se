@@ -86,8 +86,11 @@ func NewHTTP(baseURL string) *HTTP {
 	}
 }
 
-// buildDeadline caps a single build run.
-const buildDeadline = 30 * time.Minute
+// buildDeadline caps a single build run. Real multi-page sites — where the
+// agent writes several pages, fetches and processes images, and runs the test
+// build a few times — routinely need more than half an hour on Kimi (slow at
+// temperature 1). Kept comfortably under the orchestrator's pipelineTimeout.
+const buildDeadline = 50 * time.Minute
 
 func (h *HTTP) Run(ctx context.Context, spec Spec, onLog func(string)) (Result, error) {
 	sessionID, err := h.createSession(ctx)
