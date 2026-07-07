@@ -13,6 +13,23 @@ the same site — was proven end-to-end through prod (see the reiteration line i
 Phase 1). What's left for a paying stranger is Phase 3 (handover, payments,
 ToS) plus those three Rasmus items.
 
+## Status update (2026-07-07)
+
+The full customer pipeline is now **proven in production on a real brief**: a
+4-page Swedish bakery site (forge-d7d62bfa754e.fly.dev) went signup → intake
+(3 questions + 3 design directions) → build → agent deploy → verified live,
+with the **auto-provisioned volume** attached and **litestream backing up** the
+site's SQLite to the backups bucket. The run surfaced and fixed two real
+defects: build timeouts too tight for real multi-page sites (30→50 min build,
+45→70 min pipeline) and no recovery path (now: customer-facing **Retry** +
+**snapshot-on-failure** so a retry resumes ~95%-done work instead of
+rebuilding). Also live: `forge.transcendsoftware.se` (canonical domain),
+Google login + magic-link (Resend domain verified; sender `hello@` with
+Reply-To to Rasmus), and per-app deploy tokens via local macaroon attenuation.
+
+**Next feature (planned, agreed with Rasmus): §7 — in-site admin + data hooks
++ impeccable design quality.**
+
 ## Verdict: right path, no pivot — but "worked once E2E" ≠ "sellable"
 
 The architecture is sound and proven: Go + HTMX + Postgres-ready store, opencode
@@ -348,3 +365,119 @@ App-style products; the template (until the joint session); teams/orgs; public
 API; custom-domain automation; multi-region; swapping opencode; payment
 implementation (until §5.4 is decided). Scope stays: **first real customer,
 end to end, with nothing fake in the path.**
+
+## 7. In-site admin, data hooks & impeccable design (planned 2026-07-07)
+
+### 7.1 Why this, why now
+
+Poking the delivered bakery site surfaced the gap: form submissions land in
+the site's SQLite and are only visible if the owner happens to log into a bare
+dashboard — no notification, no export, no control. Today the agent hand-rolls
+that data path per site (bespoke `messages` table, bespoke handler, bespoke
+dashboard), which is exactly the kind of open-ended work Kimi thrashes on.
+
+The fix is one feature: **a standard admin section + generic data layer baked
+into the template.** Every generated site gets the same reliable
+submissions→admin→hooks infrastructure for free, and the agent's job shrinks
+to "build the pages, point the forms at the standard endpoint" — faster
+builds, fewer failure modes, and a real customer-facing feature ("your site
+comes with an admin panel and email notifications") in one move.
+
+Same move for design: **impeccable** (github.com/pbakaus/impeccable) is design
+guidance + 23 commands + **45 deterministic detector rules** for exactly the
+AI-generated-design failure modes we care about. It supports opencode natively
+(`.opencode/` payload) and the detector runs headless (`npx impeccable detect
+--json`, no LLM, no key) — so design quality becomes a *verifiable build step*,
+not a hope.
+
+### 7.2 Decisions (agreed with Rasmus 2026-07-07)
+
+- **Admin section per generated site** where the customer controls their data,
+  with **hooks** (v1: email-on-submission). Confirmed direction.
+- **First-account-becomes-owner stays**, but it must be made *very clear* to
+  the client — plus a cheap guarantee: inject `OWNER_EMAIL` (the Forge
+  customer's email) as an app secret; while no owner exists, only that email
+  may register the first account. Delivery email says "create your account
+  with this address". Closes the land-grab window with zero friction.
+- **Per-site email sending identity** over a central Forge relay (sites stay
+  self-contained; Forge is never in the customer's data path). v1 pragmatic:
+  a **sending-only Resend key restricted to the verified forge domain**,
+  injected per app (same SetAppSecrets mechanism as litestream); From:
+  `"<Site name>" <notify@forge.transcendsoftware.se>`, Reply-To: the site
+  owner. Per-app key minting + customer-own-domain sending are hardening
+  follow-ups (§7.6).
+
+### 7.3 Phase A — template: generic submissions + `/admin` (M)
+
+- [ ] Migration: `submissions` (`id, form, payload JSON, created_at, read_at`)
+      + `hooks` (`id, form, type, target, enabled`). Replace the bespoke
+      `messages` table/handler — the contact form becomes the first consumer
+      of the generic path.
+- [ ] `POST /submit/{form}`: public endpoint storing any form's fields as a
+      JSON payload. Abuse basics: field/size caps (exists), honeypot field,
+      simple per-IP rate limit. Same no-session-CSRF model as today's public
+      contact form.
+- [ ] `/admin` (owner-gated; `/app` redirects): submissions per form with
+      unread counts, detail view, mark-read, delete, **CSV export**; hooks
+      config (per form: notify email on/off + target); clear "you are the
+      site owner" framing.
+- [ ] Owner claim: `OWNER_EMAIL` env — while `users` is empty, only that email
+      can sign up (case-insensitive); absent → today's behavior. Signup page
+      states plainly that the first account becomes the site admin.
+- [ ] AGENTS.md: "wire every form via `POST /submit/{form}`; do NOT build
+      custom storage or admin pages — they exist." Template tests for all of
+      the above; template re-push.
+
+### 7.4 Phase B — hooks: email-on-submission (M)
+
+- [ ] Hook dispatcher in the template: on stored submission, fire enabled
+      hooks async (goroutine, retry once, log failures — never block or fail
+      the visitor's 200).
+- [ ] Email hook via env (`EMAIL_API_KEY`, `EMAIL_FROM`): Resend-compatible
+      sender; unset → hooks UI shows "email not configured". Subject
+      "New <form> submission on <site>", body = payload fields, Reply-To =
+      submitter email when present.
+- [ ] Forge side: inject `EMAIL_*` + `OWNER_EMAIL` app secrets alongside
+      `LITESTREAM_*` in the builder (customer email flows through
+      builder.Request); orchestrator holds one sending-only, domain-restricted
+      Resend key (`SITES_EMAIL_KEY` secret). Delivery email tells the customer
+      about their admin + how to claim it.
+- [ ] E2E check on the next real build: submit → appears in `/admin` → owner
+      email arrives.
+
+### 7.5 Phase C — impeccable design quality (M)
+
+- [ ] Sandbox image: bake the `impeccable` npm package (pinned) — node is
+      already there for the screenshot crawler. No network installs mid-build.
+- [ ] Template: ship impeccable's opencode payload (`.opencode/` from
+      `dist/opencode`) + a skeleton `DESIGN.md`/`PRODUCT.md`.
+- [ ] Build flow: the agent fills `DESIGN.md`/`PRODUCT.md` from the brief +
+      chosen design direction before building UI (the design-picker output
+      finally has a durable home the tools understand), uses impeccable
+      guidance while building, and before deploying runs
+      `impeccable detect --json .` and fixes findings — **capped at 2 fix
+      rounds** to protect the build-time budget.
+- [ ] Keep it switchable (env/template flag) so we can A/B build time and
+      quality against non-impeccable builds.
+
+### 7.6 Phase D — hardening + review aids (later, S–M each)
+
+- [ ] Per-app sending keys (mint via Resend API) and/or customer-own-domain
+      sending; per-app backup isolation (same shared-credential caveat as
+      litestream v1).
+- [ ] `impeccable detect` findings surfaced in Forge `/admin` next to the
+      screenshots — a design-audit checklist for Rasmus's review.
+- [ ] Webhook hook type (POST payload to a customer URL).
+
+### 7.7 Risks
+
+- **Build time**: impeccable adds steps to an already variable Kimi build.
+  Mitigations: detector is deterministic and fast, fix rounds capped, the
+  50-min ceiling + snapshot-resume already absorb overruns; the A/B flag
+  measures the real cost. If it still hurts, that strengthens §5.5 (Claude
+  for builds) rather than killing the feature.
+- **Template drift**: existing sites (the bakery) predate all of this; new
+  template applies to new builds only. Fine — nothing sold yet.
+- **Shared sending key** (v1): a compromised site could send as the forge
+  domain. Same accepted-interim class as the shared backups credential;
+  §7.6 closes both.
