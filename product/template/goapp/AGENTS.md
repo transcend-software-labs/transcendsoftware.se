@@ -102,6 +102,15 @@ Design section with the customer's chosen direction — implement *that*:
 - Validate and length-cap all user input (see `maxFieldLen`).
 - Run `make test` (or `go test ./...`) and `go vet ./...` before deploying;
   fix what they find.
+- **Test every user path in a real browser before deploying — required.** Unit
+  tests and `curl`/health checks run no JavaScript, so they miss broken
+  htmx/form/redirect flows (the #1 "I click the button and nothing happens"
+  bug). Run the app locally, then drive it with Playwright (installed here:
+  `require('playwright')` + Chromium — the same setup the screenshot crawler
+  uses): actually **sign up, log in, log out, submit each form and click each
+  primary button, and assert the result page appears** (not just HTTP 200). Fix
+  anything that doesn't work end to end, then re-check. A site whose login
+  silently does nothing is worse than useless.
 
 ## Build, test, deploy
 

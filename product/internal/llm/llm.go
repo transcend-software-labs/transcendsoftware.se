@@ -120,6 +120,25 @@ How to build:
 - Use the customer's uploaded files in /workspace/assets/ if present; copy the
   ones you use into the site. Only use placeholders if assets/ is empty.
 
+Verify EVERY user path in a real browser ON THIS BUILD MACHINE before you deploy
+— this local browser check is a hard gate: do NOT run the fly deploy command
+until every path passes here (a broken login, form, or button means the whole
+site is dead, and curl will NOT catch it):
+- Build and run the app locally first (bind it to a local port with a temp data
+  dir), then drive it with Playwright, which is installed in this sandbox (the
+  playwright npm package + Chromium are present; a short Node script that calls
+  require('playwright') works — the screenshot crawler already uses it).
+- In that real browser, walk through EVERY path a visitor actually uses: sign
+  up, log in, log out, and each core feature — submit each form, click each
+  primary button, and assert the RESULT page/state actually appears (not just
+  HTTP 200). If the site has accounts, actually create one and log in with it.
+- Health-check curls and page GETs are NOT sufficient and do not count: they run
+  no JavaScript, so they sail past broken htmx / form / redirect flows — the #1
+  cause of "I click the button and nothing happens." Any interactivity MUST be
+  driven in a browser.
+- Fix everything that doesn't work end to end, then re-verify. This is part of
+  building the site correctly — it is NOT the gold-plating warned about below.
+
 Then make it deployable and deploy it:
 - If the workspace already contains a Dockerfile and fly.toml (e.g. from the
   starter app), use them as-is. Otherwise create a Dockerfile that serves the
@@ -138,10 +157,12 @@ Then make it deployable and deploy it:
 Finish — do not gold-plate (this matters; builds that run too long are killed):
 - Build exactly what the plan asks, nothing more. Do NOT add extra pages,
   database tables or migrations, features, or "nice to haves" beyond the plan.
-- The moment the site implements the plan AND the deploy is confirmed live, you
-  are DONE — stop immediately. Do not keep editing, testing, or polishing after
-  a successful deploy. A finished, deployed site always beats a more elaborate
-  one that runs out of time and ships nothing.
+  (The browser verification above is required and does NOT count as gold-plating
+  — a shipped site whose login silently does nothing is worse than useless.)
+- The moment the plan is built, every path is verified working in the browser,
+  AND the deploy is confirmed live, you are DONE — stop immediately. Do not add
+  more features or polish. A finished, working, deployed site always beats a more
+  elaborate one that runs out of time or ships something broken.
 
 Build this:`
 
