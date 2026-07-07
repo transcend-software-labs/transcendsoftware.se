@@ -376,12 +376,16 @@ dashboard — no notification, no export, no control. Today the agent hand-rolls
 that data path per site (bespoke `messages` table, bespoke handler, bespoke
 dashboard), which is exactly the kind of open-ended work Kimi thrashes on.
 
-The fix is one feature: **a standard admin section + generic data layer baked
-into the template.** Every generated site gets the same reliable
-submissions→admin→hooks infrastructure for free, and the agent's job shrinks
-to "build the pages, point the forms at the standard endpoint" — faster
-builds, fewer failure modes, and a real customer-facing feature ("your site
-comes with an admin panel and email notifications") in one move.
+The fix is one feature: **a generic database admin baked into the template**
+(Rasmus's framing, 2026-07-07: "an admin section of each site where you
+control the data, and are able to attach hooks like sending emails if data
+comes into the db"). It renders **all** of the site's SQLite tables by
+introspection — whatever schema the agent designed — and lets the owner
+attach hooks to **any** table. The agent keeps modelling real, typed domain
+tables; it stops hand-rolling dashboards, because the admin adapts to the
+schema instead of constraining it. Faster builds, fewer failure modes, and a
+real customer-facing feature ("your site comes with an admin panel and email
+notifications") in one move.
 
 Same move for design: **impeccable** (github.com/pbakaus/impeccable) is design
 guidance + 23 commands + **45 deterministic detector rules** for exactly the
@@ -407,43 +411,53 @@ not a hope.
   owner. Per-app key minting + customer-own-domain sending are hardening
   follow-ups (§7.6).
 
-### 7.3 Phase A — template: generic submissions + `/admin` (M)
+### 7.3 Phase A — template: introspection admin over ALL tables (M)
 
-- [ ] Migration: `submissions` (`id, form, payload JSON, created_at, read_at`)
-      + `hooks` (`id, form, type, target, enabled`). Replace the bespoke
-      `messages` table/handler — the contact form becomes the first consumer
-      of the generic path.
-- [ ] `POST /submit/{form}`: public endpoint storing any form's fields as a
-      JSON payload. Abuse basics: field/size caps (exists), honeypot field,
-      simple per-IP rate limit. Same no-session-CSRF model as today's public
-      contact form.
-- [ ] `/admin` (owner-gated; `/app` redirects): submissions per form with
-      unread counts, detail view, mark-read, delete, **CSV export**; hooks
-      config (per form: notify email on/off + target); clear "you are the
+No fixed data schema, no `submissions` table (explicitly rejected — the admin
+must not constrain the agent's data model). The admin discovers the schema:
+
+- [ ] Introspection layer: `sqlite_master` + `PRAGMA table_info` → every user
+      table rendered as a data grid: browse (paged, newest first by rowid),
+      sort, row detail, delete row, **CSV export**. Internal tables hidden
+      (`sessions`, `schema_migrations`, `_hooks`, `_outbox`); secret-shaped
+      columns masked (`%password%`, `%hash%`, `%token%`); `users` read-only.
+- [ ] `/admin` (owner-gated; `/app` redirects): table list with row counts,
+      the grids above, hooks config per table (§7.4), and clear "you are the
       site owner" framing.
 - [ ] Owner claim: `OWNER_EMAIL` env — while `users` is empty, only that email
       can sign up (case-insensitive); absent → today's behavior. Signup page
       states plainly that the first account becomes the site admin.
-- [ ] AGENTS.md: "wire every form via `POST /submit/{form}`; do NOT build
-      custom storage or admin pages — they exist." Template tests for all of
-      the above; template re-push.
+- [ ] AGENTS.md: "model domain data as proper typed tables (rowid tables, no
+      WITHOUT ROWID); do NOT build dashboards/admin pages — `/admin` renders
+      every table automatically." Drop the bespoke `messages` dashboard from
+      the template (the contact `messages` table stays — the admin now renders
+      it like any other table). Template tests; template re-push.
 
-### 7.4 Phase B — hooks: email-on-submission (M)
+### 7.4 Phase B — hooks on any table: email-on-insert (M)
 
-- [ ] Hook dispatcher in the template: on stored submission, fire enabled
-      hooks async (goroutine, retry once, log failures — never block or fail
-      the visitor's 200).
-- [ ] Email hook via env (`EMAIL_API_KEY`, `EMAIL_FROM`): Resend-compatible
-      sender; unset → hooks UI shows "email not configured". Subject
-      "New <form> submission on <site>", body = payload fields, Reply-To =
-      submitter email when present.
+How "data came into the db" is detected generically: modernc's pure-Go SQLite
+driver exposes no update-hook, and polling every table is lossy — so
+**trigger + outbox**. Enabling a hook on table X creates
+`AFTER INSERT ON X → INSERT INTO _outbox(table_name, row_id, created_at)`
+(dropped on disable). Capture is transactional with the insert — nothing
+missed across restarts — and the app polls only `_outbox`.
+
+- [ ] `_hooks` (`id, table_name, event, type, target, enabled`) + `_outbox` +
+      trigger create/drop on hook toggle in `/admin`.
+- [ ] Dispatcher: poll `_outbox` (few seconds), fire enabled hooks async,
+      retry once, log failures, mark processed — never blocks or fails the
+      visitor's request. v1 hook type: email — row rendered as key/values via
+      introspection; Reply-To = the row's email-ish column when present.
+      Structured so webhook/Slack are new cases, not new schema.
+- [ ] Email via env (`EMAIL_API_KEY`, `EMAIL_FROM`): Resend-compatible; unset
+      → hooks UI shows "email not configured".
 - [ ] Forge side: inject `EMAIL_*` + `OWNER_EMAIL` app secrets alongside
       `LITESTREAM_*` in the builder (customer email flows through
       builder.Request); orchestrator holds one sending-only, domain-restricted
       Resend key (`SITES_EMAIL_KEY` secret). Delivery email tells the customer
       about their admin + how to claim it.
-- [ ] E2E check on the next real build: submit → appears in `/admin` → owner
-      email arrives.
+- [ ] E2E check on the next real build: enable hook on the contact table →
+      submit the form → row in `/admin` → owner email arrives.
 
 ### 7.5 Phase C — impeccable design quality (M)
 
