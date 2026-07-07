@@ -1,0 +1,52 @@
+# Push the starter-app template tarball to object storage when it changes.
+#
+# The template (product/template/goapp) seeds every fresh build's workspace via
+# the TEMPLATE_KEY tarball (templates/goapp.tgz). Editing it — the AGENTS.md
+# design/build guidance, the starter UI, migrations — only reaches NEW builds
+# after `make template-push` re-uploads it. This runs that automatically on any
+# template change, so it's never a forgotten manual step. (The sandbox image is
+# still rebuilt manually with `make sandbox-build` — see sandbox/README.md.)
+#
+# Auth: the orchestrator's Tigris/S3 credentials as repo secrets. These must be
+# added to the repo and MATCH the Fly secrets on transcend-forge so the tarball
+# lands in the same bucket the orchestrator reads TEMPLATE_KEY from:
+#   STORAGE_ENDPOINT, STORAGE_ACCESS_KEY, STORAGE_SECRET_KEY, STORAGE_BUCKET
+#   (optional: STORAGE_REGION, STORAGE_USE_SSL). The sandbox never gets these.
+name: Push template
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'product/template/**'
+  workflow_dispatch: {} # manual "push template now" from the Actions tab
+
+# One push at a time; the tarball is last-write-wins, so don't race.
+concurrency:
+  group: push-template
+  cancel-in-progress: false
+
+jobs:
+  push:
+    name: Upload template tarball
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: product
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: product/go.mod
+          cache-dependency-path: product/go.sum
+
+      - name: Push template to object storage
+        run: make template-push
+        env:
+          STORAGE_ENDPOINT: ${{ secrets.STORAGE_ENDPOINT }}
+          STORAGE_ACCESS_KEY: ${{ secrets.STORAGE_ACCESS_KEY }}
+          STORAGE_SECRET_KEY: ${{ secrets.STORAGE_SECRET_KEY }}
+          STORAGE_BUCKET: ${{ secrets.STORAGE_BUCKET }}
+          STORAGE_REGION: ${{ secrets.STORAGE_REGION }}
+          STORAGE_USE_SSL: ${{ secrets.STORAGE_USE_SSL }}
