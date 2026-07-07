@@ -279,8 +279,15 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 		saved := false
 		if req.SnapshotPutURL != "" {
 			emit(hooks.OnLog, "Build interrupted — saving progress so it can be resumed…")
-			sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Minute)
-			if serr := b.saveSnapshot(sctx, sb.MachineID, req.SnapshotPutURL); serr == nil {
+			sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 8*time.Minute)
+			// The agent is still running — we only stopped reading its stream, so
+			// opencode keeps churning and would starve the snapshot tar (why the
+			// 120s save timed out before). Stop it first to free the sandbox.
+			_, _ = b.machines.Exec(sctx, sb.MachineID,
+				[]string{"/bin/sh", "-c", "pkill -9 -f opencode 2>/dev/null; true"}, 20)
+			if serr := b.saveSnapshotTimeout(sctx, sb.MachineID, req.SnapshotPutURL, 360); serr != nil {
+				emit(hooks.OnLog, "Could not save progress for resume: "+serr.Error())
+			} else {
 				saved = true
 			}
 			cancel()
@@ -453,9 +460,16 @@ func (b *Sandbox) restoreSnapshot(ctx context.Context, machineID, getURL string)
 // saveSnapshot uploads the workspace (minus reinstallable dependencies) to the
 // presigned PUT URL.
 func (b *Sandbox) saveSnapshot(ctx context.Context, machineID, putURL string) error {
+	return b.saveSnapshotTimeout(ctx, machineID, putURL, 120)
+}
+
+// saveSnapshotTimeout tars /workspace and uploads it to the presigned PUT URL,
+// with a caller-chosen command timeout (longer on the interrupted-build path,
+// where the machine may be recovering from a saturated agent).
+func (b *Sandbox) saveSnapshotTimeout(ctx context.Context, machineID, putURL string, timeoutSec int) error {
 	script := `cd /workspace && tar --exclude=node_modules --exclude=.cache -czf /tmp/snapshot.tgz . && ` +
 		`curl -fsS -T /tmp/snapshot.tgz -o /dev/null '` + putURL + `'`
-	res, err := b.machines.Exec(ctx, machineID, []string{"/bin/sh", "-c", script}, 120)
+	res, err := b.machines.Exec(ctx, machineID, []string{"/bin/sh", "-c", script}, timeoutSec)
 	if err != nil {
 		return fmt.Errorf("save snapshot: %w", err)
 	}

@@ -554,7 +554,11 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 		if res.SnapshotSaved {
 			pctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 			p.SnapshotKey = snapshotKey
-			_ = o.save(pctx, p)
+			if serr := o.save(pctx, p); serr != nil {
+				o.log.Error("persist resume snapshot key", "project", p.ID, "err", serr)
+			} else {
+				o.log.Info("saved resume snapshot", "project", p.ID, "key", snapshotKey)
+			}
 			cancel()
 		}
 		return err

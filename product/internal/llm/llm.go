@@ -135,6 +135,14 @@ Then make it deployable and deploy it:
   SQLite, a second machine would be a second, diverging database.)
 - Confirm the deploy finished successfully.
 
+Finish — do not gold-plate (this matters; builds that run too long are killed):
+- Build exactly what the plan asks, nothing more. Do NOT add extra pages,
+  database tables or migrations, features, or "nice to haves" beyond the plan.
+- The moment the site implements the plan AND the deploy is confirmed live, you
+  are DONE — stop immediately. Do not keep editing, testing, or polishing after
+  a successful deploy. A finished, deployed site always beats a more elaborate
+  one that runs out of time and ships nothing.
+
 Build this:`
 
 // SafetySystemPrompt instructs the gate to return strict JSON only.
