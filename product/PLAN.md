@@ -66,6 +66,26 @@ touch-scroll affordance, `max-width:100%` on `.review-shot`/`.review-thumb`,
 trim panel/container padding. Mostly CSS + one nav-partial edit; benefits the
 whole forge UI, not just `/admin`.
 
+**Overnight autonomous validation + prompt/design tuning (2026-07-08).** Ran a
+stream of real end-to-end builds to verify the pipeline and tune the build
+prompt. Results: **4/4 builds came out genuinely well-designed and distinct**
+(a warm bakery, a fresh cleaning co, an elegant bistro, an energetic running
+club) with 2-column heroes, real/CSS imagery, and on-brand palettes/type;
+**reiterations work** (a change applied cleanly and preserved the site); the
+browser-test gate is followed (Playwright in every build log). Two build-prompt
+fixes shipped after real findings: (1) **design quality is now a hard
+requirement** (a bare form on a white page is a fail — realise the plan's
+design fully; this is correctness, not gold-plating), after an early build came
+out generic; (2) **auth forms must set `hx-boost="false"`** and the browser
+test must confirm first-click navigation — the doctor-chat "login does nothing"
+bug was `hx-boost` hijacking the login submit and stalling on the redirect
+chain (now applied in every build). Also: the **Forge marketing landing** got a
+tasteful "how it works" numbered-card upgrade (it was less designed than its own
+output). Known gaps: `make template-push` is still blocked on the `STORAGE_*`
+repo secrets, so template/AGENTS.md changes don't reach builds — all prompt
+tuning went into `internal/llm/llm.go` (orchestrator-deployed) instead. Full
+run journal: session scratchpad `overnight_log.md`.
+
 **Next feature (planned, agreed with Rasmus): §7 — in-site admin + data hooks
 + impeccable design quality.**
 
