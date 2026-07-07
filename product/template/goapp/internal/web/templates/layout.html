@@ -11,8 +11,16 @@
   <script src="/static/htmx.min.js" defer></script>
 </head>
 <body hx-boost="true">
+<header class="nav">
   <a class="brand" href="/">Your Site</a>
-  <nav class="navlinks">
+  <!-- Mobile menu: a CSS-only checkbox toggle (styled in app.css) collapses the
+       links into a hamburger on phones. No JS, and it survives hx-boost swaps.
+       Keep this pattern on every nav you build — see AGENTS.md. -->
+  <input type="checkbox" id="nav-toggle" class="nav-toggle" hidden>
+  <label for="nav-toggle" class="nav-burger" aria-label="Toggle menu" aria-controls="site-nav">
+    <span></span><span></span><span></span>
+  </label>
+  <nav id="site-nav" class="navlinks" aria-label="Main navigation">
     {{if .User}}
       {{if .User.IsAdmin}}<a href="/admin">Site admin</a>{{else}}<a href="/app">Account</a>{{end}}
       <form method="post" action="/logout" class="inline">

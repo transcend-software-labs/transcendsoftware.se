@@ -79,6 +79,14 @@ Design section with the customer's chosen direction — implement *that*:
 - Generous padding and whitespace — cramped layouts feel unfinished.
 - Tap targets ≥ 44px; comfortable line length (~45–75 chars); never skip
   heading levels (h1 → h2 → h3).
+- **Mobile nav is a hamburger, always.** Any site with more than ~2 nav links
+  MUST collapse them into an accessible expandable menu on phones (a row of
+  cramped links, or links that wrap under the logo, reads as unfinished — the
+  most common tell). The starter ships a working CSS-only pattern in
+  `layout.html` + `app.css` (`.nav` / `.nav-toggle` / `.nav-burger` / `.navlinks`,
+  toggled below 720px): reuse it for the public nav — restyle it, but keep the
+  collapse behavior. It needs no JavaScript and survives hx-boost swaps. Always
+  check the nav at a 375px width before deploying.
 
 ## Rules
 
