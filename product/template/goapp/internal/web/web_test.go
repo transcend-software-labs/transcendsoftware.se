@@ -442,6 +442,28 @@ func TestHooks_MaskedColumnsNotSent(t *testing.T) {
 	}
 }
 
+func TestBoost_HtmxVendoredAndWired(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+
+	// htmx is embedded (no CDN) and served.
+	js, resp := get(t, http.DefaultClient, srv.URL+"/static/htmx.min.js")
+	if resp.StatusCode != http.StatusOK || !strings.Contains(js, "htmx") {
+		t.Fatalf("htmx.min.js not served (%d)", resp.StatusCode)
+	}
+	// Pages opt into boosting and load it locally.
+	page, _ := get(t, http.DefaultClient, srv.URL+"/")
+	if !strings.Contains(page, `hx-boost="true"`) {
+		t.Error("body should enable hx-boost")
+	}
+	if !strings.Contains(page, "/static/htmx.min.js") {
+		t.Error("page should load the vendored htmx, not a CDN")
+	}
+	if strings.Contains(page, "unpkg.com") || strings.Contains(page, "cdn.") {
+		t.Error("no third-party script hosts — sites must stay self-contained")
+	}
+}
+
 func TestLogout_RequiresCSRF(t *testing.T) {
 	srv := newTestServer(t)
 	defer srv.Close()
