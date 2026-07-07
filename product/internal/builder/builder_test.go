@@ -159,6 +159,45 @@ func TestBuild_CapturesScreenshot(t *testing.T) {
 	}
 }
 
+func TestBuild_InjectsBackupSecretsWhenConfigured(t *testing.T) {
+	machines := fly.NewFake()
+	b := NewSandbox(machines, func(string) opencode.Driver { return opencode.NewFake() }, Config{
+		BackupBucket:    "transcend-forge-backups",
+		BackupEndpoint:  "fly.storage.tigris.dev",
+		BackupRegion:    "auto",
+		BackupAccessKey: "ak",
+		BackupSecretKey: "sk",
+	})
+	if _, err := b.Build(context.Background(), Request{ProjectID: "p9", Plan: "build"}, Hooks{}); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	app := DeployAppName("p9")
+	secrets := machines.AppSecrets(app)
+	if secrets == nil {
+		t.Fatal("no backup secrets injected for the app")
+	}
+	if secrets["LITESTREAM_BUCKET"] != "transcend-forge-backups" {
+		t.Errorf("LITESTREAM_BUCKET = %q", secrets["LITESTREAM_BUCKET"])
+	}
+	if secrets["LITESTREAM_PATH"] != app {
+		t.Errorf("LITESTREAM_PATH = %q, want per-app prefix %q", secrets["LITESTREAM_PATH"], app)
+	}
+	if secrets["LITESTREAM_SECRET_ACCESS_KEY"] != "sk" {
+		t.Error("secret access key not injected")
+	}
+}
+
+func TestBuild_NoBackupSecretsWhenUnconfigured(t *testing.T) {
+	machines := fly.NewFake()
+	b := newTestBuilder(machines) // Config{} → no backup bucket
+	if _, err := b.Build(context.Background(), Request{ProjectID: "p10", Plan: "build"}, Hooks{}); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if s := machines.AppSecrets(DeployAppName("p10")); s != nil {
+		t.Errorf("expected no backup secrets when unconfigured, got %v", s)
+	}
+}
+
 func TestBuild_NoSnapshotURLsNoExecs(t *testing.T) {
 	machines := fly.NewFake()
 	b := newTestBuilder(machines)

@@ -104,6 +104,15 @@ type Config struct {
 	LLMBaseURL string
 	LLMKey     string
 	LLMModel   string
+
+	// Backup* configure per-app litestream replication of the deployed site's
+	// SQLite database to object storage (empty bucket → disabled). Injected as
+	// app secrets by the orchestrator — never part of the sandbox build env.
+	BackupBucket    string
+	BackupEndpoint  string
+	BackupRegion    string
+	BackupAccessKey string
+	BackupSecretKey string
 }
 
 // DriverFactory builds an opencode driver for a sandbox at the given address.
@@ -150,6 +159,23 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 	appName := DeployAppName(req.ProjectID)
 	if err := b.machines.EnsureApp(ctx, appName); err != nil {
 		return Result{}, err
+	}
+	// Inject per-app backup credentials so the deployed site's litestream
+	// replicates its SQLite DB to object storage (durable across volume/host
+	// loss). Best-effort + orchestrator-side: a backup gap must not fail the
+	// build, and these creds never enter the sandbox env. Path = appName so
+	// each site backs up to its own prefix.
+	if b.cfg.BackupBucket != "" {
+		if err := b.machines.SetAppSecrets(ctx, appName, map[string]string{
+			"LITESTREAM_BUCKET":            b.cfg.BackupBucket,
+			"LITESTREAM_ENDPOINT":          b.cfg.BackupEndpoint,
+			"LITESTREAM_REGION":            b.cfg.BackupRegion,
+			"LITESTREAM_ACCESS_KEY_ID":     b.cfg.BackupAccessKey,
+			"LITESTREAM_SECRET_ACCESS_KEY": b.cfg.BackupSecretKey,
+			"LITESTREAM_PATH":              appName,
+		}); err != nil {
+			emit(hooks.OnLog, "Note: continuous backup could not be enabled for this build.")
+		}
 	}
 	token, err := b.machines.AppDeployToken(ctx, appName)
 	if err != nil {

@@ -55,6 +55,12 @@ func main() {
 		LLMBaseURL:   cfg.LLMBaseURL,      // else an OpenAI-compatible model (Moonshot/Kimi)
 		LLMKey:       cfg.LLMAPIKey,
 		LLMModel:     cfg.LLMModel,
+
+		BackupBucket:    cfg.BackupBucket, // per-app litestream backups (empty → off)
+		BackupEndpoint:  cfg.BackupEndpoint,
+		BackupRegion:    cfg.BackupRegion,
+		BackupAccessKey: cfg.BackupAccessKey,
+		BackupSecretKey: cfg.BackupSecretKey,
 	})
 	assets := newStorage(cfg, log)
 	broker := stream.NewBroker(500)

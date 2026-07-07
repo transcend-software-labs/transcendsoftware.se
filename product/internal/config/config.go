@@ -86,6 +86,16 @@ type Config struct {
 	StorageBucket    string
 	StorageRegion    string
 	StorageUseSSL    bool
+
+	// Backup* is a separate object-storage bucket for per-app SQLite backups
+	// (litestream). Injected into each generated site as app secrets; empty
+	// bucket → sites deploy without continuous backup. Kept distinct from the
+	// asset bucket so a site's backup credential can't reach customer assets.
+	BackupBucket    string
+	BackupEndpoint  string
+	BackupRegion    string
+	BackupAccessKey string
+	BackupSecretKey string
 }
 
 // StorageEnabled reports whether a real S3-compatible backend is configured.
@@ -139,6 +149,12 @@ func Load() Config {
 		StorageBucket:    envOr("STORAGE_BUCKET", "forge-assets"),
 		StorageRegion:    envOr("STORAGE_REGION", "auto"),
 		StorageUseSSL:    os.Getenv("STORAGE_USE_SSL") == "true",
+
+		BackupBucket:    os.Getenv("BACKUP_BUCKET"),
+		BackupEndpoint:  os.Getenv("BACKUP_ENDPOINT"),
+		BackupRegion:    envOr("BACKUP_REGION", "auto"),
+		BackupAccessKey: os.Getenv("BACKUP_ACCESS_KEY"),
+		BackupSecretKey: os.Getenv("BACKUP_SECRET_KEY"),
 	}
 }
 

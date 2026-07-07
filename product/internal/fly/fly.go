@@ -53,6 +53,10 @@ type Machines interface {
 	// EnsureApp creates the per-customer Fly app if it doesn't exist. Done by the
 	// orchestrator so app-creation privilege stays out of the sandbox.
 	EnsureApp(ctx context.Context, appName string) error
+	// SetAppSecrets sets runtime secrets on a per-customer app. Orchestrator
+	// side (never the sandbox); used to inject the per-app backup credentials
+	// the deployed site's litestream uses. Applied on the app's next deploy.
+	SetAppSecrets(ctx context.Context, appName string, secrets map[string]string) error
 	// DestroyApp deletes a per-customer app and everything in it (machines,
 	// IPs). Destroying an already-absent app is not an error — the reaper and
 	// the admin destroy action must be idempotent.
@@ -73,12 +77,14 @@ type Machines interface {
 // DefaultPort is the opencode port used when a spec leaves Port unset.
 const DefaultPort = 4096
 
-// Fake is a dev-mode Machines that touches no real infra. It records Exec and
-// DestroyApp calls so tests can assert snapshot and reaper behavior.
+// Fake is a dev-mode Machines that touches no real infra. It records Exec,
+// DestroyApp and SetAppSecrets calls so tests can assert snapshot, reaper and
+// backup-provisioning behavior.
 type Fake struct {
 	mu            sync.Mutex
 	execs         []FakeExec
 	destroyedApps []string
+	appSecrets    map[string]map[string]string
 }
 
 // FakeExec is one recorded Exec call.
@@ -95,8 +101,26 @@ func (f *Fake) SpawnSandbox(_ context.Context, spec SpawnSpec) (*Sandbox, error)
 	return &Sandbox{MachineID: "dev-machine-" + spec.TaskID, AppName: "dev-app", Addr: ""}, nil
 }
 
-func (f *Fake) DestroySandbox(_ context.Context, _ *Sandbox) error          { return nil }
-func (f *Fake) EnsureApp(_ context.Context, _ string) error                 { return nil }
+func (f *Fake) DestroySandbox(_ context.Context, _ *Sandbox) error { return nil }
+func (f *Fake) EnsureApp(_ context.Context, _ string) error        { return nil }
+
+func (f *Fake) SetAppSecrets(_ context.Context, appName string, secrets map[string]string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.appSecrets == nil {
+		f.appSecrets = map[string]map[string]string{}
+	}
+	f.appSecrets[appName] = secrets
+	return nil
+}
+
+// AppSecrets returns the secrets recorded for an app (test helper).
+func (f *Fake) AppSecrets(appName string) map[string]string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.appSecrets[appName]
+}
+
 func (f *Fake) AppDeployToken(_ context.Context, _ string) (string, error)  { return "", nil }
 func (f *Fake) RepoDeployToken(_ context.Context, _ string) (string, error) { return "", nil }
 

@@ -9,7 +9,9 @@ that implements the plan.
 - One Go binary serves everything: server-rendered HTML (`html/template`),
   static assets, and all backend logic. Templates, CSS and migrations are
   **embedded** — the binary is the entire app.
-- SQLite persistence in `$DATA_DIR` (default `data/`, `/data` in the container).
+- SQLite persistence in `$DATA_DIR` (default `data/`, `/data` in the container),
+  on a durable volume, with Litestream streaming continuous backups to object
+  storage when configured (see `entrypoint.sh` — don't change the entrypoint).
 - Auth: signup/login/logout, bcrypt, DB-backed sessions (hashed tokens), CSRF
   helper. The **first account created is the site owner** (`is_admin`).
 - Public contact form on `/` → stored in `messages` → shown to the owner on `/app`.

@@ -172,6 +172,33 @@ func (h *HTTP) appNumericID(ctx context.Context, appName string) (uint64, error)
 	return out.InternalNumericID, nil
 }
 
+// SetAppSecrets sets runtime secrets on a per-customer app via the Fly GraphQL
+// setSecrets mutation. The values apply on the app's next deploy — which, in
+// the build flow, is the agent's deploy right after this call.
+func (h *HTTP) SetAppSecrets(ctx context.Context, appName string, secrets map[string]string) error {
+	if len(secrets) == 0 {
+		return nil
+	}
+	type kv struct {
+		Key   string `json:"key"`
+		Value string `json:"value"`
+	}
+	list := make([]kv, 0, len(secrets))
+	for k, v := range secrets {
+		list = append(list, kv{Key: k, Value: v})
+	}
+	const mutation = `mutation($input: SetSecretsInput!){setSecrets(input:$input){app{name}}}`
+	vars := map[string]any{"input": map[string]any{"appId": appName, "secrets": list}}
+	var out struct {
+		SetSecrets struct {
+			App struct {
+				Name string `json:"name"`
+			} `json:"app"`
+		} `json:"setSecrets"`
+	}
+	return h.graphql(ctx, mutation, vars, &out)
+}
+
 // mintDeployToken creates a Fly deploy token scoped to appName (the
 // createLimitedAccessToken mutation that `fly tokens create deploy -a` uses).
 func (h *HTTP) mintDeployToken(ctx context.Context, appName, expiry string) (string, error) {
