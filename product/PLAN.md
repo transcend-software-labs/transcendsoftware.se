@@ -481,7 +481,13 @@ missed across restarts — and the app polls only `_outbox`.
       litestream v1).
 - [ ] `impeccable detect` findings surfaced in Forge `/admin` next to the
       screenshots — a design-audit checklist for Rasmus's review.
-- [ ] Webhook hook type (POST payload to a customer URL).
+- [ ] More hook types — each is one `Notifier` impl + an admin dropdown
+      option (dispatch/capture already generic): **Slack** (incoming-webhook
+      URL, ~30 lines) and **generic webhook** (POST row JSON → unlocks
+      Zapier/Make/n8n). Webhook handler MUST refuse internal targets
+      (`.internal`, `fdaa::/16`, RFC1918, localhost) — customer sites live on
+      the org's 6PN network and must not be able to probe Forge/Postgres.
+      Per-hook "send test" button + last-delivery status in /admin.
 
 ### 7.7 Risks
 
