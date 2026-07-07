@@ -54,6 +54,18 @@ deploy (including the frequent CI product deploys) non-disruptive: no more
 finished during the exact restart window, the missed `session.idle` isn't
 replayed and it falls back to the existing snapshot-resume.
 
+**Planned: make the Forge operator admin mobile-friendly (Rasmus approves
+escalations from his phone).** The forge UI shares one stylesheet
+(`internal/web/static/app.css`) and has no real mobile breakpoint or collapsing
+nav yet. Scope: (1) add the CSS-only hamburger to the `nav` partial +
+`.nav`/`.navlinks` (mirror the generated-site pattern); (2) a `@media
+(max-width: 720px)` pass — stack `.inline-actions` (approve/decline note inputs
+go full-width above their button), full-width `.admin-actions` buttons at ≥44px,
+tighten `.stat-row`, keep the builds `.table-scroll` (already scrolls) with a
+touch-scroll affordance, `max-width:100%` on `.review-shot`/`.review-thumb`,
+trim panel/container padding. Mostly CSS + one nav-partial edit; benefits the
+whole forge UI, not just `/admin`.
+
 **Next feature (planned, agreed with Rasmus): §7 — in-site admin + data hooks
 + impeccable design quality.**
 

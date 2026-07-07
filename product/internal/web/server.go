@@ -235,10 +235,12 @@ func (s *Server) requireAdmin(next authedHandler) http.HandlerFunc {
 	}
 }
 
-// ownedProject loads a project and verifies the user owns it.
+// ownedProject loads a project and verifies the user may open it: its owner, or
+// the operator (admin), who reviews every project and links to them from the
+// admin dashboard. 404 (not 403) so a non-owner can't probe which IDs exist.
 func (s *Server) ownedProject(w http.ResponseWriter, r *http.Request, u *user.User) (*project.Project, bool) {
 	p, err := s.store.ProjectByID(r.Context(), r.PathValue("id"))
-	if err != nil || p.UserID != u.ID {
+	if err != nil || (p.UserID != u.ID && !s.isAdmin(u)) {
 		http.NotFound(w, r)
 		return nil, false
 	}
