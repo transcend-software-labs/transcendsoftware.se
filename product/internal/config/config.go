@@ -24,7 +24,8 @@ type Config struct {
 
 	// Email (empty key → log-only notifier; no mail sent).
 	ResendAPIKey string // Resend API key
-	EmailFrom    string // verified sender, e.g. "Transcend Forge <hello@transcendsoftware.se>"
+	EmailFrom    string // verified sender, e.g. "Transcend Forge <hello@forge.transcendsoftware.se>"
+	EmailReplyTo string // monitored inbox for replies (sending subdomain can't receive mail)
 
 	// GitHub source mirroring (empty token → disabled). Token needs repo +
 	// workflow scopes on the org.
@@ -114,6 +115,7 @@ func Load() Config {
 		AdminEmail:   os.Getenv("ADMIN_EMAIL"),
 		ResendAPIKey: os.Getenv("RESEND_API_KEY"),
 		EmailFrom:    envOr("EMAIL_FROM", "Transcend Forge <onboarding@resend.dev>"),
+		EmailReplyTo: os.Getenv("EMAIL_REPLY_TO"),
 		GitHubToken:  os.Getenv("GITHUB_TOKEN"),
 		GitHubOrg:    envOr("GITHUB_ORG", "transcend-software-labs"),
 

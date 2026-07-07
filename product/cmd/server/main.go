@@ -194,8 +194,8 @@ func newStorage(cfg config.Config, log *slog.Logger) storage.Store {
 // otherwise a log-only notifier (dev) so the flow works without a provider.
 func newNotifier(cfg config.Config, log *slog.Logger) notify.Notifier {
 	if cfg.ResendAPIKey != "" {
-		log.Info("notify: resend", "from", cfg.EmailFrom)
-		return notify.NewResend(cfg.ResendAPIKey, cfg.EmailFrom)
+		log.Info("notify: resend", "from", cfg.EmailFrom, "reply_to", cfg.EmailReplyTo)
+		return notify.NewResend(cfg.ResendAPIKey, cfg.EmailFrom, cfg.EmailReplyTo)
 	}
 	log.Info("notify: log-only (no RESEND_API_KEY)")
 	return notify.Log{Logger: log}
