@@ -148,12 +148,20 @@ site is dead, and curl will NOT catch it):
   require('playwright') works — the screenshot crawler already uses it).
 - In that real browser, walk through EVERY path a visitor actually uses: sign
   up, log in, log out, and each core feature — submit each form, click each
-  primary button, and assert the RESULT page/state actually appears (not just
-  HTTP 200). If the site has accounts, actually create one and log in with it.
+  primary button ONCE, and assert the RESULT page/state actually appears on the
+  FIRST try (not just HTTP 200). A submit where the first click "does nothing",
+  or that only works on the second click, is a BUG — fix it. If the site has
+  accounts, actually create one and log in with it.
 - Health-check curls and page GETs are NOT sufficient and do not count: they run
   no JavaScript, so they sail past broken htmx / form / redirect flows — the #1
   cause of "I click the button and nothing happens." Any interactivity MUST be
   driven in a browser.
+- Known trap that causes exactly this: hx-boost (on the starter's <body>)
+  hijacks a login/signup submit into an AJAX request that then stalls on the
+  post-login redirect chain, so the first click appears to do nothing. Auth
+  forms — login, signup, logout — MUST submit natively: put hx-boost="false" on
+  those <form> elements so the redirect navigates reliably, and keep the
+  post-login redirect to a single hop (avoid /login -> /app -> /admin chains).
 - Fix everything that doesn't work end to end, then re-verify. This is part of
   building the site correctly — it is NOT the gold-plating warned about below.
 
