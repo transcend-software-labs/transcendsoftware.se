@@ -171,6 +171,7 @@ type adminTableView struct {
 	ReadOnly   bool
 	Hooks      []hookInfo
 	OwnerEmail string
+	CanEmail   bool // an email sender is configured (slack/webhook always available)
 }
 
 type adminField struct {
@@ -270,6 +271,7 @@ func (s *Server) handleAdminTable(w http.ResponseWriter, r *http.Request, _ *aut
 		v.Hooks = hks
 	}
 	v.OwnerEmail = s.ownerEmail
+	_, v.CanEmail = s.notifiers["email"]
 	view := s.view(r, table+" — Site admin", v)
 	view.Flash = r.URL.Query().Get("msg")
 	s.render(w, http.StatusOK, "admin_table", view)

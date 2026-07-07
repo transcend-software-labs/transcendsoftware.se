@@ -54,10 +54,10 @@
   <ul class="hook-list">
     {{range .Data.Hooks}}
     <li>
-      <span class="hook-target">✉︎ {{.Target}}</span>
+      <span class="hook-target">{{if eq .Type "email"}}✉︎{{else if eq .Type "slack"}}#{{else}}⇢{{end}} {{.Target}}</span>
       <span class="badge {{if .Enabled}}badge-on{{else}}badge-off{{end}}">{{if .Enabled}}on{{else}}off{{end}}</span>
       {{if .LastStatus}}<span class="muted small">last: {{.LastStatus}}</span>{{end}}
-      {{if not .EmailReady}}<span class="muted small">email not configured for this site yet</span>{{end}}
+      {{if and (eq .Type "email") (not .EmailReady)}}<span class="muted small">email not configured for this site yet</span>{{end}}
       <span class="hook-actions">
         <form method="post" action="/admin/hooks/{{.ID}}/toggle" class="inline">
           <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
@@ -80,8 +80,15 @@
 
   <form method="post" action="/admin/t/{{.Data.Table}}/hooks" class="hook-add">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-    <input type="email" name="target" placeholder="{{if .Data.OwnerEmail}}{{.Data.OwnerEmail}}{{else}}you@example.com{{end}}" aria-label="Notify this email">
-    <button class="btn btn-sm" type="submit">Email me new entries</button>
+    <select name="type" aria-label="Notification type">
+      {{if .Data.CanEmail}}<option value="email">Email</option>{{end}}
+      <option value="slack">Slack</option>
+      <option value="webhook">Webhook</option>
+    </select>
+    <input type="text" name="target" placeholder="email address or https:// URL"
+      value="{{if .Data.CanEmail}}{{.Data.OwnerEmail}}{{end}}" aria-label="Notification target">
+    <button class="btn btn-sm" type="submit">Notify me of new entries</button>
   </form>
+  <p class="muted small">Slack: paste an incoming-webhook URL. Webhook: any https:// endpoint (Zapier, Make, your own) — it receives the row as JSON.</p>
 </section>
 {{template "admin_foot" .}}{{end}}

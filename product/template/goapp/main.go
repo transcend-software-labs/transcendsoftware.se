@@ -39,7 +39,12 @@ func main() {
 
 	// Notification hooks: an email sender (Resend-compatible) when EMAIL_API_KEY
 	// + EMAIL_FROM are set. A background dispatcher delivers hooks from _outbox.
-	notifiers := map[string]hooks.Notifier{}
+	// Slack + generic webhook need no config (the target is the URL); email
+	// needs a sending identity, so it's only offered when configured.
+	notifiers := map[string]hooks.Notifier{
+		"slack":   hooks.SlackNotifier{},
+		"webhook": hooks.WebhookNotifier{},
+	}
 	if n := hooks.NewEmailNotifier(os.Getenv("EMAIL_API_KEY"), os.Getenv("EMAIL_FROM")); n != nil {
 		notifiers["email"] = n
 	}

@@ -47,7 +47,7 @@ func (s *Server) tableHooks(ctx context.Context, table string) ([]hookInfo, erro
 	return out, rows.Err()
 }
 
-// handleHookAdd enables an email hook on a table.
+// handleHookAdd enables a notification hook (email, slack, or webhook) on a table.
 func (s *Server) handleHookAdd(w http.ResponseWriter, r *http.Request, _ *auth.User) {
 	if !s.checkCSRF(r) {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -58,19 +58,35 @@ func (s *Server) handleHookAdd(w http.ResponseWriter, r *http.Request, _ *auth.U
 		http.NotFound(w, r)
 		return
 	}
-	target := strings.TrimSpace(r.FormValue("target"))
-	if target == "" {
-		target = s.ownerEmail
+	htype := r.FormValue("type")
+	if htype == "" {
+		htype = "email"
 	}
-	if !strings.Contains(target, "@") || len(target) > 200 {
-		s.redirectTable(w, r, table, "Enter a valid email address to notify.")
+	if _, ok := s.notifiers[htype]; !ok {
+		s.redirectTable(w, r, table, "That notification type isn't available on this site.")
 		return
+	}
+	target := strings.TrimSpace(r.FormValue("target"))
+	switch htype {
+	case "email":
+		if target == "" {
+			target = s.ownerEmail
+		}
+		if !strings.Contains(target, "@") || len(target) > 200 {
+			s.redirectTable(w, r, table, "Enter a valid email address to notify.")
+			return
+		}
+	case "slack", "webhook":
+		if !hooks.ValidTargetURL(target) {
+			s.redirectTable(w, r, table, "Enter a valid https:// URL for this notification.")
+			return
+		}
 	}
 	_, err := s.db.ExecContext(r.Context(),
 		`INSERT INTO _hooks (id, table_name, type, target, enabled, created_at)
-		 VALUES (?, ?, 'email', ?, 1, ?)
+		 VALUES (?, ?, ?, ?, 1, ?)
 		 ON CONFLICT(table_name, type, target) DO UPDATE SET enabled = 1`,
-		auth.NewID(), table, target, time.Now().Unix())
+		auth.NewID(), table, htype, target, time.Now().Unix())
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
