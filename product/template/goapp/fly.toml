@@ -4,13 +4,6 @@
 # Deploy with:  fly deploy --remote-only --ha=false --app "$FLY_APP" ...
 # --ha=false is required: SQLite lives on ONE machine; a second machine would
 # be a second, diverging database.
-#
-# Data note: without a volume, $DATA_DIR (/data) lives on the machine's root
-# filesystem — it survives stop/start but resets on redeploys. At go-live,
-# create a volume (fly volumes create data --region arn -s 1) and add:
-#   [mounts]
-#     source = "data"
-#     destination = "/data"
 
 primary_region = "arn"
 
@@ -27,6 +20,15 @@ primary_region = "arn"
     interval = "15s"
     timeout = "2s"
     grace_period = "5s"
+
+# Durable storage for the SQLite database. initial_size provisions the volume
+# automatically on the first `fly deploy` (no manual `fly volumes create`), and
+# it persists across redeploys — the machine mounts it at $DATA_DIR (/data).
+# One volume + --ha=false = one machine, one database.
+[mounts]
+  source = "data"
+  destination = "/data"
+  initial_size = "1gb"
 
 [env]
   SECURE_COOKIE = "true"

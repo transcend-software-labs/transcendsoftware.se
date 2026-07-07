@@ -68,5 +68,8 @@ Design section with the customer's chosen direction — implement *that*:
     fly deploy --remote-only --ha=false --app "$FLY_APP" --access-token "$FLY_DEPLOY_TOKEN"
 
 `--ha=false` is required: the app uses SQLite on a single machine — two
-machines would mean two diverging databases. The Dockerfile and fly.toml in
-this repo are already correct; don't rewrite them unless the plan demands it.
+machines would mean two diverging databases. The `[mounts]` block in fly.toml
+provisions a durable volume at `/data` automatically on first deploy and keeps
+the database across redeploys — **never remove it**, or customer data resets on
+every deploy. The Dockerfile and fly.toml in this repo are already correct;
+don't rewrite them unless the plan demands it.
