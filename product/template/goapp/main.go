@@ -35,7 +35,9 @@ func main() {
 	}
 
 	sessions := auth.NewSessions(database, 30*24*time.Hour)
-	srv := web.New(database, sessions, os.Getenv("SECURE_COOKIE") == "true", log)
+	// OWNER_EMAIL (set by the Forge orchestrator) reserves the first — owner —
+	// account for the customer the site was built for.
+	srv := web.New(database, sessions, os.Getenv("SECURE_COOKIE") == "true", os.Getenv("OWNER_EMAIL"), log)
 
 	httpSrv := &http.Server{
 		Addr:              listenAddr(),

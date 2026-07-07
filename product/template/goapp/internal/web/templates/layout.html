@@ -11,7 +11,7 @@
   <a class="brand" href="/">Your Site</a>
   <nav class="navlinks">
     {{if .User}}
-      <a href="/app">Dashboard</a>
+      {{if .User.IsAdmin}}<a href="/admin">Site admin</a>{{else}}<a href="/app">Account</a>{{end}}
       <form method="post" action="/logout" class="inline">
         <input type="hidden" name="csrf_token" value="{{.CSRF}}">
         <button class="linklike">Log out</button>

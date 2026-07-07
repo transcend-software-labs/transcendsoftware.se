@@ -206,6 +206,23 @@ func TestBuild_NoBackupSecretsWhenUnconfigured(t *testing.T) {
 	}
 }
 
+func TestBuild_InjectsOwnerEmail(t *testing.T) {
+	machines := fly.NewFake()
+	b := newTestBuilder(machines) // no backup config — owner email alone must inject
+	if _, err := b.Build(context.Background(), Request{
+		ProjectID: "p13", Plan: "build", OwnerEmail: "kund@example.se",
+	}, Hooks{}); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	s := machines.AppSecrets(DeployAppName("p13"))
+	if s == nil || s["OWNER_EMAIL"] != "kund@example.se" {
+		t.Fatalf("OWNER_EMAIL not injected, got %v", s)
+	}
+	if _, ok := s["LITESTREAM_BUCKET"]; ok {
+		t.Error("no backup config → no litestream secrets expected")
+	}
+}
+
 func TestBuild_SavesSnapshotOnFailureToResume(t *testing.T) {
 	machines := fly.NewFake()
 	b := NewSandbox(machines, func(string) opencode.Driver { return erroringDriver{} }, Config{})

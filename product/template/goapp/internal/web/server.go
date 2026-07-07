@@ -24,14 +24,17 @@ type Server struct {
 	db           *sql.DB
 	sessions     *auth.Sessions
 	secureCookie bool
+	ownerEmail   string // while no accounts exist, only this email may register (empty → anyone)
 	tmpl         *template.Template
 	log          *slog.Logger
 }
 
-// New wires the HTTP layer.
-func New(db *sql.DB, sessions *auth.Sessions, secureCookie bool, log *slog.Logger) *Server {
+// New wires the HTTP layer. ownerEmail (optional, from OWNER_EMAIL) reserves
+// the first — owner — account for the site's real owner.
+func New(db *sql.DB, sessions *auth.Sessions, secureCookie bool, ownerEmail string, log *slog.Logger) *Server {
 	tmpl := template.Must(template.ParseFS(templatesFS, "templates/*.html"))
-	return &Server{db: db, sessions: sessions, secureCookie: secureCookie, tmpl: tmpl, log: log}
+	return &Server{db: db, sessions: sessions, secureCookie: secureCookie,
+		ownerEmail: ownerEmail, tmpl: tmpl, log: log}
 }
 
 // Handler returns the app's routes.
@@ -53,6 +56,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /logout", s.handleLogout)
 
 	mux.HandleFunc("GET /app", s.requireUser(s.handleDashboard))
+
+	// The site admin: every table in the database, rendered by introspection.
+	mux.HandleFunc("GET /admin", s.requireOwner(s.handleAdmin))
+	mux.HandleFunc("GET /admin/t/{table}", s.requireOwner(s.handleAdminTable))
+	mux.HandleFunc("GET /admin/t/{table}/csv", s.requireOwner(s.handleAdminCSV))
+	mux.HandleFunc("GET /admin/t/{table}/r/{rowid}", s.requireOwner(s.handleAdminRow))
+	mux.HandleFunc("POST /admin/t/{table}/r/{rowid}/delete", s.requireOwner(s.handleAdminRowDelete))
 	return mux
 }
 

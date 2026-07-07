@@ -1,0 +1,25 @@
+{{define "admin"}}{{template "head" .}}
+<section class="page-head">
+  <div>
+    <h1>Site admin</h1>
+    <p class="muted small">You are the site owner. Everything your site stores lives here — browse it, export it, delete what you don't want.</p>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Your data</h2>
+  {{if .Data.Tables}}
+  <ul class="table-list">
+    {{range .Data.Tables}}
+    <li>
+      <a href="/admin/t/{{.Name}}"><strong>{{.Name}}</strong></a>
+      <span class="muted small">{{.Rows}} row{{if ne .Rows 1}}s{{end}}</span>
+      <a class="muted small" href="/admin/t/{{.Name}}/csv">export CSV</a>
+    </li>
+    {{end}}
+  </ul>
+  {{else}}
+  <p class="muted">No data tables yet.</p>
+  {{end}}
+</section>
+{{template "foot" .}}{{end}}

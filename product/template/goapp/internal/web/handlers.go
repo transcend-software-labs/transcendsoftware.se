@@ -18,7 +18,7 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 
 // handleContact stores a message from the public contact form. It is
 // deliberately open (no login, no CSRF — there is no session to bind to);
-// lengths are capped and the owner reads messages on /app.
+// lengths are capped and the owner reads messages in the site admin (/admin).
 func (s *Server) handleContact(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(r.FormValue("name"))
 	email := strings.TrimSpace(r.FormValue("email"))
@@ -51,6 +51,21 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		s.render(w, http.StatusBadRequest, "signup", View{Title: "Create account",
 			Flash: "Enter a valid email and a password of at least 8 characters."})
 		return
+	}
+	// The first account becomes the site owner. When OWNER_EMAIL is set (Forge
+	// injects the ordering customer's address), reserve that first account for
+	// it — otherwise whoever signs up first would own the site and its data.
+	if s.ownerEmail != "" {
+		var count int
+		if err := s.db.QueryRowContext(r.Context(), `SELECT count(*) FROM users`).Scan(&count); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if count == 0 && !strings.EqualFold(email, s.ownerEmail) {
+			s.render(w, http.StatusForbidden, "signup", View{Title: "Create account",
+				Flash: "The first account is reserved for the site owner — sign up with the email address the site was ordered with."})
+			return
+		}
 	}
 	hash, err := auth.HashPassword(password)
 	if err != nil {
@@ -118,38 +133,13 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, userID str
 	return true
 }
 
-// message is a contact-form entry shown to the owner.
-type message struct {
-	Name, Email, Body string
-	At                time.Time
-}
-
-type dashboardView struct {
-	Messages []message
-}
-
-// handleDashboard is the logged-in area. The site owner (first account) also
-// sees messages from the contact form.
+// handleDashboard is the logged-in area. The owner's real home is the site
+// admin (which renders all data by introspection), so they are sent there;
+// other accounts get a plain account page.
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request, u *auth.User) {
-	var v dashboardView
 	if u.IsAdmin {
-		rows, err := s.db.QueryContext(r.Context(),
-			`SELECT name, email, body, created_at FROM messages ORDER BY created_at DESC LIMIT 50`)
-		if err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var m message
-			var at int64
-			if err := rows.Scan(&m.Name, &m.Email, &m.Body, &at); err != nil {
-				http.Error(w, "internal error", http.StatusInternalServerError)
-				return
-			}
-			m.At = time.Unix(at, 0).UTC()
-			v.Messages = append(v.Messages, m)
-		}
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
 	}
-	s.render(w, http.StatusOK, "dashboard", s.view(r, "Dashboard", v))
+	s.render(w, http.StatusOK, "dashboard", s.view(r, "Your account", nil))
 }

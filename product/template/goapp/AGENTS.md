@@ -13,8 +13,12 @@ that implements the plan.
   on a durable volume, with Litestream streaming continuous backups to object
   storage when configured (see `entrypoint.sh` — don't change the entrypoint).
 - Auth: signup/login/logout, bcrypt, DB-backed sessions (hashed tokens), CSRF
-  helper. The **first account created is the site owner** (`is_admin`).
-- Public contact form on `/` → stored in `messages` → shown to the owner on `/app`.
+  helper. The **first account created is the site owner** (`is_admin`); when
+  `OWNER_EMAIL` is set, that first account is reserved for that address.
+- **Site admin at `/admin`** (owner-only): renders EVERY table in the database
+  by introspection — browse, row detail, delete, CSV export. New tables appear
+  there automatically; there is nothing to wire up.
+- Public contact form on `/` → stored in `messages` → readable in `/admin`.
 - `/healthz` for platform health checks. Graceful shutdown.
 
 ## Layout
@@ -58,6 +62,12 @@ Design section with the customer's chosen direction — implement *that*:
 
 - Keep `/healthz` working — the platform health check depends on it.
 - Keep auth, CSRF and the session model intact; extend, don't weaken.
+- **Data:** model domain data as proper typed tables (a migration per change).
+  Plain rowid tables only — never `WITHOUT ROWID` (the admin and hooks key on
+  rowid). Do NOT build owner dashboards, data lists, or admin pages — `/admin`
+  already renders every table; just insert the data.
+- Don't name columns with `password`/`hash`/`token`/`secret` unless the value
+  is genuinely secret — the admin masks such columns.
 - Stdlib only unless the plan clearly needs more; no JS frameworks by default.
 - Validate and length-cap all user input (see `maxFieldLen`).
 - Run `make test` (or `go test ./...`) and `go vet ./...` before deploying;

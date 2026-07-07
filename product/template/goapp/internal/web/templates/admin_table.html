@@ -1,0 +1,48 @@
+{{define "admin_table"}}{{template "head" .}}
+<section class="page-head">
+  <div>
+    <a class="muted small" href="/admin">← All tables</a>
+    <h1>{{.Data.Table}}</h1>
+  </div>
+  <a class="btn btn-sm" href="/admin/t/{{.Data.Table}}/csv">Export CSV</a>
+</section>
+
+<section class="panel">
+  {{if .Data.Rows}}
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead>
+        <tr>
+          {{range .Data.Columns}}<th>{{.Name}}</th>{{end}}
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Data.Rows}}
+        <tr>
+          {{range .Cells}}<td>{{.}}</td>{{end}}
+          <td class="row-actions">
+            <a class="muted small" href="/admin/t/{{$.Data.Table}}/r/{{.Rowid}}">view</a>
+            {{if not $.Data.ReadOnly}}
+            <form method="post" action="/admin/t/{{$.Data.Table}}/r/{{.Rowid}}/delete" class="inline"
+              onsubmit="return confirm('Delete this row? This cannot be undone.')">
+              <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+              <button class="linklike small" type="submit">delete</button>
+            </form>
+            {{end}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  <div class="pager">
+    {{if .Data.HasPrev}}<a href="/admin/t/{{.Data.Table}}?p={{.Data.PrevPage}}">← Newer</a>{{end}}
+    {{if .Data.HasNext}}<a href="/admin/t/{{.Data.Table}}?p={{.Data.NextPage}}">Older →</a>{{end}}
+  </div>
+  {{else}}
+  <p class="muted">No rows{{if .Data.HasPrev}} on this page{{end}}.</p>
+  {{end}}
+  {{if .Data.ReadOnly}}<p class="muted small">This table is read-only in the admin.</p>{{end}}
+</section>
+{{template "foot" .}}{{end}}

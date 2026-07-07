@@ -1,0 +1,24 @@
+{{define "admin_row"}}{{template "head" .}}
+<section class="page-head">
+  <div>
+    <a class="muted small" href="/admin/t/{{.Data.Table}}">← {{.Data.Table}}</a>
+    <h1>Row {{.Data.Rowid}}</h1>
+  </div>
+</section>
+
+<section class="panel">
+  <dl class="row-detail">
+    {{range .Data.Fields}}
+    <dt class="muted small">{{.Name}}</dt>
+    <dd{{if .Masked}} class="muted"{{end}}>{{.Value}}</dd>
+    {{end}}
+  </dl>
+  {{if not .Data.ReadOnly}}
+  <form method="post" action="/admin/t/{{.Data.Table}}/r/{{.Data.Rowid}}/delete" class="inline"
+    onsubmit="return confirm('Delete this row? This cannot be undone.')">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <button class="linklike" type="submit">Delete this row</button>
+  </form>
+  {{end}}
+</section>
+{{template "foot" .}}{{end}}

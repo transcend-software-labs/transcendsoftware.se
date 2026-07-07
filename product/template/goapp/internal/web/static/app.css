@@ -73,3 +73,16 @@ input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 
 .msg-head { display: flex; gap: .8rem; align-items: baseline; flex-wrap: wrap; }
 
 .foot { text-align: center; padding: 2rem; color: var(--muted); font-size: .85rem; }
+
+/* Site admin (data grids rendered by introspection) */
+.table-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: .6rem; }
+.table-list li { display: flex; align-items: baseline; gap: 1rem; padding: .75rem 1rem; border: 1px solid var(--border, #ddd); border-radius: 8px; }
+.table-scroll { overflow-x: auto; }
+.data-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.data-table th, .data-table td { text-align: left; padding: .5rem .65rem; border-bottom: 1px solid var(--border, #ddd); vertical-align: top; }
+.data-table th { font-weight: 600; white-space: nowrap; }
+.data-table td { max-width: 28rem; overflow-wrap: anywhere; }
+.row-actions { white-space: nowrap; }
+.pager { display: flex; gap: 1.5rem; margin-top: 1rem; }
+.row-detail dt { margin-top: .8rem; }
+.row-detail dd { margin: .15rem 0 0; overflow-wrap: anywhere; }

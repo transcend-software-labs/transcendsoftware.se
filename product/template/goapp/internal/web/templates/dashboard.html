@@ -1,30 +1,10 @@
 {{define "dashboard"}}{{template "head" .}}
 <section class="page-head">
-  <h1>Dashboard</h1>
-  <p class="muted">Signed in as {{.User.Email}}{{if .User.IsAdmin}} · site owner{{end}}</p>
+  <h1>Your account</h1>
+  <p class="muted">Signed in as {{.User.Email}}</p>
 </section>
 
-{{if .User.IsAdmin}}
-<section class="panel">
-  <h2>Messages</h2>
-  {{if .Data.Messages}}
-  <ul class="messages">
-    {{range .Data.Messages}}
-    <li>
-      <div class="msg-head"><strong>{{.Name}}</strong>
-        {{if .Email}}<a class="muted small" href="mailto:{{.Email}}">{{.Email}}</a>{{end}}
-        <span class="muted small">{{.At.Format "2006-01-02 15:04"}}</span></div>
-      <p>{{.Body}}</p>
-    </li>
-    {{end}}
-  </ul>
-  {{else}}
-  <p class="muted">No messages yet. They appear here when someone uses the contact form.</p>
-  {{end}}
-</section>
-{{else}}
 <section class="panel">
   <p>You're logged in.</p>
 </section>
-{{end}}
 {{template "foot" .}}{{end}}

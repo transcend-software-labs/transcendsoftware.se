@@ -499,6 +499,13 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 		}
 	}
 
+	// The customer's email rides along as the site's OWNER_EMAIL, reserving
+	// the generated site's first (owner) account for them.
+	ownerEmail := ""
+	if u, err := o.store.UserByID(ctx, p.UserID); err == nil {
+		ownerEmail = u.Email
+	}
+
 	res, err := o.builder.Build(ctx, builder.Request{
 		ProjectID:         p.ID,
 		Brief:             p.EffectiveBrief(),
@@ -509,6 +516,7 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 		ScreenshotPutURLs: screenshotPuts,
 		TemplateGetURL:    templateGet,
 		AssetManifest:     o.assetManifest(ctx, p.ID),
+		OwnerEmail:        ownerEmail,
 	}, builder.Hooks{
 		OnLog: onLog,
 		OnSandbox: func(machineID, _ string) {

@@ -63,6 +63,11 @@ type Request struct {
 	ScreenshotPutURLs []string
 
 	AssetManifest map[string]string // filename → short-lived presigned GET URL
+
+	// OwnerEmail is the Forge customer's email. Injected as the app's
+	// OWNER_EMAIL secret so the generated site reserves its first — owner —
+	// account for that address (see the template's signup flow).
+	OwnerEmail string
 }
 
 // CapturedPage is one screenshot the crawler produced: which slot (PUT URL
@@ -161,21 +166,28 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 	if err := b.machines.EnsureApp(ctx, appName); err != nil {
 		return Result{}, err
 	}
-	// Inject per-app backup credentials so the deployed site's litestream
-	// replicates its SQLite DB to object storage (durable across volume/host
-	// loss). Best-effort + orchestrator-side: a backup gap must not fail the
-	// build, and these creds never enter the sandbox env. Path = appName so
-	// each site backs up to its own prefix.
+	// Inject the customer app's runtime secrets — orchestrator-side, never in
+	// the sandbox env. Best-effort: a gap here must not fail the build.
+	// - LITESTREAM_*: litestream replicates the site's SQLite DB to object
+	//   storage (durable across volume/host loss); path = appName so each site
+	//   backs up to its own prefix.
+	// - OWNER_EMAIL: the generated site reserves its first (owner) account for
+	//   the ordering customer.
+	appSecrets := map[string]string{}
 	if b.cfg.BackupBucket != "" {
-		if err := b.machines.SetAppSecrets(ctx, appName, map[string]string{
-			"LITESTREAM_BUCKET":            b.cfg.BackupBucket,
-			"LITESTREAM_ENDPOINT":          b.cfg.BackupEndpoint,
-			"LITESTREAM_REGION":            b.cfg.BackupRegion,
-			"LITESTREAM_ACCESS_KEY_ID":     b.cfg.BackupAccessKey,
-			"LITESTREAM_SECRET_ACCESS_KEY": b.cfg.BackupSecretKey,
-			"LITESTREAM_PATH":              appName,
-		}); err != nil {
-			emit(hooks.OnLog, "Note: continuous backup could not be enabled for this build.")
+		appSecrets["LITESTREAM_BUCKET"] = b.cfg.BackupBucket
+		appSecrets["LITESTREAM_ENDPOINT"] = b.cfg.BackupEndpoint
+		appSecrets["LITESTREAM_REGION"] = b.cfg.BackupRegion
+		appSecrets["LITESTREAM_ACCESS_KEY_ID"] = b.cfg.BackupAccessKey
+		appSecrets["LITESTREAM_SECRET_ACCESS_KEY"] = b.cfg.BackupSecretKey
+		appSecrets["LITESTREAM_PATH"] = appName
+	}
+	if req.OwnerEmail != "" {
+		appSecrets["OWNER_EMAIL"] = req.OwnerEmail
+	}
+	if len(appSecrets) > 0 {
+		if err := b.machines.SetAppSecrets(ctx, appName, appSecrets); err != nil {
+			emit(hooks.OnLog, "Note: could not set the app's backup/owner secrets for this build.")
 		}
 	}
 	token, err := b.machines.AppDeployToken(ctx, appName)
