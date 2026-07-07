@@ -445,6 +445,11 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 		_ = o.store.UpdateIteration(ctx, it)
 	}
 	onLog := func(line string) {
+		// The agent can emit non-UTF-8 bytes into the log (e.g. it `read`s a
+		// binary file like a downloaded image). Postgres rejects invalid UTF-8,
+		// which would fail the whole build at the persistence step even though
+		// the site built and deployed fine. Scrub to valid UTF-8 at the source.
+		line = strings.ToValidUTF8(line, "")
 		logBuf.WriteString(line)
 		logBuf.WriteByte('\n')
 		o.broker.Publish(p.ID, stream.Event{Type: "log", Data: line})

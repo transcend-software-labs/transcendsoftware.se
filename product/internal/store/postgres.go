@@ -410,10 +410,16 @@ func (p *Postgres) CreateIteration(ctx context.Context, it *project.Iteration) e
 		`INSERT INTO iterations
 		   (id, project_id, number, prompt, preview_url, status, log, machine_id, heartbeat_at, tokens, created_at)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-		it.ID, it.ProjectID, it.Number, it.Prompt, it.PreviewURL, it.Status, it.Log,
+		it.ID, it.ProjectID, it.Number, it.Prompt, it.PreviewURL, it.Status, validUTF8(it.Log),
 		it.MachineID, hb, it.Tokens, it.CreatedAt)
 	return err
 }
+
+// validUTF8 scrubs invalid UTF-8 so a text write can't fail on binary bytes —
+// e.g. a build log that captured the agent reading a binary file. Postgres
+// rejects invalid UTF-8 (SQLSTATE 22021), which would fail an otherwise-good
+// build at the persistence step.
+func validUTF8(s string) string { return strings.ToValidUTF8(s, "") }
 
 func (p *Postgres) UpdateIteration(ctx context.Context, it *project.Iteration) error {
 	hb := it.HeartbeatAt
@@ -423,7 +429,7 @@ func (p *Postgres) UpdateIteration(ctx context.Context, it *project.Iteration) e
 	tag, err := p.pool.Exec(ctx,
 		`UPDATE iterations SET prompt=$2, preview_url=$3, status=$4, log=$5,
 		   machine_id=$6, heartbeat_at=$7, tokens=$8 WHERE id=$1`,
-		it.ID, it.Prompt, it.PreviewURL, it.Status, it.Log, it.MachineID, hb, it.Tokens)
+		it.ID, it.Prompt, it.PreviewURL, it.Status, validUTF8(it.Log), it.MachineID, hb, it.Tokens)
 	if err != nil {
 		return err
 	}
