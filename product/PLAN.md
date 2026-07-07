@@ -27,6 +27,20 @@ rebuilding). Also live: `forge.transcendsoftware.se` (canonical domain),
 Google login + magic-link (Resend domain verified; sender `hello@` with
 Reply-To to Rasmus), and per-app deploy tokens via local macaroon attenuation.
 
+**Root cause of the "build timeouts" found & fixed (2026-07-07):** the stalls
+were NOT (mainly) Kimi being slow — they were **opencode permission prompts
+deadlocking the headless build**. opencode defaults `external_directory` access
+(e.g. writing `DATA_DIR=/tmp/appdata` for the agent's local smoke test) to
+`ask`; with no human in the microVM to answer, the agent froze until the 90-min
+deadline reaper killed it. Fix: `sandbox/entrypoint.sh` now always writes a
+`permission` block forcing every opencode tool to `allow`
+(`edit`/`bash`/`webfetch`/`external_directory`) — the microVM is the security
+boundary, so nothing should prompt. Shipped in sandbox image `20260707-2`
+(`FLY_SANDBOX_IMAGE` updated). A live build (Trattoria Bella, 5-page Swedish
+trattoria) that had been frozen 45 min was rescued mid-flight by approving the
+stuck prompt via opencode's API, and completed → `preview_ready`, live with a
+working sectioned menu. See memory `opencode-permission-hangs`.
+
 **Next feature (planned, agreed with Rasmus): §7 — in-site admin + data hooks
 + impeccable design quality.**
 

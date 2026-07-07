@@ -60,17 +60,28 @@ if [ -n "${ASSETS_MANIFEST:-}" ]; then
     done
 fi
 
-# 4) Configure opencode's model provider. If an OpenAI-compatible model is set
-#    (e.g. Moonshot/Kimi), write a provider config; otherwise opencode uses its
-#    default (Anthropic via ANTHROPIC_API_KEY).
+# 4) Configure opencode: permissions + model provider.
+#
+#    Permissions — auto-approve EVERY tool action. This sandbox is a throwaway,
+#    network-restricted microVM: the sandbox itself is the security boundary, and
+#    no human is present to answer opencode's interactive approval prompts. Any
+#    prompt that defaults to `ask` (notably `external_directory`, hit when the
+#    agent writes outside /workspace — e.g. DATA_DIR=/tmp/appdata for a local
+#    smoke test) deadlocks the whole build until the deadline reaper kills it.
+#    So every permission is forced to `allow`. Without this, builds hang.
+#
+#    Provider — when an OpenAI-compatible model is set (e.g. Moonshot/Kimi) add a
+#    provider block; otherwise opencode falls back to Anthropic via env.
+mkdir -p /root/.config/opencode
+perm='"permission": { "edit": "allow", "bash": "allow", "webfetch": "allow", "external_directory": "allow" }'
 if [ -n "${LLM_API_KEY:-}" ]; then
   base="${LLM_BASE_URL:-https://api.moonshot.ai/v1}"
   model="${LLM_MODEL:-kimi-k2.7-code}"
-  log "configuring opencode for ${base} model ${model}"
-  mkdir -p /root/.config/opencode
+  log "configuring opencode for ${base} model ${model} (auto-approve all tools)"
   cat > /root/.config/opencode/opencode.json <<JSON
 {
   "\$schema": "https://opencode.ai/config.json",
+  ${perm},
   "provider": {
     "moonshot": {
       "npm": "@ai-sdk/openai-compatible",
@@ -80,6 +91,14 @@ if [ -n "${LLM_API_KEY:-}" ]; then
     }
   },
   "model": "moonshot/${model}"
+}
+JSON
+else
+  log "configuring opencode (default provider, auto-approve all tools)"
+  cat > /root/.config/opencode/opencode.json <<JSON
+{
+  "\$schema": "https://opencode.ai/config.json",
+  ${perm}
 }
 JSON
 fi
