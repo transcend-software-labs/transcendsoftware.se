@@ -411,23 +411,23 @@ not a hope.
   owner. Per-app key minting + customer-own-domain sending are hardening
   follow-ups (§7.6).
 
-### 7.3 Phase A — template: introspection admin over ALL tables (M)
+### 7.3 Phase A — template: introspection admin over ALL tables (M) — DONE 2026-07-07 (c93ac0d)
 
 No fixed data schema, no `submissions` table (explicitly rejected — the admin
 must not constrain the agent's data model). The admin discovers the schema:
 
-- [ ] Introspection layer: `sqlite_master` + `PRAGMA table_info` → every user
+- [x] Introspection layer: `sqlite_master` + `PRAGMA table_info` → every user
       table rendered as a data grid: browse (paged, newest first by rowid),
       sort, row detail, delete row, **CSV export**. Internal tables hidden
       (`sessions`, `schema_migrations`, `_hooks`, `_outbox`); secret-shaped
       columns masked (`%password%`, `%hash%`, `%token%`); `users` read-only.
-- [ ] `/admin` (owner-gated; `/app` redirects): table list with row counts,
+- [x] `/admin` (owner-gated; `/app` redirects): table list with row counts,
       the grids above, hooks config per table (§7.4), and clear "you are the
       site owner" framing.
-- [ ] Owner claim: `OWNER_EMAIL` env — while `users` is empty, only that email
+- [x] Owner claim: `OWNER_EMAIL` env — while `users` is empty, only that email
       can sign up (case-insensitive); absent → today's behavior. Signup page
       states plainly that the first account becomes the site admin.
-- [ ] AGENTS.md: "model domain data as proper typed tables (rowid tables, no
+- [x] AGENTS.md: "model domain data as proper typed tables (rowid tables, no
       WITHOUT ROWID); do NOT build dashboards/admin pages — `/admin` renders
       every table automatically." Drop the bespoke `messages` dashboard from
       the template (the contact `messages` table stays — the admin now renders
