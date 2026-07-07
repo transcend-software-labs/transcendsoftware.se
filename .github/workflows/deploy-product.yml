@@ -1,0 +1,52 @@
+# Deploy Transcend Forge (the product) to Fly on push to main.
+#
+# Scope: the orchestrator app only (`transcend-forge`). Template and sandbox
+# changes are handled separately and do NOT trigger this — the template is
+# pushed to object storage with `make template-push`, and the sandbox image is
+# rebuilt with `make sandbox-build`; neither is part of `flyctl deploy`.
+#
+# Auth: FLY_API_TOKEN is an app-scoped Fly *deploy* token (can deploy
+# transcend-forge and nothing else in the org). Rotate it in the repo secrets.
+name: Deploy product
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'product/**'
+      - '!product/template/**'
+      - '!product/sandbox/**'
+  workflow_dispatch: {} # manual "deploy now" from the Actions tab
+
+# One deploy at a time; let a running deploy finish rather than cancelling it.
+concurrency:
+  group: deploy-product
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Test & deploy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: product
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: product/go.mod
+          cache-dependency-path: product/go.sum
+
+      # Gate the deploy on a green build — never ship a broken orchestrator.
+      - name: Vet & test
+        run: |
+          go vet ./...
+          go test ./...
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
