@@ -534,6 +534,15 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 		it.Status = project.StatusFailed
 		it.Log = logBuf.String()
 		_ = o.store.UpdateIteration(ctx, it)
+		// Preserve partial progress so a Retry resumes from it instead of
+		// rebuilding from scratch. Detached context — the pipeline ctx may be
+		// past its deadline (a timeout is the usual reason a build fails here).
+		if res.SnapshotSaved {
+			pctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+			p.SnapshotKey = snapshotKey
+			_ = o.save(pctx, p)
+			cancel()
+		}
 		return err
 	}
 

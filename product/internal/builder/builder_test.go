@@ -2,12 +2,20 @@ package builder
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
 	"github.com/transcend-software-labs/rasmus-ai/internal/opencode"
 )
+
+// erroringDriver simulates an agent run that fails (e.g. a build timeout).
+type erroringDriver struct{}
+
+func (erroringDriver) Run(_ context.Context, _ opencode.Spec, _ func(string)) (opencode.Result, error) {
+	return opencode.Result{Log: "partial work"}, errors.New("context deadline exceeded")
+}
 
 func newTestBuilder(machines fly.Machines) *Sandbox {
 	return NewSandbox(machines, func(string) opencode.Driver { return opencode.NewFake() }, Config{})
@@ -195,6 +203,50 @@ func TestBuild_NoBackupSecretsWhenUnconfigured(t *testing.T) {
 	}
 	if s := machines.AppSecrets(DeployAppName("p10")); s != nil {
 		t.Errorf("expected no backup secrets when unconfigured, got %v", s)
+	}
+}
+
+func TestBuild_SavesSnapshotOnFailureToResume(t *testing.T) {
+	machines := fly.NewFake()
+	b := NewSandbox(machines, func(string) opencode.Driver { return erroringDriver{} }, Config{})
+	res, err := b.Build(context.Background(), Request{
+		ProjectID: "p11", Plan: "build", SnapshotPutURL: "https://put.example/snap",
+	}, Hooks{})
+	if err == nil {
+		t.Fatal("expected the build to fail")
+	}
+	if !res.SnapshotSaved {
+		t.Error("a failed build must still save the workspace so Retry can resume")
+	}
+	if len(machines.Execs()) == 0 {
+		t.Error("expected a snapshot-save exec on failure")
+	}
+}
+
+func TestBuild_FailureWithoutPutURLSavesNothing(t *testing.T) {
+	machines := fly.NewFake()
+	b := NewSandbox(machines, func(string) opencode.Driver { return erroringDriver{} }, Config{})
+	res, err := b.Build(context.Background(), Request{ProjectID: "p11b", Plan: "build"}, Hooks{})
+	if err == nil {
+		t.Fatal("expected the build to fail")
+	}
+	if res.SnapshotSaved {
+		t.Error("no PUT URL → nothing to save")
+	}
+}
+
+func TestBuild_ResumedBuildGetsResumeInstruction(t *testing.T) {
+	machines := fly.NewFake()
+	drv := &capturingDriver{}
+	b := NewSandbox(machines, func(string) opencode.Driver { return drv }, Config{})
+	// A snapshot to restore + no change prompt = resuming an interrupted build.
+	if _, err := b.Build(context.Background(), Request{
+		ProjectID: "p12", Plan: "build the site", SnapshotGetURL: "https://get.example/snap",
+	}, Hooks{}); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if !strings.Contains(drv.spec.Instruction, "INTERRUPTED") {
+		t.Errorf("resumed build should get the resume preamble, got: %q", drv.spec.Instruction)
 	}
 }
 

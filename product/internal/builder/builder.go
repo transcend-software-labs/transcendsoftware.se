@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
 	"github.com/transcend-software-labs/rasmus-ai/internal/opencode"
@@ -218,9 +219,14 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 	emit(hooks.OnLog, "Sandbox ready, starting the agent…")
 
 	instruction := req.Plan
-	if req.Prompt != "" {
+	switch {
+	case req.Prompt != "":
 		instruction = "Apply this change to the existing site, then redeploy:\n\n" + req.Prompt
-	} else if req.TemplateGetURL != "" {
+	case req.SnapshotGetURL != "":
+		// Resuming an interrupted build: the workspace already holds the
+		// work-in-progress, so finish it and deploy rather than starting over.
+		instruction = resumePreamble + "\n\n" + req.Plan
+	case req.TemplateGetURL != "":
 		instruction = templatePreamble + "\n\n" + req.Plan
 	}
 
@@ -231,7 +237,20 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 		Instruction:  instruction,
 	}, hooks.OnLog)
 	if err != nil {
-		return Result{Log: res.Log}, err
+		// Preserve whatever the agent built so a Retry resumes from here instead
+		// of rebuilding from scratch — a timeout (the common cause) usually means
+		// the site is nearly done. Detached context: the build ctx may already be
+		// past its deadline, which is often why we're here.
+		saved := false
+		if req.SnapshotPutURL != "" {
+			emit(hooks.OnLog, "Build interrupted — saving progress so it can be resumed…")
+			sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Minute)
+			if serr := b.saveSnapshot(sctx, sb.MachineID, req.SnapshotPutURL); serr == nil {
+				saved = true
+			}
+			cancel()
+		}
+		return Result{Log: res.Log, SnapshotSaved: saved}, err
 	}
 
 	// Save the workspace so the next iteration can continue from it. A failed
@@ -346,6 +365,14 @@ const templatePreamble = `The workspace /workspace already contains our producti
 (one binary serving frontend + backend, SQLite, working auth, contact form).
 Read AGENTS.md first, then EXTEND this app to implement the plan below.
 Do not scaffold a new project. Keep /healthz, auth and CSRF intact.`
+
+// resumePreamble tells the agent the workspace holds an interrupted build's
+// progress: finish and deploy, don't redo completed work.
+const resumePreamble = `The workspace /workspace already contains your PREVIOUS, INTERRUPTED build of
+this site — it stopped before it finished deploying. Review what's there,
+complete anything unfinished, make sure it builds and the tests pass, then
+deploy it. Do NOT start over or redo work that's already done — prioritise
+getting the existing site deployed. The plan it was built against:`
 
 // restoreSnapshot unpacks the previous build's workspace into /workspace.
 func (b *Sandbox) restoreSnapshot(ctx context.Context, machineID, getURL string) error {
