@@ -10,8 +10,8 @@ import (
 )
 
 // sandboxMaxAge is how old a sandbox machine may get before the sweep reaps
-// it. Builds are bounded by pipelineTimeout (70m), so 2h means "leaked".
-const sandboxMaxAge = 2 * time.Hour
+// it. Builds are bounded by pipelineTimeout (110m), so 2h means "leaked".
+const sandboxMaxAge = 150 * time.Minute
 
 // Reap removes infrastructure that should no longer exist:
 //

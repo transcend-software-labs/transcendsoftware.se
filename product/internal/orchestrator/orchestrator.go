@@ -30,10 +30,11 @@ import (
 )
 
 // pipelineTimeout bounds a single plan→gate→build pass. Must stay above the
-// opencode buildDeadline (50m) with headroom for the surrounding steps: plan,
+// opencode buildDeadline (90m) with headroom for the surrounding steps: plan,
 // gate, snapshot save, deploy verification (with its retry window) and the
-// screenshot crawl.
-const pipelineTimeout = 70 * time.Minute
+// screenshot crawl — and below sandboxMaxAge so the reaper doesn't kill a
+// legitimately long build.
+const pipelineTimeout = 110 * time.Minute
 
 // Orchestrator coordinates intake, planning, screening and building.
 type Orchestrator struct {
