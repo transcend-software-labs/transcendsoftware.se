@@ -41,6 +41,19 @@ trattoria) that had been frozen 45 min was rescued mid-flight by approving the
 stuck prompt via opencode's API, and completed → `preview_ready`, live with a
 working sectioned menu. See memory `opencode-permission-hangs`.
 
+**Orchestrator restarts no longer kill in-flight builds (2026-07-07).** The
+agent runs server-side in its sandbox (opencode async session), so it survives
+the orchestrator process dying — but recovery used to reap the sandbox and mark
+the build failed. Now the orchestrator persists the sandbox's opencode session
+id + address (alongside machine_id, migration 0009), and on startup
+`RecoverInterrupted` **re-attaches** to any still-reachable running build —
+re-opens its event stream and finishes it normally — falling back to reap+fail
+only when the sandbox is gone or past deadline. This makes every orchestrator
+deploy (including the frequent CI product deploys) non-disruptive: no more
+"can I deploy without killing a customer's build?". Edge case: if the agent
+finished during the exact restart window, the missed `session.idle` isn't
+replayed and it falls back to the existing snapshot-resume.
+
 **Next feature (planned, agreed with Rasmus): §7 — in-site admin + data hooks
 + impeccable design quality.**
 

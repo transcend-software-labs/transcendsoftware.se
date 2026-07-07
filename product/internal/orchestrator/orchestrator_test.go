@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"strings"
 	"sync"
 	"testing"
@@ -246,6 +247,87 @@ func TestRecoverInterrupted(t *testing.T) {
 	}
 	if active, _ := st.ActiveIterations(ctx); len(active) != 0 {
 		t.Errorf("expected no active builds after recovery, got %d", len(active))
+	}
+}
+
+// A build that was in flight at restart, whose sandbox is still reachable and
+// whose session handle was persisted, is re-attached and finished — not reaped.
+func TestRecoverInterrupted_ReattachesLiveBuild(t *testing.T) {
+	// A live TCP listener stands in for the still-running sandbox opencode:
+	// reachable() only needs a successful connect.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	st := store.NewMemory()
+	orch := newTestOrch(st) // NoopVerifier → the (re-attached) deploy verifies
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	p := &project.Project{
+		ID: "p1", UserID: "u1", Name: "x", Brief: "b",
+		Status: project.StatusBuilding, CreatedAt: now, UpdatedAt: now,
+	}
+	_ = st.CreateProject(ctx, p)
+	it := &project.Iteration{
+		ID: "i1", ProjectID: "p1", Number: 1, Status: project.StatusBuilding,
+		MachineID: "m-123", SessionID: "ses_live",
+		SandboxAddr: "http://" + ln.Addr().String(), CreatedAt: now,
+	}
+	_ = st.CreateIteration(ctx, it)
+
+	orch.RecoverInterrupted(ctx)
+
+	// Re-attach finishes the build in the background → preview ready, NOT failed.
+	gotP := waitFor(t, st, "p1", project.StatusPreviewReady)
+	if gotP.PreviewURL == "" {
+		t.Error("expected a preview URL after the re-attached build finished")
+	}
+	its, _ := st.IterationsByProject(ctx, "p1")
+	if len(its) != 1 || its[0].Status != project.StatusPreviewReady {
+		t.Errorf("expected the re-attached iteration at preview_ready, got %+v", its)
+	}
+}
+
+// A build whose sandbox is gone (unreachable address) can't be re-attached, so
+// recovery falls back to reaping it and marking it failed.
+func TestRecoverInterrupted_ReapsWhenSandboxGone(t *testing.T) {
+	st := store.NewMemory()
+	orch := newTestOrch(st)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	// A port that was open then closed — connect is refused immediately, so the
+	// reachability probe fails fast (a dead sandbox).
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadAddr := "http://" + ln.Addr().String()
+	_ = ln.Close()
+
+	p := &project.Project{
+		ID: "p1", UserID: "u1", Name: "x", Brief: "b",
+		Status: project.StatusBuilding, CreatedAt: now, UpdatedAt: now,
+	}
+	_ = st.CreateProject(ctx, p)
+	it := &project.Iteration{
+		ID: "i1", ProjectID: "p1", Number: 1, Status: project.StatusBuilding,
+		MachineID: "m-123", SessionID: "ses_dead",
+		SandboxAddr: deadAddr, CreatedAt: now,
+	}
+	_ = st.CreateIteration(ctx, it)
+
+	orch.RecoverInterrupted(ctx)
+
+	gotP, _ := st.ProjectByID(ctx, "p1")
+	if gotP.Status != project.StatusFailed {
+		t.Errorf("expected project failed when sandbox is gone, got %q", gotP.Status)
+	}
+	if active, _ := st.ActiveIterations(ctx); len(active) != 0 {
+		t.Errorf("expected no active builds after reap, got %d", len(active))
 	}
 }
 

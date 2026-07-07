@@ -135,6 +135,8 @@ type Iteration struct {
 	Status      Status
 	Log         string    // human-readable trace of what the build did
 	MachineID   string    // Fly Machine running this build (for recovery/reaping)
+	SessionID   string    // opencode session id — lets a restarted orchestrator re-attach to the still-running build
+	SandboxAddr string    // sandbox opencode address (http://[ip]:port) — the re-attach target
 	HeartbeatAt time.Time // last time the build reported progress
 	Tokens      int       // model tokens the build agent consumed (cost visibility)
 	CreatedAt   time.Time

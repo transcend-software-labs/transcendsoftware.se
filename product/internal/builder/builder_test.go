@@ -13,7 +13,11 @@ import (
 // erroringDriver simulates an agent run that fails (e.g. a build timeout).
 type erroringDriver struct{}
 
-func (erroringDriver) Run(_ context.Context, _ opencode.Spec, _ func(string)) (opencode.Result, error) {
+func (erroringDriver) Run(_ context.Context, _ opencode.Spec, _ func(string), _ func(string)) (opencode.Result, error) {
+	return opencode.Result{Log: "partial work"}, errors.New("context deadline exceeded")
+}
+
+func (erroringDriver) Attach(_ context.Context, _ string, _ func(string)) (opencode.Result, error) {
 	return opencode.Result{Log: "partial work"}, errors.New("context deadline exceeded")
 }
 
@@ -22,10 +26,18 @@ func newTestBuilder(machines fly.Machines) *Sandbox {
 }
 
 // capturingDriver records the Spec it was run with.
-type capturingDriver struct{ spec opencode.Spec }
+type capturingDriver struct {
+	spec       opencode.Spec
+	attachedTo string // sessionID passed to Attach, if any
+}
 
-func (d *capturingDriver) Run(_ context.Context, spec opencode.Spec, _ func(string)) (opencode.Result, error) {
+func (d *capturingDriver) Run(_ context.Context, spec opencode.Spec, _ func(string), _ func(string)) (opencode.Result, error) {
 	d.spec = spec
+	return opencode.Result{Log: "done"}, nil
+}
+
+func (d *capturingDriver) Attach(_ context.Context, sessionID string, _ func(string)) (opencode.Result, error) {
+	d.attachedTo = sessionID
 	return opencode.Result{Log: "done"}, nil
 }
 

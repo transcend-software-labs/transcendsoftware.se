@@ -93,11 +93,26 @@ type Result struct {
 type Hooks struct {
 	OnLog     func(string)                 // progress lines, live
 	OnSandbox func(machineID, addr string) // called once the sandbox is spawned
+	OnSession func(sessionID string)       // called once the opencode session exists (for re-attach)
+}
+
+// AttachRequest re-connects to a build already running in an existing sandbox
+// (after an orchestrator restart) and finishes it — everything needed to reach
+// the live opencode session and to finalise once it completes.
+type AttachRequest struct {
+	ProjectID         string
+	MachineID         string // the still-running sandbox
+	Addr              string // its opencode address (http://[ip]:port)
+	SessionID         string // the running opencode session
+	SnapshotPutURL    string // where to save the finished workspace
+	ScreenshotPutURLs []string
 }
 
 // Builder runs a build pass.
 type Builder interface {
 	Build(ctx context.Context, req Request, hooks Hooks) (Result, error)
+	// Attach finishes a build already running in an existing sandbox.
+	Attach(ctx context.Context, req AttachRequest, hooks Hooks) (Result, error)
 }
 
 // Config holds the sandbox builder's settings.
@@ -270,8 +285,35 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 		Workdir:      "/workspace",
 		SystemPrompt: b.cfg.SystemPrompt,
 		Instruction:  instruction,
-	}, hooks.OnLog)
-	if err != nil {
+	}, hooks.OnLog, hooks.OnSession)
+	return b.finalize(ctx, sb, req, res, err, hooks)
+}
+
+// Attach re-connects to a build already running in an existing sandbox (after an
+// orchestrator restart) and finishes it — no spawn, no new session, no re-prompt.
+// The sandbox and its opencode session kept running while the orchestrator was
+// down; here it re-opens the event stream and completes through the same tail as
+// a fresh build (verify happens in the orchestrator).
+func (b *Sandbox) Attach(ctx context.Context, req AttachRequest, hooks Hooks) (Result, error) {
+	sb := &fly.Sandbox{MachineID: req.MachineID, Addr: req.Addr}
+	defer func() { _ = b.machines.DestroySandbox(context.WithoutCancel(ctx), sb) }()
+	if hooks.OnSandbox != nil {
+		hooks.OnSandbox(sb.MachineID, sb.Addr)
+	}
+	driver := b.newDriver(sb.Addr)
+	res, err := driver.Attach(ctx, req.SessionID, hooks.OnLog)
+	return b.finalize(ctx, sb, Request{
+		ProjectID:         req.ProjectID,
+		SnapshotPutURL:    req.SnapshotPutURL,
+		ScreenshotPutURLs: req.ScreenshotPutURLs,
+	}, res, err, hooks)
+}
+
+// finalize runs the shared tail after the agent run ends — for both a fresh
+// Build and a re-Attach. It does not tear the sandbox down; the caller's defer
+// does.
+func (b *Sandbox) finalize(ctx context.Context, sb *fly.Sandbox, req Request, res opencode.Result, runErr error, hooks Hooks) (Result, error) {
+	if runErr != nil {
 		// Preserve whatever the agent built so a Retry resumes from here instead
 		// of rebuilding from scratch — a timeout (the common cause) usually means
 		// the site is nearly done. Detached context: the build ctx may already be
@@ -292,7 +334,7 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 			}
 			cancel()
 		}
-		return Result{Log: res.Log, SnapshotSaved: saved}, err
+		return Result{Log: res.Log, SnapshotSaved: saved}, runErr
 	}
 
 	// Save the workspace so the next iteration can continue from it. A failed
@@ -309,7 +351,7 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 
 	// The agent ran `fly deploy` inside the sandbox (per the operating spec); the
 	// app URL is deterministic.
-	preview := "https://" + appName + ".fly.dev"
+	preview := "https://" + DeployAppName(req.ProjectID) + ".fly.dev"
 
 	// Capture a screenshot of every page of the deployed site for Rasmus's
 	// review. Best-effort and done in-sandbox (it has Chromium); a miss just

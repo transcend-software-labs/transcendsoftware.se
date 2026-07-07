@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -33,9 +34,16 @@ type Result struct {
 }
 
 // Driver runs a build via opencode. onLog, if non-nil, receives progress lines
-// as they happen (for live streaming to the dashboard).
+// as they happen (for live streaming to the dashboard). onSession, if non-nil,
+// is called once with the session id as soon as it exists — the orchestrator
+// persists it so a restart can re-attach to the still-running build.
 type Driver interface {
-	Run(ctx context.Context, spec Spec, onLog func(string)) (Result, error)
+	Run(ctx context.Context, spec Spec, onLog func(string), onSession func(string)) (Result, error)
+	// Attach re-connects to a build already running under sessionID (its opencode
+	// async session survives the orchestrator dying) and consumes the rest of its
+	// event stream to completion. No new session, no re-prompt. The build's
+	// remaining deadline comes from ctx.
+	Attach(ctx context.Context, sessionID string, onLog func(string)) (Result, error)
 }
 
 // Fake is a deterministic Driver for dev mode; it performs no real work.
@@ -44,7 +52,10 @@ type Fake struct{}
 // NewFake returns a dev-mode driver.
 func NewFake() *Fake { return &Fake{} }
 
-func (Fake) Run(ctx context.Context, spec Spec, onLog func(string)) (Result, error) {
+func (Fake) Run(ctx context.Context, spec Spec, onLog func(string), onSession func(string)) (Result, error) {
+	if onSession != nil {
+		onSession("dev-session")
+	}
 	// Simulate a build, emitting progress lines over time so the live log streams.
 	lines := []string{
 		"Spawning isolated sandbox…",
@@ -71,6 +82,14 @@ func (Fake) Run(ctx context.Context, spec Spec, onLog func(string)) (Result, err
 	return Result{Log: strings.Join(all, "\n"), SessionID: "dev-session"}, nil
 }
 
+// Attach simulates re-connecting to a running dev build (finishes immediately).
+func (Fake) Attach(ctx context.Context, sessionID string, onLog func(string)) (Result, error) {
+	if onLog != nil {
+		onLog("Reconnected to the running build…")
+	}
+	return Result{Log: "reattached", SessionID: sessionID}, nil
+}
+
 // HTTP drives a real opencode server at BaseURL. Confirm endpoints against your
 // opencode version before relying on this in production.
 type HTTP struct {
@@ -86,20 +105,27 @@ func NewHTTP(baseURL string) *HTTP {
 	}
 }
 
-// buildDeadline caps a single build run. Real multi-page sites — where the
+// BuildDeadline caps a single build run. Real multi-page sites — where the
 // agent writes several pages, fetches and processes images, and runs the test
 // build a few times — routinely need more than half an hour on Kimi (slow at
 // temperature 1). Kept comfortably under the orchestrator's pipelineTimeout.
-const buildDeadline = 90 * time.Minute
+// Exported so a re-attach after a restart can bound the resumed run by the same
+// cap, measured from the original build's start.
+const BuildDeadline = 90 * time.Minute
 
-func (h *HTTP) Run(ctx context.Context, spec Spec, onLog func(string)) (Result, error) {
+func (h *HTTP) Run(ctx context.Context, spec Spec, onLog func(string), onSession func(string)) (Result, error) {
 	sessionID, err := h.createSession(ctx)
 	if err != nil {
 		return Result{}, fmt.Errorf("opencode: create session: %w", err)
 	}
 	emit(onLog, "opencode session started")
+	// Hand the session id back immediately so the orchestrator can persist it —
+	// before the agent runs, so a restart mid-build can re-attach to it.
+	if onSession != nil {
+		onSession(sessionID)
+	}
 
-	streamCtx, cancel := context.WithTimeout(ctx, buildDeadline)
+	streamCtx, cancel := context.WithTimeout(ctx, BuildDeadline)
 	defer cancel()
 
 	// Open the event stream BEFORE prompting so we don't miss early tool activity.
@@ -119,6 +145,32 @@ func (h *HTTP) Run(ctx context.Context, spec Spec, onLog func(string)) (Result, 
 
 	log, err := h.consume(sessionID, stream, onLog)
 	// Best-effort token accounting from the session (for cost visibility).
+	tokens := 0
+	if err == nil {
+		tokens = h.sessionTokens(ctx, sessionID)
+	}
+	return Result{Log: log, SessionID: sessionID, Tokens: tokens}, err
+}
+
+// Attach re-connects to a build already running under sessionID and consumes
+// the rest of its event stream to completion. The opencode session runs
+// server-side and is unaffected by the orchestrator restarting, so this simply
+// re-opens the /event stream and waits for the same session.idle it would have
+// waited for originally. The remaining build deadline is carried by ctx.
+//
+// Caveat: opencode's /event stream is live, not replayed. If the agent happened
+// to finish during the exact window the orchestrator was down, session.idle was
+// already emitted and won't repeat — consume then blocks until ctx's deadline,
+// after which the caller saves a snapshot and the build resumes via Retry. That
+// window is ~seconds; the common case (agent still working) re-attaches cleanly.
+func (h *HTTP) Attach(ctx context.Context, sessionID string, onLog func(string)) (Result, error) {
+	emit(onLog, "Reconnected to the running build…")
+	stream, err := h.openEvents(ctx)
+	if err != nil {
+		return Result{SessionID: sessionID}, fmt.Errorf("opencode: reattach event stream: %w", err)
+	}
+	defer stream.Close()
+	log, err := h.consume(sessionID, stream, onLog)
 	tokens := 0
 	if err == nil {
 		tokens = h.sessionTokens(ctx, sessionID)
@@ -188,8 +240,13 @@ func (h *HTTP) openEvents(ctx context.Context) (io.ReadCloser, error) {
 		return nil, err
 	}
 	req.Header.Set("accept", "text/event-stream")
-	// Streaming request: no client timeout; lifetime is bounded by ctx.
-	resp, err := (&http.Client{}).Do(req)
+	// Streaming request: no overall client timeout (lifetime is bounded by ctx),
+	// but cap the connect so a dead/unreachable sandbox — e.g. when re-attaching
+	// to a machine that was reaped — fails fast instead of hanging on the deadline.
+	client := &http.Client{Transport: &http.Transport{
+		DialContext: (&net.Dialer{Timeout: 15 * time.Second}).DialContext,
+	}}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
