@@ -1,4 +1,4 @@
-{{define "admin_row"}}{{template "head" .}}
+{{define "admin_row"}}{{template "admin_head" .}}
 <section class="page-head">
   <div>
     <a class="muted small" href="/admin/t/{{.Data.Table}}">← {{.Data.Table}}</a>
@@ -21,4 +21,4 @@
   </form>
   {{end}}
 </section>
-{{template "foot" .}}{{end}}
+{{template "admin_foot" .}}{{end}}

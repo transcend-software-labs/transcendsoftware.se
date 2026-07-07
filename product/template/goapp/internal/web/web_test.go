@@ -442,6 +442,35 @@ func TestHooks_MaskedColumnsNotSent(t *testing.T) {
 	}
 }
 
+func TestAdmin_ForgeBrandedAndIsolatedFromSiteCSS(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+	c := ownerClient(t, srv.URL, "owner@example.com")
+
+	// admin.css is embedded + served (Forge dark/gold palette).
+	css, resp := get(t, c, srv.URL+"/static/admin.css")
+	if resp.StatusCode != http.StatusOK || !strings.Contains(css, "--accent: #e0a93c") {
+		t.Fatalf("admin.css not served with the Forge palette (%d)", resp.StatusCode)
+	}
+	// Admin pages use the Forge admin layout: admin.css, NOT the site's app.css
+	// (which the agent restyles per project).
+	admin, _ := get(t, c, srv.URL+"/admin")
+	if !strings.Contains(admin, "/static/admin.css") {
+		t.Error("admin should load admin.css")
+	}
+	if strings.Contains(admin, "/static/app.css") {
+		t.Error("admin must NOT load the site's app.css — it stays Forge-branded regardless of the site's design")
+	}
+	if !strings.Contains(admin, "Transcend Forge") {
+		t.Error("admin should carry the Forge footer branding")
+	}
+	// The public site keeps its own app.css (which the agent restyles).
+	landing, _ := get(t, c, srv.URL+"/")
+	if !strings.Contains(landing, "/static/app.css") || strings.Contains(landing, "/static/admin.css") {
+		t.Error("public pages use app.css, not admin.css")
+	}
+}
+
 func TestBoost_HtmxVendoredAndWired(t *testing.T) {
 	srv := newTestServer(t)
 	defer srv.Close()

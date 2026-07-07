@@ -89,15 +89,16 @@ func (s *Server) Handler() http.Handler {
 
 // View is the data passed to every page template.
 type View struct {
-	Title string
-	User  *auth.User
-	CSRF  string
-	Flash string
-	Data  any
+	Title    string
+	SiteName string // shown in the Forge-branded admin header
+	User     *auth.User
+	CSRF     string
+	Flash    string
+	Data     any
 }
 
 func (s *Server) view(r *http.Request, title string, data any) View {
-	return View{Title: title, User: s.currentUser(r), CSRF: s.csrfToken(r), Data: data}
+	return View{Title: title, SiteName: s.siteName, User: s.currentUser(r), CSRF: s.csrfToken(r), Data: data}
 }
 
 func (s *Server) render(w http.ResponseWriter, status int, name string, v View) {

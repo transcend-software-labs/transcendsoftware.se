@@ -59,6 +59,10 @@ Design section with the customer's chosen direction — implement *that*:
   Replace the CSS variables and go far beyond them if the direction calls for
   it. Nothing about the starter's look should survive unless it happens to fit.
 - Redesign the landing page structure freely (hero, sections, imagery).
+- **Do NOT touch the site admin's look**: `static/admin.css`, `admin_layout.html`,
+  or the `admin*.html` templates are Forge-provided and intentionally styled
+  separately from the public site — leave them exactly as they are. Your
+  restyling of `app.css` only affects the public pages.
 - Keep: semantic HTML, accessibility (contrast, focus states, labels), and the
   responsive behavior. Beauty never trumps usability.
 - **Record the chosen direction in `DESIGN.md`** (palette, type, spacing, voice)

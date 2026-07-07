@@ -1,0 +1,28 @@
+{{define "admin_head"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}}</title>
+  <link rel="stylesheet" href="/static/admin.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body hx-boost="true">
+<header class="admin-nav">
+  <span class="admin-brand"><a href="/admin">{{if .SiteName}}{{.SiteName}}{{else}}Site{{end}}</a> <span class="accent">Admin</span></span>
+  <nav class="admin-navlinks">
+    <a class="muted" href="/" hx-boost="false">View site ↗</a>
+    <form method="post" action="/logout" class="inline">
+      <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+      <button class="linklike">Log out</button>
+    </form>
+  </nav>
+</header>
+<main class="container">
+{{if .Flash}}<div class="flash">{{.Flash}}</div>{{end}}
+{{end}}
+
+{{define "admin_foot"}}</main>
+<footer class="foot">Powered by <a href="https://forge.transcendsoftware.se" target="_blank" rel="noopener">Transcend Forge</a></footer>
+</body>
+</html>{{end}}
