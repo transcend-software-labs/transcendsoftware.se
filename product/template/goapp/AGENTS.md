@@ -61,6 +61,20 @@ Design section with the customer's chosen direction — implement *that*:
 - Redesign the landing page structure freely (hero, sections, imagery).
 - Keep: semantic HTML, accessibility (contrast, focus states, labels), and the
   responsive behavior. Beauty never trumps usability.
+- **Record the chosen direction in `DESIGN.md`** (palette, type, spacing, voice)
+  before you build the UI, then build to it.
+
+### Avoid the AI-generated look (these read as "made by a bot")
+
+- **No purple/violet gradients or cyan-on-dark** — the single biggest AI tell.
+  Choose a distinctive, intentional palette that fits the business.
+- **Don't default to Inter/Roboto** — pick type with character that suits the brand.
+- No bounce/elastic/overshoot easing; use calm, natural motion (or none).
+- No nested cards, side-tab accent borders, or dark drop-glows.
+- Never gray text on a colored background (contrast + it looks cheap).
+- Generous padding and whitespace — cramped layouts feel unfinished.
+- Tap targets ≥ 44px; comfortable line length (~45–75 chars); never skip
+  heading levels (h1 → h2 → h3).
 
 ## Rules
 

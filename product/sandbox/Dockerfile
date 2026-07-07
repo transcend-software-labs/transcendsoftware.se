@@ -14,8 +14,10 @@
 #   docker build -t registry.fly.io/transcend-forge-sandbox:$(date +%Y%m%d) ./sandbox
 #   docker push registry.fly.io/transcend-forge-sandbox:<tag>
 
-# Pin to a current Playwright release (bundles Node 20 + Chromium + deps).
-# Bump deliberately; do not track a floating tag in production.
+# Pin to a current Playwright release (bundles Node 22 + Chromium + deps).
+# Bump deliberately; do not track a floating tag in production. Note: impeccable
+# is pinned to its 2.x line because this base ships Node 22 and impeccable 3.x
+# requires Node >=24 (and upgrading Node here breaks the Playwright CLI).
 FROM mcr.microsoft.com/playwright:v1.50.0-jammy
 
 ARG GO_VERSION=1.25.0
@@ -34,6 +36,12 @@ RUN npm i -g pnpm
 # Rasmus's review — the browsers are already present, so this is just the JS.
 RUN npm i -g playwright@1.50.0
 
+# impeccable — deterministic frontend-design detector (no LLM/API key). The
+# agent runs `impeccable detect` on its output before deploying to catch
+# AI-slop design tells. Pinned to the 2.x line (node >=18; the 3.x line needs
+# node >=24, which this Playwright base doesn't ship).
+RUN npm i -g impeccable@2.3.2
+
 # Go — only needed if the canonical stack builds Go services; drop this layer
 # if your default stack is JS-only.
 RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" \
@@ -51,7 +59,8 @@ RUN curl -L https://fly.io/install.sh | FLYCTL_INSTALL=/usr/local sh
 # Verify the toolchain is installed and on PATH — fails the build early if not.
 RUN node --version && npm --version && pnpm --version && go version \
  && command -v opencode && command -v flyctl && command -v git \
- && command -v playwright && test -d /ms-playwright
+ && command -v playwright && test -d /ms-playwright \
+ && impeccable --version
 
 # Warm the Go module + build caches with the starter template's dependency
 # tree (staged into .template/ by `make sandbox-build`). modernc SQLite alone

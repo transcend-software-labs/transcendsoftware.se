@@ -104,6 +104,12 @@ type Config struct {
 	// forge domain (the site's own name becomes the display name).
 	SitesEmailKey  string
 	SitesEmailFrom string
+
+	// Impeccable turns on the design-quality gate: the build agent runs the
+	// impeccable detector on its UI before deploying and fixes findings. A
+	// switch so we can A/B its build-time cost vs. quality. (The design
+	// principles in the template's AGENTS.md apply either way.)
+	Impeccable bool
 }
 
 // StorageEnabled reports whether a real S3-compatible backend is configured.
@@ -167,6 +173,8 @@ func Load() Config {
 
 		SitesEmailKey:  os.Getenv("SITES_EMAIL_KEY"),
 		SitesEmailFrom: os.Getenv("SITES_EMAIL_FROM"),
+
+		Impeccable: os.Getenv("IMPECCABLE_ENABLED") == "true",
 	}
 }
 

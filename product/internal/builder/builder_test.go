@@ -247,6 +247,28 @@ func TestBuild_InjectsSiteEmailWithDisplayName(t *testing.T) {
 	}
 }
 
+func TestBuild_ImpeccableGateOnlyWhenEnabled(t *testing.T) {
+	// Off by default: no design-gate instruction.
+	off := &capturingDriver{}
+	b := NewSandbox(fly.NewFake(), func(string) opencode.Driver { return off }, Config{})
+	if _, err := b.Build(context.Background(), Request{ProjectID: "pa", Plan: "build"}, Hooks{}); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if strings.Contains(off.spec.Instruction, "impeccable detect") {
+		t.Error("impeccable gate must not appear when disabled")
+	}
+
+	// On: the instruction carries the detector gate.
+	on := &capturingDriver{}
+	b2 := NewSandbox(fly.NewFake(), func(string) opencode.Driver { return on }, Config{Impeccable: true})
+	if _, err := b2.Build(context.Background(), Request{ProjectID: "pb", Plan: "build"}, Hooks{}); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if !strings.Contains(on.spec.Instruction, "impeccable detect --json") {
+		t.Errorf("impeccable gate missing when enabled: %q", on.spec.Instruction)
+	}
+}
+
 func TestBuild_NoSiteEmailWithoutKey(t *testing.T) {
 	machines := fly.NewFake()
 	b := newTestBuilder(machines) // no SitesEmailKey

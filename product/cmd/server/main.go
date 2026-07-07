@@ -64,6 +64,8 @@ func main() {
 
 		SitesEmailKey:  cfg.SitesEmailKey, // generated sites' notification email (empty → off)
 		SitesEmailFrom: cfg.SitesEmailFrom,
+
+		Impeccable: cfg.Impeccable, // design-quality gate (A/B via IMPECCABLE_ENABLED)
 	})
 	assets := newStorage(cfg, log)
 	broker := stream.NewBroker(500)

@@ -127,6 +127,11 @@ type Config struct {
 	// key → the site deploys without an email sender. Injected as app secrets.
 	SitesEmailKey  string
 	SitesEmailFrom string // sender address; the site name becomes the display name
+
+	// Impeccable adds the design-quality gate to the build instruction (the
+	// agent runs the impeccable detector on its UI and fixes findings before
+	// deploying). The tool is baked into the sandbox image.
+	Impeccable bool
 }
 
 // DriverFactory builds an opencode driver for a sandbox at the given address.
@@ -255,6 +260,9 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 		instruction = resumePreamble + "\n\n" + req.Plan
 	case req.TemplateGetURL != "":
 		instruction = templatePreamble + "\n\n" + req.Plan
+	}
+	if b.cfg.Impeccable {
+		instruction += "\n\n" + impeccableStep
 	}
 
 	driver := b.newDriver(sb.Addr)
@@ -410,6 +418,16 @@ func emailFrom(siteName, address string) string {
 	}
 	return `"` + name + `" <` + address + `>`
 }
+
+// impeccableStep appends a deterministic design-quality gate to the build when
+// enabled. `impeccable` is baked into the sandbox image (no LLM, no key).
+const impeccableStep = `DESIGN-QUALITY GATE — required before you deploy:
+This sandbox has the "impeccable" design detector. Once the UI is built, run:
+  impeccable detect --json internal/web/static internal/web/templates
+Fix every issue it reports (they flag AI-generated-design tells and quality
+problems — see DESIGN.md and AGENTS.md), then run it again. Repeat at most
+TWICE, then deploy. An empty report ([]) means it's clean. Do not let this gate
+block the deploy indefinitely — after two fix passes, deploy your best result.`
 
 // resumePreamble tells the agent the workspace holds an interrupted build's
 // progress: finish and deploy, don't redo completed work.
