@@ -16,7 +16,9 @@
 
 {{define "nav"}}<header class="nav">
   <a class="brand" href="/">Transcend <span class="accent">Forge</span></a>
-  <nav class="navlinks">
+  <input type="checkbox" id="nav-toggle" class="nav-toggle" hidden>
+  <label for="nav-toggle" class="nav-burger" aria-label="Toggle menu" aria-controls="site-nav"><span></span><span></span><span></span></label>
+  <nav id="site-nav" class="navlinks" aria-label="Main navigation">
     {{if .User}}
       <a href="/dashboard">Dashboard</a>
       {{if .IsAdmin}}<a href="/admin">Review</a>{{end}}

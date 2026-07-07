@@ -75,6 +75,7 @@ a:hover { color: var(--accent-2); }
 .navlinks { display: flex; align-items: center; gap: 1.25rem; font-size: .85rem; }
 .navlinks a:not(.btn) { color: var(--muted); }
 .navlinks a:not(.btn):hover { color: var(--accent); }
+.nav-burger { display: none; } /* shown only on mobile (see @media below) */
 .inline { display: inline; }
 .linklike { background: none; border: none; color: var(--muted); cursor: pointer; font: inherit; transition: color .15s var(--ease); }
 .linklike:hover { color: var(--accent); }
@@ -294,4 +295,45 @@ label.design-option:hover { border-color: var(--accent); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto; }
+}
+
+/* Mobile (≤720px). The nav collapses into an accessible CSS-only hamburger
+   (the #nav-toggle checkbox drives it — no JS), and the operator dashboard
+   reflows so review/approve works one-handed on a phone. */
+@media (max-width: 720px) {
+  .nav-burger {
+    display: flex; flex-direction: column; justify-content: center; gap: 5px;
+    width: 44px; height: 44px; padding: 11px; cursor: pointer;
+    border: 1px solid var(--border); border-radius: var(--radius); background: none;
+  }
+  .nav-burger span {
+    display: block; width: 100%; height: 2px; background: var(--text);
+    transition: transform .2s var(--ease), opacity .2s var(--ease);
+  }
+  .navlinks {
+    display: none;
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 30;
+    flex-direction: column; align-items: stretch; gap: 0; padding: .4rem 0;
+    background: var(--bg); border-bottom: 1px solid var(--border); box-shadow: var(--shadow);
+  }
+  .navlinks > * { padding: .8rem 1.25rem; }
+  .navlinks form.inline, .navlinks .linklike { display: block; width: 100%; text-align: left; }
+  .nav-toggle:checked ~ .navlinks { display: flex; }
+  .nav-toggle:checked ~ .nav-burger span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+  .nav-toggle:checked ~ .nav-burger span:nth-child(2) { opacity: 0; }
+  .nav-toggle:checked ~ .nav-burger span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+  /* Operator dashboard + shared layout */
+  .container { padding-left: 1rem; padding-right: 1rem; }
+  h1 { font-size: 1.6rem; }
+  .page-head { flex-direction: column; align-items: flex-start; gap: .5rem; }
+  .stat-row { gap: 1rem 1.5rem; }
+  .admin-actions { flex-direction: column; align-items: stretch; gap: .6rem; }
+  .admin-actions .inline, .admin-actions form { width: 100%; }
+  .admin-actions .btn, .admin-actions button { width: 100%; min-height: 44px; }
+  .inline-actions { flex-direction: column; align-items: stretch; gap: .5rem; width: 100%; }
+  .inline-actions input { width: 100%; }
+  .inline-actions button, .inline-actions .btn { width: 100%; min-height: 44px; }
+  .table-scroll { -webkit-overflow-scrolling: touch; }
+  .review-shot, .review-thumb { max-width: 100%; height: auto; }
 }
