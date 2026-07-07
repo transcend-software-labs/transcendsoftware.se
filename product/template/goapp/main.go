@@ -16,6 +16,7 @@ import (
 
 	"app/internal/auth"
 	"app/internal/db"
+	"app/internal/hooks"
 	"app/internal/web"
 )
 
@@ -35,9 +36,25 @@ func main() {
 	}
 
 	sessions := auth.NewSessions(database, 30*24*time.Hour)
+
+	// Notification hooks: an email sender (Resend-compatible) when EMAIL_API_KEY
+	// + EMAIL_FROM are set. A background dispatcher delivers hooks from _outbox.
+	notifiers := map[string]hooks.Notifier{}
+	if n := hooks.NewEmailNotifier(os.Getenv("EMAIL_API_KEY"), os.Getenv("EMAIL_FROM")); n != nil {
+		notifiers["email"] = n
+	}
+	siteName := envOr("SITE_NAME", "your site")
+
 	// OWNER_EMAIL (set by the Forge orchestrator) reserves the first — owner —
 	// account for the customer the site was built for.
-	srv := web.New(database, sessions, os.Getenv("SECURE_COOKIE") == "true", os.Getenv("OWNER_EMAIL"), log)
+	srv := web.New(database, sessions, web.Options{
+		SecureCookie: os.Getenv("SECURE_COOKIE") == "true",
+		OwnerEmail:   os.Getenv("OWNER_EMAIL"),
+		SiteName:     siteName,
+		Notifiers:    notifiers,
+	}, log)
+
+	dispatcher := hooks.NewDispatcher(database, siteName, notifiers, log)
 
 	httpSrv := &http.Server{
 		Addr:              listenAddr(),
@@ -56,6 +73,10 @@ func main() {
 	// Graceful shutdown.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// Deliver notification hooks until shutdown.
+	go dispatcher.Run(ctx)
+
 	<-ctx.Done()
 	log.Info("shutting down")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

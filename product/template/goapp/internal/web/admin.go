@@ -160,15 +160,17 @@ type adminRow struct {
 }
 
 type adminTableView struct {
-	Table    string
-	Columns  []adminCol
-	Rows     []adminRow
-	Page     int
-	PrevPage int
-	NextPage int
-	HasPrev  bool
-	HasNext  bool
-	ReadOnly bool
+	Table      string
+	Columns    []adminCol
+	Rows       []adminRow
+	Page       int
+	PrevPage   int
+	NextPage   int
+	HasPrev    bool
+	HasNext    bool
+	ReadOnly   bool
+	Hooks      []hookInfo
+	OwnerEmail string
 }
 
 type adminField struct {
@@ -264,7 +266,13 @@ func (s *Server) handleAdminTable(w http.ResponseWriter, r *http.Request, _ *aut
 		v.Rows = v.Rows[:adminPageSize]
 		v.HasNext = true
 	}
-	s.render(w, http.StatusOK, "admin_table", s.view(r, table+" — Site admin", v))
+	if hks, err := s.tableHooks(r.Context(), table); err == nil {
+		v.Hooks = hks
+	}
+	v.OwnerEmail = s.ownerEmail
+	view := s.view(r, table+" — Site admin", v)
+	view.Flash = r.URL.Query().Get("msg")
+	s.render(w, http.StatusOK, "admin_table", view)
 }
 
 // handleAdminRow shows one row in full.

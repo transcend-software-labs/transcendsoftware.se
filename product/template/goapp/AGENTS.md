@@ -18,6 +18,10 @@ that implements the plan.
 - **Site admin at `/admin`** (owner-only): renders EVERY table in the database
   by introspection — browse, row detail, delete, CSV export. New tables appear
   there automatically; there is nothing to wire up.
+- **Notification hooks**: in `/admin`, the owner can turn on "email me when a
+  row is added" for any table (a trigger feeds `_outbox`, a background
+  dispatcher sends). Works for every table automatically — you don't build
+  notifications; just store the data.
 - Public contact form on `/` → stored in `messages` → readable in `/admin`.
 - `/healthz` for platform health checks. Graceful shutdown.
 

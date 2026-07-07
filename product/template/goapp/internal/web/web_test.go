@@ -1,6 +1,8 @@
 package web_test
 
 import (
+	"context"
+	"database/sql"
 	"io"
 	"log/slog"
 	"net/http"
@@ -9,11 +11,13 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"app/internal/auth"
 	"app/internal/db"
+	"app/internal/hooks"
 	"app/internal/web"
 )
 
@@ -25,6 +29,14 @@ func newTestServer(t *testing.T) *httptest.Server {
 // newTestServerOwner starts a server with OWNER_EMAIL semantics.
 func newTestServerOwner(t *testing.T, ownerEmail string) *httptest.Server {
 	t.Helper()
+	srv, _ := newTestServerHooks(t, ownerEmail, nil)
+	return srv
+}
+
+// newTestServerHooks starts a server, optionally with a recording email
+// notifier so hook-delivery tests can assert what was sent.
+func newTestServerHooks(t *testing.T, ownerEmail string, email hooks.Notifier) (*httptest.Server, *sql.DB) {
+	t.Helper()
 	database, err := db.Open(t.TempDir())
 	if err != nil {
 		t.Fatalf("open db: %v", err)
@@ -35,7 +47,14 @@ func newTestServerOwner(t *testing.T, ownerEmail string) *httptest.Server {
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	sessions := auth.NewSessions(database, time.Hour)
-	return httptest.NewServer(web.New(database, sessions, false, ownerEmail, log).Handler())
+	notifiers := map[string]hooks.Notifier{}
+	if email != nil {
+		notifiers["email"] = email
+	}
+	srv := web.New(database, sessions, web.Options{
+		OwnerEmail: ownerEmail, SiteName: "Test Site", Notifiers: notifiers,
+	}, log)
+	return httptest.NewServer(srv.Handler()), database
 }
 
 // get fetches a page and returns its body.
@@ -301,6 +320,125 @@ func TestSignup_OwnerEmailReservesFirstAccount(t *testing.T) {
 	resp.Body.Close()
 	if _, r := get(t, c3, srv.URL+"/admin"); r.StatusCode != http.StatusNotFound {
 		t.Fatalf("later signup must not be owner, /admin gave %d", r.StatusCode)
+	}
+}
+
+// recEmail records what would be sent, so hook tests can assert delivery.
+type recEmail struct {
+	mu    sync.Mutex
+	sends []recSend
+}
+type recSend struct {
+	target, table, body, replyTo string
+}
+
+func (r *recEmail) Notify(_ context.Context, target string, e hooks.Event) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var b strings.Builder
+	for _, f := range e.Fields {
+		b.WriteString(f.Name + "=" + f.Value + ";")
+	}
+	r.sends = append(r.sends, recSend{target: target, table: e.Table, body: b.String(), replyTo: e.ReplyTo})
+	return nil
+}
+func (r *recEmail) count() int { r.mu.Lock(); defer r.mu.Unlock(); return len(r.sends) }
+func (r *recEmail) last() recSend {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.sends[len(r.sends)-1]
+}
+
+func TestHooks_EmailOnInsertViaTriggerOutbox(t *testing.T) {
+	rec := &recEmail{}
+	srv, database := newTestServerHooks(t, "owner@example.com", rec)
+	defer srv.Close()
+	c := ownerClient(t, srv.URL, "owner@example.com")
+
+	// The dispatcher isn't started by the test server, so run drains manually.
+	disp := hooks.NewDispatcher(database, "Test Site", map[string]hooks.Notifier{"email": rec},
+		slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	// Enable an email hook on the messages table.
+	page, _ := get(t, c, srv.URL+"/admin/t/messages")
+	tok := csrfRe.FindStringSubmatch(page)[1]
+	resp, _ := c.PostForm(srv.URL+"/admin/t/messages/hooks", url.Values{"csrf_token": {tok}, "target": {"owner@example.com"}})
+	resp.Body.Close()
+
+	// A submission BEFORE the hook shouldn't have been captured (trigger is new),
+	// so submit AFTER enabling.
+	resp, _ = c.PostForm(srv.URL+"/contact", url.Values{
+		"name": {"Dagny"}, "email": {"dagny@example.com"}, "message": {"Order till fredag"},
+	})
+	resp.Body.Close()
+
+	if err := disp.Drain(context.Background()); err != nil {
+		t.Fatalf("drain: %v", err)
+	}
+	if rec.count() != 1 {
+		t.Fatalf("expected 1 email, got %d", rec.count())
+	}
+	s := rec.last()
+	if s.target != "owner@example.com" || s.table != "messages" {
+		t.Fatalf("wrong delivery: %+v", s)
+	}
+	if !strings.Contains(s.body, "Dagny") || !strings.Contains(s.body, "Order till fredag") {
+		t.Fatalf("email body missing fields: %s", s.body)
+	}
+	if s.replyTo != "dagny@example.com" {
+		t.Errorf("reply-to should be the submitter email, got %q", s.replyTo)
+	}
+
+	// Turn the hook off → no trigger → new rows aren't captured.
+	page, _ = get(t, c, srv.URL+"/admin/t/messages")
+	hookID := regexp.MustCompile(`/admin/hooks/([a-f0-9]+)/toggle`).FindStringSubmatch(page)[1]
+	tok = csrfRe.FindStringSubmatch(page)[1]
+	resp, _ = c.PostForm(srv.URL+"/admin/hooks/"+hookID+"/toggle", url.Values{"csrf_token": {tok}})
+	resp.Body.Close()
+	resp, _ = c.PostForm(srv.URL+"/contact", url.Values{"name": {"Erik"}, "email": {"e@example.com"}, "message": {"x"}})
+	resp.Body.Close()
+	if err := disp.Drain(context.Background()); err != nil {
+		t.Fatalf("drain: %v", err)
+	}
+	if rec.count() != 1 {
+		t.Fatalf("disabled hook should not deliver; got %d emails", rec.count())
+	}
+}
+
+func TestHooks_MaskedColumnsNotSent(t *testing.T) {
+	rec := &recEmail{}
+	srv, database := newTestServerHooks(t, "owner@example.com", rec)
+	defer srv.Close()
+	c := ownerClient(t, srv.URL, "owner@example.com")
+	disp := hooks.NewDispatcher(database, "Test Site", map[string]hooks.Notifier{"email": rec},
+		slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	// Hook the users table, then create a second account → a new users row.
+	page, _ := get(t, c, srv.URL+"/admin/t/users")
+	tok := csrfRe.FindStringSubmatch(page)[1]
+	resp, _ := c.PostForm(srv.URL+"/admin/t/users/hooks", url.Values{"csrf_token": {tok}, "target": {"owner@example.com"}})
+	resp.Body.Close()
+
+	jar2, _ := cookiejar.New(nil)
+	c2 := &http.Client{Jar: jar2}
+	resp, _ = c2.PostForm(srv.URL+"/signup", url.Values{"email": {"member@example.com"}, "password": {"password123"}})
+	resp.Body.Close()
+
+	if err := disp.Drain(context.Background()); err != nil {
+		t.Fatalf("drain: %v", err)
+	}
+	if rec.count() != 1 {
+		t.Fatalf("expected 1 email for the new user, got %d", rec.count())
+	}
+	body := rec.last().body
+	if strings.Contains(body, "$2a$") || strings.Contains(body, "$2b$") {
+		t.Fatalf("password hash leaked into notification: %s", body)
+	}
+	if !strings.Contains(body, "password_hash=•••••") {
+		t.Errorf("masked column should be dotted, got: %s", body)
+	}
+	if !strings.Contains(body, "member@example.com") {
+		t.Errorf("email should include the new account address")
 	}
 }
 

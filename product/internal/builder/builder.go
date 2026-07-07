@@ -68,6 +68,9 @@ type Request struct {
 	// OWNER_EMAIL secret so the generated site reserves its first — owner —
 	// account for that address (see the template's signup flow).
 	OwnerEmail string
+	// SiteName is the project name — the site's SITE_NAME (notification copy)
+	// and the display name on its notification sender.
+	SiteName string
 }
 
 // CapturedPage is one screenshot the crawler produced: which slot (PUT URL
@@ -119,6 +122,11 @@ type Config struct {
 	BackupRegion    string
 	BackupAccessKey string
 	BackupSecretKey string
+
+	// SitesEmail* enable the generated site's notification hooks (email). Empty
+	// key → the site deploys without an email sender. Injected as app secrets.
+	SitesEmailKey  string
+	SitesEmailFrom string // sender address; the site name becomes the display name
 }
 
 // DriverFactory builds an opencode driver for a sandbox at the given address.
@@ -184,6 +192,13 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 	}
 	if req.OwnerEmail != "" {
 		appSecrets["OWNER_EMAIL"] = req.OwnerEmail
+	}
+	if req.SiteName != "" {
+		appSecrets["SITE_NAME"] = req.SiteName
+	}
+	if b.cfg.SitesEmailKey != "" && b.cfg.SitesEmailFrom != "" {
+		appSecrets["EMAIL_API_KEY"] = b.cfg.SitesEmailKey
+		appSecrets["EMAIL_FROM"] = emailFrom(req.SiteName, b.cfg.SitesEmailFrom)
 	}
 	if len(appSecrets) > 0 {
 		if err := b.machines.SetAppSecrets(ctx, appName, appSecrets); err != nil {
@@ -377,6 +392,24 @@ const templatePreamble = `The workspace /workspace already contains our producti
 (one binary serving frontend + backend, SQLite, working auth, contact form).
 Read AGENTS.md first, then EXTEND this app to implement the plan below.
 Do not scaffold a new project. Keep /healthz, auth and CSRF intact.`
+
+// emailFrom builds a From header, using a sanitized site name as the display
+// name (quotes/newlines stripped so they can't break the header).
+func emailFrom(siteName, address string) string {
+	name := strings.Map(func(r rune) rune {
+		if r == '"' || r == '\r' || r == '\n' || r == '<' || r == '>' {
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(siteName))
+	if name == "" {
+		return address
+	}
+	if len(name) > 80 {
+		name = name[:80]
+	}
+	return `"` + name + `" <` + address + `>`
+}
 
 // resumePreamble tells the agent the workspace holds an interrupted build's
 // progress: finish and deploy, don't redo completed work.

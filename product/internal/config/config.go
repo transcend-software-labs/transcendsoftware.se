@@ -97,6 +97,13 @@ type Config struct {
 	BackupRegion    string
 	BackupAccessKey string
 	BackupSecretKey string
+
+	// Generated sites' notification email (empty key → sites deploy without
+	// email hooks). One sending-only, domain-restricted key is shared across
+	// sites for now; SitesEmailFrom is the sender address on the verified
+	// forge domain (the site's own name becomes the display name).
+	SitesEmailKey  string
+	SitesEmailFrom string
 }
 
 // StorageEnabled reports whether a real S3-compatible backend is configured.
@@ -157,6 +164,9 @@ func Load() Config {
 		BackupRegion:    envOr("BACKUP_REGION", "auto"),
 		BackupAccessKey: os.Getenv("BACKUP_ACCESS_KEY"),
 		BackupSecretKey: os.Getenv("BACKUP_SECRET_KEY"),
+
+		SitesEmailKey:  os.Getenv("SITES_EMAIL_KEY"),
+		SitesEmailFrom: os.Getenv("SITES_EMAIL_FROM"),
 	}
 }
 

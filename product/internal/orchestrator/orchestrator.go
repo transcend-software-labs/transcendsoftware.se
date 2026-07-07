@@ -517,6 +517,7 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 		TemplateGetURL:    templateGet,
 		AssetManifest:     o.assetManifest(ctx, p.ID),
 		OwnerEmail:        ownerEmail,
+		SiteName:          p.Name,
 	}, builder.Hooks{
 		OnLog: onLog,
 		OnSandbox: func(machineID, _ string) {

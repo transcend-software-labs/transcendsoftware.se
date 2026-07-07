@@ -61,6 +61,9 @@ func main() {
 		BackupRegion:    cfg.BackupRegion,
 		BackupAccessKey: cfg.BackupAccessKey,
 		BackupSecretKey: cfg.BackupSecretKey,
+
+		SitesEmailKey:  cfg.SitesEmailKey, // generated sites' notification email (empty → off)
+		SitesEmailFrom: cfg.SitesEmailFrom,
 	})
 	assets := newStorage(cfg, log)
 	broker := stream.NewBroker(500)

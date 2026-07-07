@@ -223,6 +223,43 @@ func TestBuild_InjectsOwnerEmail(t *testing.T) {
 	}
 }
 
+func TestBuild_InjectsSiteEmailWithDisplayName(t *testing.T) {
+	machines := fly.NewFake()
+	b := NewSandbox(machines, func(string) opencode.Driver { return opencode.NewFake() }, Config{
+		SitesEmailKey: "re_key", SitesEmailFrom: "notify@forge.transcendsoftware.se",
+	})
+	if _, err := b.Build(context.Background(), Request{
+		ProjectID: "p14", Plan: "build", SiteName: `Kvarnens "Bageri"`, OwnerEmail: "k@example.se",
+	}, Hooks{}); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	s := machines.AppSecrets(DeployAppName("p14"))
+	if s["EMAIL_API_KEY"] != "re_key" {
+		t.Errorf("EMAIL_API_KEY not injected: %v", s)
+	}
+	if s["SITE_NAME"] != `Kvarnens "Bageri"` {
+		t.Errorf("SITE_NAME wrong: %q", s["SITE_NAME"])
+	}
+	// The From display name must be sanitized (quotes stripped) so it can't
+	// break the header.
+	if got := s["EMAIL_FROM"]; got != `"Kvarnens Bageri" <notify@forge.transcendsoftware.se>` {
+		t.Errorf("EMAIL_FROM = %q", got)
+	}
+}
+
+func TestBuild_NoSiteEmailWithoutKey(t *testing.T) {
+	machines := fly.NewFake()
+	b := newTestBuilder(machines) // no SitesEmailKey
+	if _, err := b.Build(context.Background(), Request{
+		ProjectID: "p15", Plan: "build", SiteName: "Site", OwnerEmail: "k@example.se",
+	}, Hooks{}); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if s := machines.AppSecrets(DeployAppName("p15")); s["EMAIL_API_KEY"] != "" {
+		t.Errorf("no key configured → no EMAIL_API_KEY, got %q", s["EMAIL_API_KEY"])
+	}
+}
+
 func TestBuild_SavesSnapshotOnFailureToResume(t *testing.T) {
 	machines := fly.NewFake()
 	b := NewSandbox(machines, func(string) opencode.Driver { return erroringDriver{} }, Config{})

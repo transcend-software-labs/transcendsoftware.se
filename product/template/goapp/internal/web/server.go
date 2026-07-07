@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	"app/internal/auth"
+	"app/internal/hooks"
 )
 
 //go:embed templates/*.html
@@ -19,22 +20,36 @@ var templatesFS embed.FS
 //go:embed static
 var staticFS embed.FS
 
+// Options configures the HTTP layer.
+type Options struct {
+	SecureCookie bool
+	OwnerEmail   string                    // reserves the first (owner) account for this address
+	SiteName     string                    // shown in notification copy
+	Notifiers    map[string]hooks.Notifier // by type ("email"); for hook "send test"
+}
+
 // Server is the HTTP layer.
 type Server struct {
 	db           *sql.DB
 	sessions     *auth.Sessions
 	secureCookie bool
-	ownerEmail   string // while no accounts exist, only this email may register (empty → anyone)
+	ownerEmail   string
+	siteName     string
+	notifiers    map[string]hooks.Notifier
 	tmpl         *template.Template
 	log          *slog.Logger
 }
 
-// New wires the HTTP layer. ownerEmail (optional, from OWNER_EMAIL) reserves
-// the first — owner — account for the site's real owner.
-func New(db *sql.DB, sessions *auth.Sessions, secureCookie bool, ownerEmail string, log *slog.Logger) *Server {
+// New wires the HTTP layer.
+func New(db *sql.DB, sessions *auth.Sessions, opts Options, log *slog.Logger) *Server {
 	tmpl := template.Must(template.ParseFS(templatesFS, "templates/*.html"))
-	return &Server{db: db, sessions: sessions, secureCookie: secureCookie,
-		ownerEmail: ownerEmail, tmpl: tmpl, log: log}
+	site := opts.SiteName
+	if site == "" {
+		site = "your site"
+	}
+	return &Server{db: db, sessions: sessions, secureCookie: opts.SecureCookie,
+		ownerEmail: opts.OwnerEmail, siteName: site, notifiers: opts.Notifiers,
+		tmpl: tmpl, log: log}
 }
 
 // Handler returns the app's routes.
@@ -63,6 +78,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /admin/t/{table}/csv", s.requireOwner(s.handleAdminCSV))
 	mux.HandleFunc("GET /admin/t/{table}/r/{rowid}", s.requireOwner(s.handleAdminRow))
 	mux.HandleFunc("POST /admin/t/{table}/r/{rowid}/delete", s.requireOwner(s.handleAdminRowDelete))
+
+	// Notification hooks: notify the owner when a row lands in a table.
+	mux.HandleFunc("POST /admin/t/{table}/hooks", s.requireOwner(s.handleHookAdd))
+	mux.HandleFunc("POST /admin/hooks/{id}/toggle", s.requireOwner(s.handleHookToggle))
+	mux.HandleFunc("POST /admin/hooks/{id}/test", s.requireOwner(s.handleHookTest))
+	mux.HandleFunc("POST /admin/hooks/{id}/delete", s.requireOwner(s.handleHookDelete))
 	return mux
 }
 

@@ -86,3 +86,14 @@ input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 
 .pager { display: flex; gap: 1.5rem; margin-top: 1rem; }
 .row-detail dt { margin-top: .8rem; }
 .row-detail dd { margin: .15rem 0 0; overflow-wrap: anywhere; }
+
+/* Notification hooks */
+.hook-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; }
+.hook-list li { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem; padding: .6rem .8rem; border: 1px solid var(--border, #ddd); border-radius: 8px; }
+.hook-target { font-weight: 500; }
+.hook-actions { margin-left: auto; display: flex; gap: .8rem; }
+.badge { font-size: .72rem; padding: .1rem .5rem; border-radius: 999px; }
+.badge-on { background: #dff5e1; color: #1c6b2e; }
+.badge-off { background: #eee; color: #666; }
+.hook-add { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
+.hook-add input[type=email] { flex: 1; min-width: 14rem; }

@@ -45,4 +45,43 @@
   {{end}}
   {{if .Data.ReadOnly}}<p class="muted small">This table is read-only in the admin.</p>{{end}}
 </section>
+
+<section class="panel">
+  <h2>Notifications</h2>
+  <p class="muted small">Get notified whenever a new row is added to <strong>{{.Data.Table}}</strong> — for example, when someone fills in a form.</p>
+
+  {{if .Data.Hooks}}
+  <ul class="hook-list">
+    {{range .Data.Hooks}}
+    <li>
+      <span class="hook-target">✉︎ {{.Target}}</span>
+      <span class="badge {{if .Enabled}}badge-on{{else}}badge-off{{end}}">{{if .Enabled}}on{{else}}off{{end}}</span>
+      {{if .LastStatus}}<span class="muted small">last: {{.LastStatus}}</span>{{end}}
+      {{if not .EmailReady}}<span class="muted small">email not configured for this site yet</span>{{end}}
+      <span class="hook-actions">
+        <form method="post" action="/admin/hooks/{{.ID}}/toggle" class="inline">
+          <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+          <button class="linklike small" type="submit">{{if .Enabled}}turn off{{else}}turn on{{end}}</button>
+        </form>
+        <form method="post" action="/admin/hooks/{{.ID}}/test" class="inline">
+          <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+          <button class="linklike small" type="submit">send test</button>
+        </form>
+        <form method="post" action="/admin/hooks/{{.ID}}/delete" class="inline"
+          onsubmit="return confirm('Remove this notification?')">
+          <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+          <button class="linklike small" type="submit">remove</button>
+        </form>
+      </span>
+    </li>
+    {{end}}
+  </ul>
+  {{end}}
+
+  <form method="post" action="/admin/t/{{.Data.Table}}/hooks" class="hook-add">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <input type="email" name="target" placeholder="{{if .Data.OwnerEmail}}{{.Data.OwnerEmail}}{{else}}you@example.com{{end}}" aria-label="Notify this email">
+    <button class="btn btn-sm" type="submit">Email me new entries</button>
+  </form>
+</section>
 {{template "foot" .}}{{end}}
