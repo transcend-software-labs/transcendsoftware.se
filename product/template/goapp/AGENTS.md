@@ -121,11 +121,18 @@ Design section with the customer's chosen direction — implement *that*:
       for i in $(seq 1 30); do curl -sf http://localhost:8080/healthz >/dev/null && break; sleep 0.5; done
 
   Signing up with owner@test.local creates the first (owner/admin) account; read
-  /tmp/forge-app.log if it won't start. Then drive http://localhost:8080 with
-  Playwright — it's GLOBAL and NODE_PATH is preset, so `require('playwright')`
-  works from any dir (`node your-test.js`; no module hunting): actually **sign
-  up, log in, log out, submit each form and click each primary button, and assert
-  the result page appears** (not just HTTP 200). Fix what's broken, then re-check.
+  /tmp/forge-app.log if it won't start. Then run the PROVIDED smoke test (run it,
+  don't rewrite it) — it walks signup / login / logout / admin and prints
+  PASS/FAIL:
+
+      node scripts/smoke.js http://localhost:8080 owner@test.local ownerpass123
+
+  Every check must PASS before deploy; a FAIL is a real bug — fix and re-run.
+  (`scripts/` is test-only tooling — do not deploy it or edit `smoke.js`.) Then
+  spot-check the plan's SITE-SPECIFIC flows the same way: a short Node script
+  with `require('playwright')` (global; NODE_PATH preset — just `node check.js`),
+  submitting each key form and asserting **the result page appears on the FIRST
+  click** (not just HTTP 200). Fix what's broken, then re-check.
 
 ## Build, test, deploy
 

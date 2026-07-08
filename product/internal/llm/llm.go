@@ -150,10 +150,16 @@ site is dead, and curl will NOT catch it):
     for i in $(seq 1 30); do curl -sf http://localhost:8080/healthz >/dev/null && break; sleep 0.5; done
   Signing up with owner@test.local creates the first (owner/admin) account. If it
   won't start, read /tmp/forge-app.log — do not guess.
-- Then drive http://localhost:8080 with Playwright. It is installed GLOBALLY and
-  NODE_PATH is preset, so a Node script calling require('playwright') works from
-  any directory (just: node your-test.js) — no module hunting, no NODE_PATH
-  setting.
+- Then run the PROVIDED smoke test — it drives the standard auth + admin + nav
+  flows (the ones that break silently) and prints PASS/FAIL. Run it, do not
+  rewrite it:
+    node scripts/smoke.js http://localhost:8080 owner@test.local ownerpass123
+  Every check must PASS before you deploy; a FAIL is a real bug — fix it and
+  re-run. (scripts/ is test-only tooling — do not deploy it or edit smoke.js.)
+- Then spot-check the plan's SITE-SPECIFIC flows the same way: a short Node
+  script with require('playwright') (it's global, NODE_PATH is preset, so just
+  run: node your-check.js — no module hunting). Submit each key form and assert
+  the result page/state actually appears on the FIRST click.
 - In that real browser, walk through EVERY path a visitor actually uses: sign
   up, log in, log out, and each core feature — submit each form, click each
   primary button ONCE, and assert the RESULT page/state actually appears on the
