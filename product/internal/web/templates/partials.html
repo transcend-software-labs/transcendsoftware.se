@@ -21,7 +21,7 @@
   <nav id="site-nav" class="navlinks" aria-label="Main navigation">
     {{if .User}}
       <a href="/dashboard">Dashboard</a>
-      {{if .IsAdmin}}<a href="/admin">Review</a>{{end}}
+      {{if .IsAdmin}}<a href="/admin">Admin</a>{{end}}
       <span class="muted">{{.User.Email}}</span>
       <form method="post" action="/logout" class="inline"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button class="linklike">Log out</button></form>
     {{else}}
