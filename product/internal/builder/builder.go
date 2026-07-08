@@ -171,6 +171,12 @@ func NewSandbox(machines fly.Machines, newDriver DriverFactory, cfg Config) *San
 // Build spawns a sandbox, runs the agent, deploys, and tears the sandbox down.
 func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, error) {
 	env := map[string]string{}
+	// Playwright is installed GLOBALLY in the sandbox image (npm i -g), but
+	// require('playwright') from a script outside a node_modules tree can't
+	// resolve a global package without NODE_PATH. Preset it (both common global
+	// roots) so the agent's browser test "just works" instead of burning several
+	// tool-calls rediscovering it every build.
+	env["NODE_PATH"] = "/usr/lib/node_modules:/usr/local/lib/node_modules"
 	if b.cfg.AnthropicKey != "" {
 		env["ANTHROPIC_API_KEY"] = b.cfg.AnthropicKey
 	}
