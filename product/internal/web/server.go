@@ -118,6 +118,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /admin/projects/{id}/destroy-preview", s.requireAdmin(s.handleAdminDestroyPreview))
 	mux.HandleFunc("POST /admin/projects/{id}/deliver", s.requireAdmin(s.handleAdminDeliver))
 	mux.HandleFunc("POST /admin/projects/{id}/return", s.requireAdmin(s.handleAdminReturn))
+	mux.HandleFunc("POST /admin/projects/{id}/mirror", s.requireAdmin(s.handleAdminMirror))
 
 	return logRequests(s.log, mux)
 }

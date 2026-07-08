@@ -197,6 +197,20 @@ func (s *Server) handleAdminDestroyPreview(w http.ResponseWriter, r *http.Reques
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
+// handleAdminMirror re-pushes a project's latest workspace snapshot to GitHub.
+// Backfills projects built before mirroring worked and retries after a token
+// fix, with no rebuild. On failure it shows the exact error (e.g. the GitHub API
+// response) so the cause — a token scope, repo access — is diagnosable at once.
+func (s *Server) handleAdminMirror(w http.ResponseWriter, r *http.Request, _ *user.User) {
+	id := r.PathValue("id")
+	if err := s.orch.RemirrorProject(r.Context(), id); err != nil {
+		s.log.Error("admin: re-mirror failed", "project", id, "err", err)
+		http.Error(w, "Re-mirror failed: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	http.Redirect(w, r, "/projects/"+id, http.StatusSeeOther)
+}
+
 // handleAdminDeliver completes the handover: Rasmus has reviewed + guaranteed
 // an accepted project.
 func (s *Server) handleAdminDeliver(w http.ResponseWriter, r *http.Request, _ *user.User) {

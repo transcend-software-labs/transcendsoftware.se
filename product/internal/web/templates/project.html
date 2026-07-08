@@ -15,8 +15,16 @@
   <p class="admin-links">
     {{if .RepoURL}}
       <a href="{{.RepoURL}}" target="_blank" rel="noopener">Source repo ↗</a>
+    {{else if .SnapshotKey}}
+      <span class="muted small">Source repo — not mirrored to GitHub yet.</span>
     {{else}}
-      <span class="muted small">Source repo — not mirrored to GitHub yet (mirrors once the preview is ready).</span>
+      <span class="muted small">Source repo — mirrors once the first preview is built.</span>
+    {{end}}
+    {{if .SnapshotKey}}
+    <form method="post" action="/admin/projects/{{.ID}}/mirror" class="inline">
+      <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+      <button class="linklike">{{if .RepoURL}}Re-mirror{{else}}Mirror to GitHub{{end}}</button>
+    </form>
     {{end}}
   </p>
 </section>

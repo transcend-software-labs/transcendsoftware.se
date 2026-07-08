@@ -20,48 +20,67 @@ const maxMirrorFile = 8 << 20 // 8 MB
 // SetMirror enables GitHub mirroring of each project's source. Nil disables it.
 func (o *Orchestrator) SetMirror(m github.Mirror) { o.mirror = m }
 
-// mirrorToGitHub pushes the just-built workspace to the project's private repo
-// (source review + a deploy-on-push Action). Best-effort: a failure never
-// affects the build. Runs after preview_ready is persisted.
-func (o *Orchestrator) mirrorToGitHub(ctx context.Context, p *project.Project, snapshotKey, message string) {
-	if o.mirror == nil || snapshotKey == "" {
-		return
+// mirrorToGitHub pushes the given workspace snapshot to the project's private
+// repo (source review + a deploy-on-push Action) and persists p.RepoURL on
+// success. It returns an error so callers can decide how to treat a failure:
+// the build flow logs it and moves on (best-effort — never blocks a build),
+// while RemirrorProject surfaces it to the admin.
+func (o *Orchestrator) mirrorToGitHub(ctx context.Context, p *project.Project, snapshotKey, message string) error {
+	if o.mirror == nil {
+		return fmt.Errorf("github mirroring is not configured")
+	}
+	if snapshotKey == "" {
+		return fmt.Errorf("no workspace snapshot to mirror")
 	}
 	raw, err := o.storage.Get(ctx, snapshotKey)
 	if err != nil {
-		o.log.Error("mirror: read snapshot", "project", p.ID, "err", err)
-		return
+		return fmt.Errorf("read snapshot: %w", err)
 	}
 	files, err := untarGz(raw)
 	if err != nil {
-		o.log.Error("mirror: untar snapshot", "project", p.ID, "err", err)
-		return
+		return fmt.Errorf("untar snapshot: %w", err)
 	}
 	if len(files) == 0 {
-		return
+		return fmt.Errorf("snapshot is empty")
 	}
 
 	appName := builder.DeployAppName(p.ID)
 	files[".github/workflows/deploy.yml"] = []byte(deployWorkflow(appName))
 
 	// The CI deploy token is longer-lived than the build token and lives only
-	// as the repo's encrypted FLY_API_TOKEN secret.
+	// as the repo's encrypted FLY_API_TOKEN secret. Non-fatal: without it the
+	// mirror still lands, the deploy Action just can't authenticate yet.
 	ciToken, err := o.machines.RepoDeployToken(ctx, appName)
 	if err != nil {
-		o.log.Error("mirror: ci token", "project", p.ID, "err", err)
+		o.log.Warn("mirror: ci token unavailable; FLY_API_TOKEN will be unset", "project", p.ID, "err", err)
 	}
 
 	url, err := o.mirror.Push(ctx, github.PushSpec{
 		Repo: appName, Message: message, Files: files, FlyToken: ciToken,
 	})
 	if err != nil {
-		o.log.Error("mirror: push", "project", p.ID, "err", err)
-		return
+		return fmt.Errorf("push: %w", err)
 	}
 	p.RepoURL = url
 	if err := o.save(ctx, p); err != nil {
-		o.log.Error("mirror: save repo url", "project", p.ID, "err", err)
+		return fmt.Errorf("save repo url: %w", err)
 	}
+	return nil
+}
+
+// RemirrorProject re-pushes a project's last successful workspace snapshot to
+// its GitHub repo. It backfills projects built before mirroring worked and
+// retries after a token-scope fix — no rebuild, no build-slot. Unlike the
+// build-time mirror it surfaces the error so the admin sees the outcome.
+func (o *Orchestrator) RemirrorProject(ctx context.Context, projectID string) error {
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if p.SnapshotKey == "" {
+		return fmt.Errorf("no workspace snapshot yet — build a preview first")
+	}
+	return o.mirrorToGitHub(ctx, p, p.SnapshotKey, "Mirror: "+p.Name)
 }
 
 // untarGz reads a gzipped tar into path→content, skipping directories, .git and

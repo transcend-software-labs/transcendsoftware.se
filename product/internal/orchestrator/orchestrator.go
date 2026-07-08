@@ -718,7 +718,9 @@ func (o *Orchestrator) finishBuild(ctx context.Context, p *project.Project, it *
 	if it.Prompt != "" {
 		msg = "Apply change: " + truncateMsg(it.Prompt)
 	}
-	o.mirrorToGitHub(ctx, p, snapshotKey, msg)
+	if err := o.mirrorToGitHub(ctx, p, snapshotKey, msg); err != nil {
+		o.log.Warn("mirror to github failed (best-effort; build unaffected)", "project", p.ID, "err", err)
+	}
 	return nil
 }
 
