@@ -112,13 +112,20 @@ Design section with the customer's chosen direction — implement *that*:
 - **Test every user path in a real browser before deploying — required.** Unit
   tests and `curl`/health checks run no JavaScript, so they miss broken
   htmx/form/redirect flows (the #1 "I click the button and nothing happens"
-  bug). Run the app locally, then drive it with Playwright — it's GLOBAL and
-  NODE_PATH is preset, so `require('playwright')` + Chromium work from any dir;
-  just `node your-test.js` (don't hunt for the module): actually **sign up, log
-  in, log out, submit each form and click each
-  primary button, and assert the result page appears** (not just HTTP 200). Fix
-  anything that doesn't work end to end, then re-check. A site whose login
-  silently does nothing is worse than useless.
+  bug). Run the app locally with these EXACT commands (a solved, standard setup —
+  do NOT improvise the process/port/data-dir lifecycle):
+
+      pkill -f /tmp/forge-app 2>/dev/null; rm -rf /tmp/forge-data && mkdir -p /tmp/forge-data
+      go build -o /tmp/forge-app . && DATA_DIR=/tmp/forge-data PORT=8080 \
+        OWNER_EMAIL=owner@test.local /tmp/forge-app >/tmp/forge-app.log 2>&1 &
+      for i in $(seq 1 30); do curl -sf http://localhost:8080/healthz >/dev/null && break; sleep 0.5; done
+
+  Signing up with owner@test.local creates the first (owner/admin) account; read
+  /tmp/forge-app.log if it won't start. Then drive http://localhost:8080 with
+  Playwright — it's GLOBAL and NODE_PATH is preset, so `require('playwright')`
+  works from any dir (`node your-test.js`; no module hunting): actually **sign
+  up, log in, log out, submit each form and click each primary button, and assert
+  the result page appears** (not just HTTP 200). Fix what's broken, then re-check.
 
 ## Build, test, deploy
 

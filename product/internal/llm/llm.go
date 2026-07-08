@@ -142,12 +142,18 @@ Verify EVERY user path in a real browser ON THIS BUILD MACHINE before you deploy
 — this local browser check is a hard gate: do NOT run the fly deploy command
 until every path passes here (a broken login, form, or button means the whole
 site is dead, and curl will NOT catch it):
-- Build and run the app locally first (bind it to a local port with a temp data
-  dir), then drive it with Playwright, which is installed in this sandbox.
-  Playwright + Chromium are GLOBAL and NODE_PATH is already preset, so a short
-  Node script that calls require('playwright') works from any directory — just
-  run it with node. Do NOT waste turns hunting for the module or setting
-  NODE_PATH yourself; it is already handled.
+- Run the app locally with these EXACT commands — reuse them verbatim on every
+  iteration; do NOT improvise the process/port/data-dir lifecycle or re-derive
+  how to start it (this is a solved, standard setup):
+    pkill -f /tmp/forge-app 2>/dev/null; rm -rf /tmp/forge-data && mkdir -p /tmp/forge-data
+    go build -o /tmp/forge-app . && DATA_DIR=/tmp/forge-data PORT=8080 OWNER_EMAIL=owner@test.local /tmp/forge-app >/tmp/forge-app.log 2>&1 &
+    for i in $(seq 1 30); do curl -sf http://localhost:8080/healthz >/dev/null && break; sleep 0.5; done
+  Signing up with owner@test.local creates the first (owner/admin) account. If it
+  won't start, read /tmp/forge-app.log — do not guess.
+- Then drive http://localhost:8080 with Playwright. It is installed GLOBALLY and
+  NODE_PATH is preset, so a Node script calling require('playwright') works from
+  any directory (just: node your-test.js) — no module hunting, no NODE_PATH
+  setting.
 - In that real browser, walk through EVERY path a visitor actually uses: sign
   up, log in, log out, and each core feature — submit each form, click each
   primary button ONCE, and assert the RESULT page/state actually appears on the
