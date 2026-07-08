@@ -9,6 +9,19 @@
 
 {{template "project_status" .}}
 
+{{if $.IsAdmin}}
+<section class="panel admin-panel">
+  <h2 class="admin-tag">Admin</h2>
+  <p class="admin-links">
+    {{if .RepoURL}}
+      <a href="{{.RepoURL}}" target="_blank" rel="noopener">Source repo ↗</a>
+    {{else}}
+      <span class="muted small">Source repo — not mirrored to GitHub yet (mirrors once the preview is ready).</span>
+    {{end}}
+  </p>
+</section>
+{{end}}
+
 {{if eq .Status "needs_input"}}
 <section class="panel">
   <h2>A few quick questions</h2>
