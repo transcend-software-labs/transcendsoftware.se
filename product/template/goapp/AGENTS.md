@@ -63,6 +63,13 @@ Design section with the customer's chosen direction — implement *that*:
   or the `admin*.html` templates are Forge-provided and intentionally styled
   separately from the public site — leave them exactly as they are. Your
   restyling of `app.css` only affects the public pages.
+- **Crossing into `/admin` must be a native link, not a boosted one.** Because
+  `/admin` is served with `admin.css` and the public site with `app.css`, an
+  hx-boost link between them swaps only the `<body>` and keeps the old `<head>`,
+  so the destination loads with the wrong stylesheet (unstyled) until a manual
+  reload. The starter sets `hx-boost="false"` on the nav's "Site admin" link and
+  on admin's "View site" link for exactly this reason — keep it there, and add
+  it to any link you introduce that crosses the public-site ↔ `/admin` boundary.
 - Keep: semantic HTML, accessibility (contrast, focus states, labels), and the
   responsive behavior. Beauty never trumps usability.
 - **Record the chosen direction in `DESIGN.md`** (palette, type, spacing, voice)

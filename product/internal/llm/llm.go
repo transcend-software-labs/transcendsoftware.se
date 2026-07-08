@@ -162,6 +162,14 @@ site is dead, and curl will NOT catch it):
   forms — login, signup, logout — MUST submit natively: put hx-boost="false" on
   those <form> elements so the redirect navigates reliably, and keep the
   post-login redirect to a single hop (avoid /login -> /app -> /admin chains).
+- Same hx-boost trap, different symptom (styling): a boosted LINK that crosses
+  between two pages served with DIFFERENT stylesheets swaps only the <body> and
+  keeps the old <head>, so the destination loads UNSTYLED until a manual reload.
+  The starter has exactly this seam — the public site uses app.css, the /admin
+  area uses admin.css. So ANY link navigating between the public site and /admin
+  MUST set hx-boost="false" (the nav's "Site admin" link INTO admin, and admin's
+  "View site" link back out). In your browser test, click into /admin and assert
+  it is correctly styled on the FIRST navigation, not only after a reload.
 - Fix everything that doesn't work end to end, then re-verify. This is part of
   building the site correctly — it is NOT the gold-plating warned about below.
 

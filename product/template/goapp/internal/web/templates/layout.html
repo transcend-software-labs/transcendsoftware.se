@@ -22,7 +22,10 @@
   </label>
   <nav id="site-nav" class="navlinks" aria-label="Main navigation">
     {{if .User}}
-      {{if .User.IsAdmin}}<a href="/admin">Site admin</a>{{else}}<a href="/app">Account</a>{{end}}
+      {{/* /admin is served with a different stylesheet (admin.css); hx-boost
+           would swap only the body and keep app.css, leaving admin unstyled
+           until a manual reload — so cross into it with a native navigation. */}}
+      {{if .User.IsAdmin}}<a href="/admin" hx-boost="false">Site admin</a>{{else}}<a href="/app">Account</a>{{end}}
       <form method="post" action="/logout" class="inline">
         <input type="hidden" name="csrf_token" value="{{.CSRF}}">
         <button class="linklike">Log out</button>
