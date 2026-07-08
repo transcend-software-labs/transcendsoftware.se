@@ -18,7 +18,7 @@ import (
 type Store interface {
 	// Put stores an object under key with the given content type.
 	Put(ctx context.Context, key, contentType string, r io.Reader, size int64) error
-	// Get returns the object's bytes (used to read a snapshot for GitHub mirroring).
+	// Get returns the object's bytes (e.g. reading a workspace snapshot tarball).
 	Get(ctx context.Context, key string) ([]byte, error)
 	// PresignGet returns a short-lived, read-only URL for the object.
 	PresignGet(ctx context.Context, key string, expiry time.Duration) (string, error)

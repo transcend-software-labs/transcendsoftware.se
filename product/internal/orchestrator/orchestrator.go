@@ -21,7 +21,6 @@ import (
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
-	"github.com/transcend-software-labs/rasmus-ai/internal/github"
 	"github.com/transcend-software-labs/rasmus-ai/internal/id"
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
 	"github.com/transcend-software-labs/rasmus-ai/internal/notify"
@@ -56,7 +55,6 @@ type Orchestrator struct {
 	operatorEmail string          // Rasmus — escalation/failure notices
 	baseURL       string          // for links in emails
 	templateKey   string          // object-storage key of the starter-app tarball ("" = greenfield)
-	mirror        github.Mirror   // GitHub source mirror; nil disables it
 }
 
 // SetTemplate points first builds at a starter-app tarball in object storage.
@@ -712,15 +710,6 @@ func (o *Orchestrator) finishBuild(ctx context.Context, p *project.Project, it *
 	o.notifyCustomer(ctx, p.UserID, "Your website preview is ready",
 		"Your preview for \""+p.Name+"\" is ready to view:\n\n"+res.PreviewURL+"\n\n"+
 			"Open your project to review it or request a change: "+o.projectLink(p.ID))
-
-	// Mirror the source to GitHub for review + deploy-on-push (best-effort).
-	msg := "Build: " + p.Name
-	if it.Prompt != "" {
-		msg = "Apply change: " + truncateMsg(it.Prompt)
-	}
-	if err := o.mirrorToGitHub(ctx, p, snapshotKey, msg); err != nil {
-		o.log.Warn("mirror to github failed (best-effort; build unaffected)", "project", p.ID, "err", err)
-	}
 	return nil
 }
 
@@ -740,14 +729,6 @@ func (o *Orchestrator) presignScreenshots(ctx context.Context, projectID string)
 		keys = append(keys, key)
 	}
 	return puts, keys
-}
-
-func truncateMsg(s string) string {
-	s = strings.TrimSpace(strings.ReplaceAll(s, "\n", " "))
-	if len(s) > 72 {
-		return s[:72] + "…"
-	}
-	return s
 }
 
 func (o *Orchestrator) setStatus(ctx context.Context, p *project.Project, s project.Status) error {

@@ -20,27 +20,6 @@
      hx-swap="beforeend" hx-on::after-swap="this.scrollTop = this.scrollHeight"></div>
 {{end}}
 
-{{if $.IsAdmin}}
-<section class="panel admin-panel">
-  <h2 class="admin-tag">Admin</h2>
-  <p class="admin-links">
-    {{if .RepoURL}}
-      <a href="{{.RepoURL}}" target="_blank" rel="noopener">Source repo ↗</a>
-    {{else if .SnapshotKey}}
-      <span class="muted small">Source repo — not mirrored to GitHub yet.</span>
-    {{else}}
-      <span class="muted small">Source repo — mirrors once the first preview is built.</span>
-    {{end}}
-    {{if .SnapshotKey}}
-    <form method="post" action="/admin/projects/{{.ID}}/mirror" class="inline">
-      <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-      <button class="linklike">{{if .RepoURL}}Re-mirror{{else}}Mirror to GitHub{{end}}</button>
-    </form>
-    {{end}}
-  </p>
-</section>
-{{end}}
-
 {{if eq .Status "needs_input"}}
 <section class="panel">
   <h2>A few quick questions</h2>

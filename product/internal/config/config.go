@@ -27,11 +27,6 @@ type Config struct {
 	EmailFrom    string // verified sender, e.g. "Transcend Forge <hello@forge.transcendsoftware.se>"
 	EmailReplyTo string // monitored inbox for replies (sending subdomain can't receive mail)
 
-	// GitHub source mirroring (empty token → disabled). Token needs repo +
-	// workflow scopes on the org.
-	GitHubToken string
-	GitHubOrg   string
-
 	// Social login (empty client id/secret → that provider is hidden).
 	GoogleClientID       string
 	GoogleClientSecret   string
@@ -138,9 +133,6 @@ func Load() Config {
 		ResendAPIKey: os.Getenv("RESEND_API_KEY"),
 		EmailFrom:    envOr("EMAIL_FROM", "Transcend Forge <onboarding@resend.dev>"),
 		EmailReplyTo: os.Getenv("EMAIL_REPLY_TO"),
-		GitHubToken:  os.Getenv("GITHUB_TOKEN"),
-		GitHubOrg:    envOr("GITHUB_ORG", "transcend-software-labs"),
-
 		GoogleClientID:       os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret:   os.Getenv("GOOGLE_CLIENT_SECRET"),
 		LinkedInClientID:     os.Getenv("LINKEDIN_CLIENT_ID"),

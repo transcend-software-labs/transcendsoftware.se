@@ -214,25 +214,6 @@ textarea { resize: vertical; }
 .panel > h2 + p, .panel > h3 + p { margin-top: -.25rem; }
 .brief { color: var(--muted); }
 
-/* Admin-only block on the project page (source repo, etc.). Boxed + dashed so
-   it reads as internal tooling, clearly not part of the customer's view. */
-.admin-panel {
-  border: 1px dashed var(--border-2);
-  border-radius: var(--radius);
-  padding: 1rem 1.25rem;
-  margin-top: 2rem;
-  background: rgba(224, 169, 60, .05);
-}
-.admin-tag {
-  font-size: .72rem;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-  color: var(--accent);
-  margin-bottom: .5rem;
-}
-.admin-links { margin: 0; }
-.admin-links a { font-weight: 500; }
-
 .questions { margin: .75rem 0 1rem 1.1rem; display: flex; flex-direction: column; gap: .5rem; }
 .questions li { color: var(--text); }
 .plan, .log {

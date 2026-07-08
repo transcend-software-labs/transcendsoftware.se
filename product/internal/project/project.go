@@ -75,7 +75,7 @@ type Project struct {
 	Verdict        Verdict        // safety-gate outcome
 	RejectReason   string         // populated when Status == rejected
 	PreviewURL     string         // latest deployed preview link
-	RepoURL        string         // reserved for GitHub mirroring (Phase 4); not populated yet
+	RepoURL        string         // vestigial: GitHub mirroring was removed; kept to avoid a DB migration (always "")
 	SnapshotKey    string         // object-storage key of the workspace snapshot from the last successful build
 	Screenshots    []Screenshot   // one per page of the deployed site (for /admin review)
 	IterationsUsed int            // number of build passes consumed (1..MaxIterations)

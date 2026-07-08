@@ -21,7 +21,6 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
-	"github.com/transcend-software-labs/rasmus-ai/internal/github"
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
 	"github.com/transcend-software-labs/rasmus-ai/internal/notify"
 	"github.com/transcend-software-labs/rasmus-ai/internal/oauth"
@@ -74,10 +73,6 @@ func main() {
 	if cfg.TemplateKey != "" {
 		log.Info("template: starter app enabled", "key", cfg.TemplateKey)
 		orch.SetTemplate(cfg.TemplateKey)
-	}
-	if cfg.GitHubToken != "" {
-		log.Info("github: source mirroring enabled", "org", cfg.GitHubOrg)
-		orch.SetMirror(github.NewHTTP(github.Options{Org: cfg.GitHubOrg, Token: cfg.GitHubToken, Logger: log}))
 	}
 	orch.RecoverInterrupted(context.Background()) // reap builds left running by a prior run
 	// Reap zombie infrastructure hourly: preview apps of failed projects,
