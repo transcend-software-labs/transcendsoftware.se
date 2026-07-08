@@ -9,6 +9,17 @@
 
 {{template "project_status" .}}
 
+{{if or (eq .Status "planning") (eq .Status "screening") (eq .Status "building")}}
+{{/* The live build log lives OUTSIDE the polled #status box on purpose: the
+     status poll swaps #status every few seconds, and if the log were inside it
+     the element would be recreated each poll — reconnecting the SSE, replaying
+     the whole history (flicker) and resetting scroll to the top. As a stable
+     sibling it connects once, appends new lines, and auto-scrolls to newest. */}}
+<div class="log livelog" id="livelog"
+     hx-ext="sse" sse-connect="/projects/{{.ID}}/stream" sse-swap="log"
+     hx-swap="beforeend" hx-on::after-swap="this.scrollTop = this.scrollHeight"></div>
+{{end}}
+
 {{if $.IsAdmin}}
 <section class="panel admin-panel">
   <h2 class="admin-tag">Admin</h2>

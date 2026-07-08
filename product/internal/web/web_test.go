@@ -297,8 +297,8 @@ func TestProjectStatus_BuildingStreamsInline(t *testing.T) {
 		}
 		return p.ID
 	}
-	get := func(id string) string {
-		resp, err := c.Get(srv.URL + "/projects/" + id + "/status")
+	fetch := func(path string) string {
+		resp, err := c.Get(srv.URL + path)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -306,21 +306,30 @@ func TestProjectStatus_BuildingStreamsInline(t *testing.T) {
 		resp.Body.Close()
 		return string(b)
 	}
+	get := func(id string) string { return fetch("/projects/" + id + "/status") }
+	getPage := func(id string) string { return fetch("/projects/" + id) }
 
 	buildingID := seed(project.StatusBuilding)
-	building := get(buildingID)
+	// The live log is DECOUPLED from the polled status fragment: it lives as a
+	// stable sibling on the project page so the status poll can't recreate it
+	// (which caused flicker + scroll-reset). The /status fragment must not carry
+	// it...
+	if frag := get(buildingID); strings.Contains(frag, "livelog") {
+		t.Errorf("status fragment must not carry the live log (it is a stable sibling now):\n%s", frag)
+	}
+	// ...and the full project page while building must render it once.
+	page := getPage(buildingID)
 	for _, want := range []string{
 		`sse-connect="/projects/` + buildingID + `/stream"`,
-		`hx-preserve="true"`,
 		`id="livelog"`,
 	} {
-		if !strings.Contains(building, want) {
-			t.Errorf("building status fragment missing %q:\n%s", want, building)
+		if !strings.Contains(page, want) {
+			t.Errorf("building project page missing %q:\n%s", want, page)
 		}
 	}
-	// A different polling status (escalated) must not carry the live log.
-	if esc := get(seed(project.StatusEscalated)); strings.Contains(esc, "livelog") {
-		t.Errorf("non-building status should not stream:\n%s", esc)
+	// A finished project page (delivered) must not stream a live log.
+	if strings.Contains(getPage(seed(project.StatusDelivered)), "livelog") {
+		t.Errorf("a finished project page should not stream a live log")
 	}
 }
 
