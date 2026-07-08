@@ -128,7 +128,7 @@ func (c Config) StorageEnabled() bool {
 
 // Load reads configuration from the environment, applying dev-friendly defaults.
 func Load() Config {
-	return Config{
+	c := Config{
 		Addr:         listenAddr(),
 		BaseURL:      envOr("BASE_URL", "http://localhost:8080"),
 		SessionTTL:   30 * 24 * time.Hour,
@@ -189,6 +189,18 @@ func Load() Config {
 
 		Impeccable: os.Getenv("IMPECCABLE_ENABLED") == "true",
 	}
+
+	// OPENCODE_GO_API_KEY: a single OpenCode Zen key that backs the whole
+	// pipeline. When set, route impl+intake+gate AND the plan step through Zen —
+	// impl/intake/gate keep LLMModel (Kimi), the plan step keeps PlannerLLMModel
+	// (GLM 5.2) — overriding any LLM_* / PLANNER_LLM_* endpoint and key. The
+	// sandbox opencode provider is OpenAI-compatible, so Zen drops straight in.
+	if zen := os.Getenv("OPENCODE_GO_API_KEY"); zen != "" {
+		const zenBase = "https://opencode.ai/zen/v1"
+		c.LLMBaseURL, c.LLMAPIKey = zenBase, zen
+		c.PlannerLLMBaseURL, c.PlannerLLMAPIKey = zenBase, zen
+	}
+	return c
 }
 
 // DevMode reports whether the app is running fully in-memory/fake.
