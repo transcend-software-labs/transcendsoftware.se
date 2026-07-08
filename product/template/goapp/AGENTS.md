@@ -124,12 +124,14 @@ Design section with the customer's chosen direction — implement *that*:
 
       pkill -f /tmp/forge-app 2>/dev/null; rm -rf /tmp/forge-data && mkdir -p /tmp/forge-data
       go build -o /tmp/forge-app .   # FOREGROUND: let the build finish (and show errors) first
-      DATA_DIR=/tmp/forge-data PORT=8080 OWNER_EMAIL=owner@test.local /tmp/forge-app >/tmp/forge-app.log 2>&1 &
-      for i in $(seq 1 30); do curl -sf http://localhost:8080/healthz >/dev/null && break; sleep 0.5; done
+      DATA_DIR=/tmp/forge-data PORT=8080 OWNER_EMAIL=owner@test.local setsid /tmp/forge-app >/tmp/forge-app.log 2>&1 </dev/null &
+      for i in $(seq 1 30); do curl -sf -m 2 http://localhost:8080/healthz >/dev/null && break; sleep 0.5; done
 
-  (Build in the foreground on its own line — backgrounding it with `&` races the
-  healthz check and makes a clean build look like a crash. Read /tmp/forge-app.log
-  if healthz never comes up.)
+  Two things are load-bearing: **`go build` runs in the foreground** (its own
+  line — backgrounding it races healthz and looks like a crash), and the server
+  uses **`setsid … </dev/null &`** — a bare `server &` HANGS the bash step forever
+  (the shell waits on the long-lived server); `setsid` detaches it so the step
+  returns. Keep both. Read `/tmp/forge-app.log` if healthz never comes up.
 
   Signing up with owner@test.local creates the first (owner/admin) account; read
   /tmp/forge-app.log if it won't start. Then run the PROVIDED smoke test (run it,
