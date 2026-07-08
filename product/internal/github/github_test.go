@@ -45,6 +45,12 @@ func mockGitHub(t *testing.T) (*httptest.Server, *mockState) {
 		case strings.HasSuffix(p, "/git/refs/heads/main") && r.Method == http.MethodPatch:
 			_, _ = w.Write([]byte(`{}`))
 		case strings.HasSuffix(p, "/actions/secrets/public-key"):
+			// Simulate a token without the Secrets permission.
+			if st.rejectSecrets {
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(`{"message":"Resource not accessible by personal access token"}`))
+				return
+			}
 			_, _ = w.Write([]byte(`{"key_id":"kid","key":"` + st.pubKey + `"}`))
 		case strings.Contains(p, "/actions/secrets/") && r.Method == http.MethodPut:
 			body, _ := io.ReadAll(r.Body)
@@ -68,6 +74,7 @@ type mockState struct {
 	secrets            map[string]bool
 	pubKey             string
 	rejectWorkflowTree bool   // 404 any tree containing .github/workflows/
+	rejectSecrets      bool   // 403 the secrets public-key endpoint
 	lastTree           string // body of the last accepted tree POST
 }
 
@@ -128,6 +135,37 @@ func TestPush_DegradesWhenWorkflowRejected(t *testing.T) {
 	}
 	if strings.Contains(st.lastTree, ".github/workflows/") {
 		t.Errorf("workflow file should have been dropped from final tree: %s", st.lastTree)
+	}
+}
+
+// The FLY_API_TOKEN secret only powers the deploy Action. If the token can't set
+// it (no Secrets permission), the source must still mirror — not abort the whole
+// push (which is what left the repo with only its auto README).
+func TestPush_SecretFailureStillMirrorsSource(t *testing.T) {
+	srv, st := mockGitHub(t)
+	defer srv.Close()
+	st.rejectSecrets = true
+	m := NewHTTP(Options{Org: "acme", Token: "t", APIBase: srv.URL, WebBase: "https://github.com"})
+
+	url, err := m.Push(context.Background(), PushSpec{
+		Repo:     "testrepo",
+		Message:  "Build",
+		Files:    map[string][]byte{"index.html": []byte("<h1>hi</h1>")},
+		FlyToken: "FlyV1 deploy-token",
+	})
+	if err != nil {
+		t.Fatalf("push should succeed despite the secret failure, got: %v", err)
+	}
+	if url != "https://github.com/acme/testrepo" {
+		t.Errorf("unexpected url %q", url)
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if !strings.Contains(st.lastTree, "index.html") {
+		t.Errorf("source not pushed: %s", st.lastTree)
+	}
+	if st.secrets["FLY_API_TOKEN"] {
+		t.Error("secret should not have been set when the API rejected it")
 	}
 }
 

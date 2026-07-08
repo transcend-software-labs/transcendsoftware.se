@@ -64,13 +64,19 @@ func (h *HTTP) Push(ctx context.Context, spec PushSpec) (string, error) {
 	if err := h.ensureRepo(ctx, spec.Repo); err != nil {
 		return "", fmt.Errorf("ensure repo: %w", err)
 	}
-	if spec.FlyToken != "" {
-		if err := h.setSecret(ctx, spec.Repo, "FLY_API_TOKEN", spec.FlyToken); err != nil {
-			return "", fmt.Errorf("set secret: %w", err)
-		}
-	}
+	// The mirrored source is the deliverable — push it first, and let it fail the
+	// whole Push. Do NOT gate it behind the deploy secret below.
 	if err := h.commitFiles(ctx, spec.Repo, spec.Message, spec.Files); err != nil {
 		return "", fmt.Errorf("commit files: %w", err)
+	}
+	// FLY_API_TOKEN only powers the deploy-on-push Action, and setting it needs
+	// the token's Secrets permission. Best-effort: without it the source is still
+	// mirrored — the Action just can't authenticate to deploy until it's fixed.
+	if spec.FlyToken != "" {
+		if err := h.setSecret(ctx, spec.Repo, "FLY_API_TOKEN", spec.FlyToken); err != nil {
+			h.log.Warn("mirror: could not set FLY_API_TOKEN secret (token likely lacks the "+
+				"Secrets permission); source mirrored, auto-deploy not wired", "repo", spec.Repo, "err", err)
+		}
 	}
 	return h.webBase + "/" + h.org + "/" + spec.Repo, nil
 }
