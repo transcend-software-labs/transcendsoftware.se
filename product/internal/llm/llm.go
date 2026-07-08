@@ -179,30 +179,29 @@ Verify EVERY user path in a real browser ON THIS BUILD MACHINE before you deploy
 — this local browser check is a hard gate: do NOT run the fly deploy command
 until every path passes here (a broken login, form, or button means the whole
 site is dead, and curl will NOT catch it):
-- Run the app locally with these EXACT commands — reuse them verbatim on every
+- To (re)start the app locally, run ONE command — reuse it verbatim on every
   iteration; do NOT improvise the process/port/data-dir lifecycle or re-derive
   how to start it (this is a solved, standard setup):
-    pkill -f /tmp/forge-app 2>/dev/null; rm -rf /tmp/forge-data && mkdir -p /tmp/forge-data
-    go build -o /tmp/forge-app .   # FOREGROUND — must finish (and surface any error) before starting
-    DATA_DIR=/tmp/forge-data PORT=8080 OWNER_EMAIL=owner@test.local setsid /tmp/forge-app >/tmp/forge-app.log 2>&1 </dev/null &
-    for i in $(seq 1 30); do curl -sf -m 2 http://localhost:8080/healthz >/dev/null && break; sleep 0.5; done
-  Run go build on its own line FIRST (foreground). The server line uses setsid
-  and </dev/null on purpose: a bare "server &" HANGS this bash call forever
-  (your shell waits on the long-lived process) — setsid fully detaches it so the
-  call returns; keep both. If the build fails, fix the compile error; if healthz
-  never comes up, read /tmp/forge-app.log.
-  Signing up with owner@test.local creates the first (owner/admin) account. If it
-  won't start, read /tmp/forge-app.log — do not guess.
+    ./scripts/serve.sh
+  It kills any previous instance HARD, frees the port, wipes the throwaway data
+  dir, rebuilds in the foreground (surfacing any compile error), starts the app
+  detached, and prints "app ready …" when healthy. Run it again after every code
+  change. On a build error it prints it — fix and re-run. If healthz never comes
+  up it tails /tmp/forge-app.log for you.
+  **NEVER debug ports or processes** with ps / lsof / fuser / ss / netstat / kill
+  — that hand-management is the single biggest time sink and is banned. If a
+  start ever fails or ":8080 is busy", the ONLY correct response is to run
+  ./scripts/serve.sh again; its SIGKILL frees the port every time. Do not hunt
+  for stray processes.
+  Signing up with owner@test.local creates the first (owner/admin) account.
 - Then run the PROVIDED smoke test — it drives the standard auth + admin + nav
   flows (the ones that break silently) and prints PASS/FAIL. Run it, do not
   rewrite it:
     node scripts/smoke.js http://localhost:8080 owner@test.local ownerpass123
   Every check must PASS before you deploy; a FAIL is a real bug — FIX the
   reported issue and RE-RUN smoke.js. It already covers auth, admin styling and
-  nav, so do NOT write your own scripts to re-verify those, and do NOT hunt for
-  stray processes (lsof / ps / /proc) — the pkill at the top of the run block is
-  all the cleanup you need; if a port seems busy, just re-run that block.
-  (scripts/ is test-only tooling — do not deploy it or edit smoke.js.)
+  nav, so do NOT write your own scripts to re-verify those.
+  (scripts/ is test-only tooling — do not deploy it or edit smoke.js/serve.sh.)
 - Once smoke.js is green, test the plan's SITE-SPECIFIC flow it cannot know about
   (a booking, a custom form) with the PROVIDED declarative runner — do NOT
   hand-roll a Playwright script (that is the #1 time sink):

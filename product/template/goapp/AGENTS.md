@@ -125,33 +125,33 @@ Forge-specific rules layered on top of it.
 - **Test every user path in a real browser before deploying — required.** Unit
   tests and `curl`/health checks run no JavaScript, so they miss broken
   htmx/form/redirect flows (the #1 "I click the button and nothing happens"
-  bug). Run the app locally with these EXACT commands (a solved, standard setup —
-  do NOT improvise the process/port/data-dir lifecycle):
+  bug). To (re)start the app locally, run ONE command — do NOT improvise the
+  process/port/data-dir lifecycle:
 
-      pkill -f /tmp/forge-app 2>/dev/null; rm -rf /tmp/forge-data && mkdir -p /tmp/forge-data
-      go build -o /tmp/forge-app .   # FOREGROUND: let the build finish (and show errors) first
-      DATA_DIR=/tmp/forge-data PORT=8080 OWNER_EMAIL=owner@test.local setsid /tmp/forge-app >/tmp/forge-app.log 2>&1 </dev/null &
-      for i in $(seq 1 30); do curl -sf -m 2 http://localhost:8080/healthz >/dev/null && break; sleep 0.5; done
+      ./scripts/serve.sh        # builds, (re)starts on :8080, waits for health
 
-  Two things are load-bearing: **`go build` runs in the foreground** (its own
-  line — backgrounding it races healthz and looks like a crash), and the server
-  uses **`setsid … </dev/null &`** — a bare `server &` HANGS the bash step forever
-  (the shell waits on the long-lived server); `setsid` detaches it so the step
-  returns. Keep both. Read `/tmp/forge-app.log` if healthz never comes up.
+  Run it again any time you change code: it kills the old instance HARD, frees
+  the port, wipes the throwaway data dir, rebuilds, restarts detached, and prints
+  "app ready …" when up (owner account owner@test.local / ownerpass123). On a
+  compile error it prints it — fix and re-run. Read /tmp/forge-app.log if it
+  won't come up.
 
-  Signing up with owner@test.local creates the first (owner/admin) account; read
-  /tmp/forge-app.log if it won't start. Then run the PROVIDED smoke test (run it,
-  don't rewrite it) — it walks signup / login / logout / admin and prints
-  PASS/FAIL:
+  **NEVER debug ports or processes** with `ps` / `lsof` / `fuser` / `ss` /
+  `netstat` / `kill` — that hand-management is the single biggest time sink and
+  is banned. If a start ever fails or ":8080 is busy", the ONLY correct response
+  is to run `./scripts/serve.sh` again — its SIGKILL frees the port every time.
+  Do not hunt for stray processes.
+
+  Signing up with owner@test.local creates the first (owner/admin) account. Then
+  run the PROVIDED smoke test (run it, don't rewrite it) — it walks signup /
+  login / logout / admin and prints PASS/FAIL:
 
       node scripts/smoke.js http://localhost:8080 owner@test.local ownerpass123
 
   Every check must PASS before deploy; a FAIL is a real bug — **FIX the reported
   issue and RE-RUN `smoke.js`.** smoke.js already covers auth, admin styling and
-  nav, so do NOT write your own scripts to re-verify those flows, and do NOT hunt
-  for stray processes (`lsof` / `ps` / `/proc`) — the `pkill` at the top of the
-  run block is all the cleanup you need; if `:8080` seems busy just re-run that
-  block. (`scripts/` is test-only tooling — do not deploy it or edit `smoke.js`.)
+  nav, so do NOT write your own scripts to re-verify those flows. (`scripts/` is
+  test-only tooling — do not deploy it or edit `smoke.js`/`serve.sh`.)
   Once smoke.js is green, test the plan's SITE-SPECIFIC flow it can't know about
   (a booking, a custom form) with the PROVIDED declarative runner — do NOT
   hand-roll a Playwright script (that is the #1 time sink). Write a small steps
