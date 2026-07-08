@@ -70,6 +70,15 @@ type Config struct {
 	LLMAPIKey  string
 	LLMModel   string
 
+	// Optional dedicated model for the PLAN step only (intake + gate keep the
+	// LLM_* client above). Lets planning run on a stronger/cheaper model than
+	// implementation — e.g. GLM 5.2 via the OpenCode Zen gateway
+	// (https://opencode.ai/zen/v1). Empty PlannerLLMAPIKey → plan uses the
+	// shared LLM_* client, i.e. current behavior.
+	PlannerLLMBaseURL string
+	PlannerLLMAPIKey  string
+	PlannerLLMModel   string
+
 	// Execution plane (empty → fake driver/machines):
 	OpencodeURL     string // fixed opencode server base URL (overrides per-machine)
 	OpencodePort    int    // port opencode listens on inside each sandbox machine
@@ -150,6 +159,10 @@ func Load() Config {
 		LLMBaseURL:      envOr("LLM_BASE_URL", "https://api.moonshot.ai/v1"),
 		LLMAPIKey:       os.Getenv("LLM_API_KEY"),
 		LLMModel:        envOr("LLM_MODEL", "kimi-k2.7-code"),
+
+		PlannerLLMBaseURL: envOr("PLANNER_LLM_BASE_URL", "https://opencode.ai/zen/v1"),
+		PlannerLLMAPIKey:  os.Getenv("PLANNER_LLM_API_KEY"),
+		PlannerLLMModel:   envOr("PLANNER_LLM_MODEL", "glm-5.2"),
 		OpencodeURL:     os.Getenv("OPENCODE_URL"),
 		OpencodePort:    4096,
 		FlyAPIToken:     os.Getenv("FLY_API_TOKEN"),

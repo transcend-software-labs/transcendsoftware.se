@@ -135,20 +135,32 @@ func newStore(cfg config.Config, log *slog.Logger) (store.Store, error) {
 }
 
 func newLLM(cfg config.Config, log *slog.Logger) (llm.Intake, llm.Planner, llm.SafetyGate) {
+	// Base client drives intake + safety-gate (and the plan step unless a
+	// dedicated planner is configured below).
+	var intake llm.Intake
+	var planner llm.Planner
+	var gate llm.SafetyGate
 	switch {
 	case cfg.LLMAPIKey != "":
 		log.Info("llm: openai-compatible", "base", cfg.LLMBaseURL, "model", cfg.LLMModel)
 		c := llm.NewOpenAICompat(cfg.LLMBaseURL, cfg.LLMAPIKey, cfg.LLMModel)
-		return c, c, c
+		intake, planner, gate = c, c, c
 	case cfg.AnthropicAPIKey != "":
 		log.Info("llm: anthropic")
 		a := llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.AnthropicModel)
-		return a, a, a
+		intake, planner, gate = a, a, a
 	default:
 		log.Info("llm: fake (dev)")
 		f := llm.NewFake()
-		return f, f, f
+		intake, planner, gate = f, f, f
 	}
+	// Optionally run the PLAN step on a dedicated model (e.g. GLM 5.2 via
+	// OpenCode Zen), leaving intake/gate/impl unchanged.
+	if cfg.PlannerLLMAPIKey != "" {
+		log.Info("llm: dedicated planner", "base", cfg.PlannerLLMBaseURL, "model", cfg.PlannerLLMModel)
+		planner = llm.NewOpenAICompat(cfg.PlannerLLMBaseURL, cfg.PlannerLLMAPIKey, cfg.PlannerLLMModel)
+	}
+	return intake, planner, gate
 }
 
 // driverFactory decides how to reach opencode for each build:
