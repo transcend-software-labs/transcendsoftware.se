@@ -476,13 +476,17 @@ func emailFrom(siteName, address string) string {
 
 // impeccableStep appends a deterministic design-quality gate to the build when
 // enabled. `impeccable` is baked into the sandbox image (no LLM, no key).
-const impeccableStep = `DESIGN-QUALITY GATE — required before you deploy:
-This sandbox has the "impeccable" design detector. Once the UI is built, run:
+const impeccableStep = `DESIGN-QUALITY GATE — this runs BEFORE the fly deploy command, together with
+the browser test, as your last pre-deploy checks. Do NOT deploy first and fix
+after: that wastes an entire deploy on an unpolished site.
+This sandbox has the "impeccable" design detector. After the UI is built and the
+browser test passes, but BEFORE you run fly deploy, run:
   impeccable detect --json internal/web/static internal/web/templates
 Fix every issue it reports (they flag AI-generated-design tells and quality
-problems — see DESIGN.md and AGENTS.md), then run it again. Repeat at most
-TWICE, then deploy. An empty report ([]) means it's clean. Do not let this gate
-block the deploy indefinitely — after two fix passes, deploy your best result.`
+problems — see DESIGN.md and AGENTS.md), then run it again. An empty report ([])
+means it's clean. Repeat at most TWICE — then deploy your best result; do not let
+this gate block the deploy indefinitely. Only run fly deploy once this is clean
+(or after two fix passes).`
 
 // resumePreamble tells the agent the workspace holds an interrupted build's
 // progress: finish and deploy, don't redo completed work.

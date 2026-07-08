@@ -226,11 +226,17 @@ Then make it deployable and deploy it:
   internal_port = 8080, force_https = true, auto_stop_machines = "stop",
   auto_start_machines = true, min_machines_running = 0. The auto-stop settings
   are required — previews must cost nothing while nobody is looking at them.
+- Do NOT run fly deploy until ALL pre-deploy gates pass: the browser smoke test
+  is green, AND — if your instructions include a DESIGN-QUALITY GATE — it is
+  clean (or you've done its two fix passes). Deploying first and fixing after
+  wastes a whole deploy. These gates all happen BEFORE the deploy, not after.
 - Deploy by running exactly this command:
   fly deploy --remote-only --ha=false --app "$FLY_APP" --access-token "$FLY_DEPLOY_TOKEN"
   (--ha=false is required: these apps run as ONE machine; if the app uses
   SQLite, a second machine would be a second, diverging database.)
-- Confirm the deploy finished successfully.
+- Confirm the deploy finished successfully. Do NOT re-run impeccable or the smoke
+  test against the deployed site — they already passed locally; the deploy is the
+  last step.
 
 Finish — do not gold-plate (this matters; builds that run too long are killed):
 - Build exactly what the plan asks, nothing more. Do NOT add extra pages,
