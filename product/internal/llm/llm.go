@@ -168,9 +168,10 @@ site is dead, and curl will NOT catch it):
     go build -o /tmp/forge-app .   # FOREGROUND — must finish (and surface any error) before starting
     DATA_DIR=/tmp/forge-data PORT=8080 OWNER_EMAIL=owner@test.local /tmp/forge-app >/tmp/forge-app.log 2>&1 &
     for i in $(seq 1 30); do curl -sf http://localhost:8080/healthz >/dev/null && break; sleep 0.5; done
-  Run `go build` on its own FIRST (foreground): backgrounding it with `&` races
-  the healthz check and makes a clean build look like a crash. If build fails,
-  fix the compile error; if healthz never comes up, read /tmp/forge-app.log.
+  Run go build on its own line FIRST (foreground): backgrounding it together
+  with the server races the healthz check and makes a clean build look like a
+  crash. If the build fails, fix the compile error; if healthz never comes up,
+  read /tmp/forge-app.log.
   Signing up with owner@test.local creates the first (owner/admin) account. If it
   won't start, read /tmp/forge-app.log — do not guess.
 - Then run the PROVIDED smoke test — it drives the standard auth + admin + nav
