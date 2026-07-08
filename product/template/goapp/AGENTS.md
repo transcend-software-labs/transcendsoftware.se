@@ -146,11 +146,21 @@ Design section with the customer's chosen direction — implement *that*:
   for stray processes (`lsof` / `ps` / `/proc`) — the `pkill` at the top of the
   run block is all the cleanup you need; if `:8080` seems busy just re-run that
   block. (`scripts/` is test-only tooling — do not deploy it or edit `smoke.js`.)
-  Once smoke.js is green, spot-check ONLY the plan's SITE-SPECIFIC flows it can't
-  know about (a booking, a custom form): **one** short Node script with
-  `require('playwright')` (global; NODE_PATH preset — just `node check.js`),
-  asserting **the result page appears on the FIRST click** (not just HTTP 200).
-  Fix what's broken, then re-check. Don't build a parallel test harness.
+  Once smoke.js is green, test the plan's SITE-SPECIFIC flow it can't know about
+  (a booking, a custom form) with the PROVIDED declarative runner — do NOT
+  hand-roll a Playwright script (that is the #1 time sink). Write a small steps
+  JSON and run it:
+
+      node scripts/flow.js http://localhost:8080 /tmp/flow.json
+
+  Steps are declarative — `{"signupOwner":"owner@test.local"}`,
+  `{"login":"..."}`, `{"goto":"/book"}`, `{"fill":{"select[name='space']":"Hot
+  desk"}}`, `{"click":"button[type=submit]"}`, `{"expect":"Booking confirmed"}`,
+  `{"expectUrl":"/bookings"}`. See the header of `scripts/flow.js` for the full
+  list. It handles the browser, login, waits and assertions for you, so there is
+  nothing to debug — just get the SELECTORS and expected text right. If a step
+  FAILS, fix the app (not the flow file) and re-run. One flow file for the key
+  path is enough — don't build a parallel Playwright harness.
 
 ## Build, test, deploy
 

@@ -185,11 +185,16 @@ site is dead, and curl will NOT catch it):
   stray processes (lsof / ps / /proc) — the pkill at the top of the run block is
   all the cleanup you need; if a port seems busy, just re-run that block.
   (scripts/ is test-only tooling — do not deploy it or edit smoke.js.)
-- Once smoke.js is green, spot-check ONLY the plan's SITE-SPECIFIC flows it
-  cannot know about (a booking, a custom form) — ONE short Node script with
-  require('playwright') (global; NODE_PATH preset, so just: node your-check.js).
-  Assert the result page/state appears on the FIRST click. Do not build a
-  parallel test harness or re-check what smoke.js already covers.
+- Once smoke.js is green, test the plan's SITE-SPECIFIC flow it cannot know about
+  (a booking, a custom form) with the PROVIDED declarative runner — do NOT
+  hand-roll a Playwright script (that is the #1 time sink):
+    node scripts/flow.js http://localhost:8080 /tmp/flow.json
+  where flow.json is a small array of declarative steps (signupOwner/login/goto/
+  fill/click/expect/expectUrl/expectFirstClick — see the header of
+  scripts/flow.js). It handles the browser, login, waits and assertions, so
+  there is nothing to debug — just get the selectors and expected text right. If
+  a step fails, fix the APP (not the flow file) and re-run. One flow file for the
+  key path is enough; do not build a parallel Playwright harness.
 - In that real browser, walk through EVERY path a visitor actually uses: sign
   up, log in, log out, and each core feature — submit each form, click each
   primary button ONCE, and assert the RESULT page/state actually appears on the
