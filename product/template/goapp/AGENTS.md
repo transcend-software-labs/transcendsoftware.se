@@ -53,7 +53,13 @@ that implements the plan.
 
 This starter provides **boilerplate, not a look**. Its neutral styling exists
 only so the app works before you touch it. Every project's plan carries a
-Design section with the customer's chosen direction — implement *that*:
+Design section with the customer's chosen direction — implement *that*.
+
+**Use the `frontend-design` skill** (in `.opencode/skills/`) as your design
+playbook before and while building the UI — it covers grounding the look in the
+subject, picking a distinctive palette + type, spending your boldness in one
+signature element, and avoiding the templated defaults. The bullets below are
+Forge-specific rules layered on top of it.
 
 - Restyle `static/app.css` completely: palette, typography, spacing, layout.
   Replace the CSS variables and go far beyond them if the direction calls for
