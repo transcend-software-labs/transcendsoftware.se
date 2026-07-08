@@ -116,9 +116,13 @@ Design section with the customer's chosen direction — implement *that*:
   do NOT improvise the process/port/data-dir lifecycle):
 
       pkill -f /tmp/forge-app 2>/dev/null; rm -rf /tmp/forge-data && mkdir -p /tmp/forge-data
-      go build -o /tmp/forge-app . && DATA_DIR=/tmp/forge-data PORT=8080 \
-        OWNER_EMAIL=owner@test.local /tmp/forge-app >/tmp/forge-app.log 2>&1 &
+      go build -o /tmp/forge-app .   # FOREGROUND: let the build finish (and show errors) first
+      DATA_DIR=/tmp/forge-data PORT=8080 OWNER_EMAIL=owner@test.local /tmp/forge-app >/tmp/forge-app.log 2>&1 &
       for i in $(seq 1 30); do curl -sf http://localhost:8080/healthz >/dev/null && break; sleep 0.5; done
+
+  (Build in the foreground on its own line — backgrounding it with `&` races the
+  healthz check and makes a clean build look like a crash. Read /tmp/forge-app.log
+  if healthz never comes up.)
 
   Signing up with owner@test.local creates the first (owner/admin) account; read
   /tmp/forge-app.log if it won't start. Then run the PROVIDED smoke test (run it,
