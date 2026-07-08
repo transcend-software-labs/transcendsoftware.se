@@ -138,12 +138,17 @@ Design section with the customer's chosen direction — implement *that*:
 
       node scripts/smoke.js http://localhost:8080 owner@test.local ownerpass123
 
-  Every check must PASS before deploy; a FAIL is a real bug — fix and re-run.
-  (`scripts/` is test-only tooling — do not deploy it or edit `smoke.js`.) Then
-  spot-check the plan's SITE-SPECIFIC flows the same way: a short Node script
-  with `require('playwright')` (global; NODE_PATH preset — just `node check.js`),
-  submitting each key form and asserting **the result page appears on the FIRST
-  click** (not just HTTP 200). Fix what's broken, then re-check.
+  Every check must PASS before deploy; a FAIL is a real bug — **FIX the reported
+  issue and RE-RUN `smoke.js`.** smoke.js already covers auth, admin styling and
+  nav, so do NOT write your own scripts to re-verify those flows, and do NOT hunt
+  for stray processes (`lsof` / `ps` / `/proc`) — the `pkill` at the top of the
+  run block is all the cleanup you need; if `:8080` seems busy just re-run that
+  block. (`scripts/` is test-only tooling — do not deploy it or edit `smoke.js`.)
+  Once smoke.js is green, spot-check ONLY the plan's SITE-SPECIFIC flows it can't
+  know about (a booking, a custom form): **one** short Node script with
+  `require('playwright')` (global; NODE_PATH preset — just `node check.js`),
+  asserting **the result page appears on the FIRST click** (not just HTTP 200).
+  Fix what's broken, then re-check. Don't build a parallel test harness.
 
 ## Build, test, deploy
 
