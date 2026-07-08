@@ -26,6 +26,18 @@ async function main() {
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
   page.setDefaultTimeout(15000);
+  // Catch client-side JS failures across the whole run — a broken script passes
+  // the HTML checks but breaks the page for real users.
+  const jsErrors = [];
+  page.on('pageerror', (e) => jsErrors.push('uncaught: ' + e.message));
+  page.on('console', (m) => {
+    if (m.type() !== 'error') return;
+    const t = m.text();
+    // asset-404 noise, and htmx logging a non-2xx server response (not a JS bug —
+    // the functional checks above catch real failures).
+    if (/Failed to load resource|favicon|net::ERR_|Response Status Error Code/i.test(t)) return;
+    jsErrors.push('console: ' + t);
+  });
 
   // 1) Home renders.
   try {
@@ -98,6 +110,10 @@ async function main() {
       }
     } catch (e) { fail('admin is styled when reached via the nav link', e.message); }
   }
+
+  // A site that passes every check but throws JS errors is still broken.
+  if (jsErrors.length) fail('no client-side JS errors', jsErrors.slice(0, 5).join(' | '));
+  else ok('no client-side JS errors');
 
   await browser.close();
 

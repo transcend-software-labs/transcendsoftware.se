@@ -20,8 +20,10 @@
 //        a stylesheet matching `css` loaded — catches hx-boost "does nothing" /
 //        "unstyled admin" bugs on a custom nav.
 //
-// Password for signup/login steps defaults to "flowpass123" (override with a
-// "password" field on the step). Playwright is global + NODE_PATH is preset, so
+// Password for signup/login steps defaults to "ownerpass123" (matches smoke.js,
+// so signupOwner logs in cleanly when smoke.js already created the owner in the
+// same data dir). Override with a "password" field on the step. Playwright is
+// global + NODE_PATH is preset, so
 // require('playwright') works from anywhere — just run it.
 
 const { chromium } = require('playwright');
@@ -37,27 +39,43 @@ const fail = (n, d) => results.push({ n, ok: false, d });
 
 async function auth(page, path, email, password) {
   await page.goto(BASE + path, { waitUntil: 'domcontentloaded' });
+  const pw = password || 'ownerpass123';
   await page.fill('input[type="email"]', email);
-  await page.fill('input[type="password"]', password || 'flowpass123');
-  await Promise.all([
-    page.waitForURL((u) => !u.pathname.startsWith(path), { timeout: 15000 }),
-    page.click('button[type="submit"]'),
-  ]);
+  await page.fill('input[type="password"]', pw);
+  const navigated = page.waitForURL((u) => !u.pathname.startsWith(path), { timeout: 8000 }).then(() => true, () => false);
+  await page.click('button[type="submit"]');
+  if (await navigated) { await settle(page); return; }
+  // Signup for an account that already exists (409) — or any submit that didn't
+  // navigate — falls back to logging in, so the flow is idempotent regardless of
+  // whether smoke.js already created the owner.
+  if (path === '/signup') return auth(page, '/login', email, pw);
+  throw new Error('submit did not navigate away from ' + path);
 }
+
+// Best-effort settle: wait for the network to go quiet so JS-rendered content is
+// present, but don't fail if it never idles (SSE / long-poll pages).
+async function settle(page) {
+  await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
+}
+
+// JS errors seen during the flow — uncaught exceptions + app console.error
+// (asset-load noise filtered). A broken client script fails the flow.
+const jsErrors = [];
 
 async function run(page, step, i) {
   const label = 'step ' + (i + 1) + ': ' + Object.keys(step)[0];
   try {
     if (step.signupOwner || step.signup) await auth(page, '/signup', step.signupOwner || step.signup, step.password);
     else if (step.login) await auth(page, '/login', step.login, step.password);
-    else if (step.goto) { const r = await page.goto(BASE + step.goto, { waitUntil: 'load' }); if (!r || !r.ok()) throw new Error('status ' + (r && r.status())); }
-    else if (step.click) { await page.click(step.click); await page.waitForLoadState('load'); }
+    else if (step.goto) { const r = await page.goto(BASE + step.goto, { waitUntil: 'load' }); if (!r || !r.ok()) throw new Error('status ' + (r && r.status())); await settle(page); }
+    else if (step.click) { await page.click(step.click); await page.waitForLoadState('load'); await settle(page); }
     else if (step.fill) { for (const [sel, val] of Object.entries(step.fill)) await page.fill(sel, String(val)); }
     else if (step.expect) { const t = await page.locator('body').innerText(); if (!t.includes(step.expect)) throw new Error('page did not contain: ' + step.expect); }
     else if (step.expectUrl) { if (!page.url().includes(step.expectUrl)) throw new Error('url is ' + page.url() + ', wanted ' + step.expectUrl); }
     else if (step.expectFirstClick) {
       await page.click(step.expectFirstClick);
       await page.waitForLoadState('load');
+      await settle(page);
       if (step.url && !page.url().includes(step.url)) throw new Error('first click did not reach ' + step.url + ' (got ' + page.url() + ')');
       if (step.css && !(await page.evaluate((c) => !!document.querySelector(`link[rel="stylesheet"][href*="${c}"]`), step.css)))
         throw new Error(step.css + ' not loaded after the click (unstyled — hx-boost="false" needed?)');
@@ -70,10 +88,24 @@ async function main() {
   const browser = await chromium.launch();
   const page = await (await browser.newContext()).newPage();
   page.setDefaultTimeout(15000);
+  // Capture client-side JS failures — a broken script often passes the HTML
+  // checks but breaks the page for real users.
+  page.on('pageerror', (e) => jsErrors.push('uncaught: ' + e.message));
+  page.on('console', (m) => {
+    if (m.type() !== 'error') return;
+    const t = m.text();
+    // asset-404 noise, and htmx logging a non-2xx server response (that is not a
+    // JS bug — the flow's expect/expectUrl steps catch functional failures).
+    if (/Failed to load resource|favicon|net::ERR_|Response Status Error Code/i.test(t)) return;
+    jsErrors.push('console: ' + t);
+  });
+
   for (let i = 0; i < steps.length; i++) {
     await run(page, steps[i], i);
     if (!results[results.length - 1].ok) break; // stop at the first failure — later steps depend on it
   }
+  if (jsErrors.length) fail('no JS console errors', jsErrors.slice(0, 5).join(' | '));
+  else pass('no JS console errors');
   await browser.close();
 
   let failed = 0;
