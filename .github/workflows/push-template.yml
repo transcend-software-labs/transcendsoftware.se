@@ -7,11 +7,14 @@
 # template change, so it's never a forgotten manual step. (The sandbox image is
 # still rebuilt manually with `make sandbox-build` — see sandbox/README.md.)
 #
-# Auth: the orchestrator's Tigris/S3 credentials as repo secrets. These must be
-# added to the repo and MATCH the Fly secrets on transcend-forge so the tarball
-# lands in the same bucket the orchestrator reads TEMPLATE_KEY from:
-#   STORAGE_ENDPOINT, STORAGE_ACCESS_KEY, STORAGE_SECRET_KEY, STORAGE_BUCKET
-#   (optional: STORAGE_REGION, STORAGE_USE_SSL). The sandbox never gets these.
+# Auth: the orchestrator's Tigris/S3 credentials, added to the repo and MATCHing
+# the Fly secrets on transcend-forge so the tarball lands in the bucket the
+# orchestrator reads TEMPLATE_KEY from. Only the Secret Access Key is sensitive:
+#   repo Secret:    STORAGE_SECRET_KEY
+#   repo Variables: STORAGE_ENDPOINT, STORAGE_ACCESS_KEY (the key ID),
+#                   STORAGE_BUCKET (= transcend-forge-assets), STORAGE_REGION
+#                   (= auto), STORAGE_USE_SSL (= true).
+# The sandbox never gets these.
 name: Push template
 
 on:
@@ -44,9 +47,12 @@ jobs:
       - name: Push template to object storage
         run: make template-push
         env:
-          STORAGE_ENDPOINT: ${{ secrets.STORAGE_ENDPOINT }}
-          STORAGE_ACCESS_KEY: ${{ secrets.STORAGE_ACCESS_KEY }}
+          # Only the Secret Access Key is sensitive → a repo Secret. Everything
+          # else (endpoint, bucket, region, TLS, and the Access Key ID, which is
+          # just an identifier) is a repo Variable.
           STORAGE_SECRET_KEY: ${{ secrets.STORAGE_SECRET_KEY }}
-          STORAGE_BUCKET: ${{ secrets.STORAGE_BUCKET }}
-          STORAGE_REGION: ${{ secrets.STORAGE_REGION }}
-          STORAGE_USE_SSL: ${{ secrets.STORAGE_USE_SSL }}
+          STORAGE_ENDPOINT: ${{ vars.STORAGE_ENDPOINT }}
+          STORAGE_ACCESS_KEY: ${{ vars.STORAGE_ACCESS_KEY }}
+          STORAGE_BUCKET: ${{ vars.STORAGE_BUCKET }}
+          STORAGE_REGION: ${{ vars.STORAGE_REGION }}
+          STORAGE_USE_SSL: ${{ vars.STORAGE_USE_SSL }}
