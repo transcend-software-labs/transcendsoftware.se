@@ -73,7 +73,7 @@ type Config struct {
 	// Optional dedicated model for the PLAN step only (intake + gate keep the
 	// LLM_* client above). Lets planning run on a stronger/cheaper model than
 	// implementation — e.g. GLM 5.2 via the OpenCode Zen gateway
-	// (https://opencode.ai/zen/v1). Empty PlannerLLMAPIKey → plan uses the
+	// (https://opencode.ai/zen/go/v1). Empty PlannerLLMAPIKey → plan uses the
 	// shared LLM_* client, i.e. current behavior.
 	PlannerLLMBaseURL string
 	PlannerLLMAPIKey  string
@@ -160,7 +160,7 @@ func Load() Config {
 		LLMAPIKey:       os.Getenv("LLM_API_KEY"),
 		LLMModel:        envOr("LLM_MODEL", "kimi-k2.7-code"),
 
-		PlannerLLMBaseURL: envOr("PLANNER_LLM_BASE_URL", "https://opencode.ai/zen/v1"),
+		PlannerLLMBaseURL: envOr("PLANNER_LLM_BASE_URL", "https://opencode.ai/zen/go/v1"),
 		PlannerLLMAPIKey:  os.Getenv("PLANNER_LLM_API_KEY"),
 		PlannerLLMModel:   envOr("PLANNER_LLM_MODEL", "glm-5.2"),
 		OpencodeURL:     os.Getenv("OPENCODE_URL"),
@@ -196,7 +196,7 @@ func Load() Config {
 	// (GLM 5.2) — overriding any LLM_* / PLANNER_LLM_* endpoint and key. The
 	// sandbox opencode provider is OpenAI-compatible, so Zen drops straight in.
 	if zen := os.Getenv("OPENCODE_GO_API_KEY"); zen != "" {
-		const zenBase = "https://opencode.ai/zen/v1"
+		const zenBase = "https://opencode.ai/zen/go/v1"
 		c.LLMBaseURL, c.LLMAPIKey = zenBase, zen
 		c.PlannerLLMBaseURL, c.PlannerLLMAPIKey = zenBase, zen
 	}
