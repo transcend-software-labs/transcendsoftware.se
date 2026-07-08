@@ -58,12 +58,15 @@ func TestBuild_SnapshotSaveAfterSuccess(t *testing.T) {
 	}
 
 	execs := machines.Execs()
-	if len(execs) != 1 {
-		t.Fatalf("expected exactly one exec (the snapshot save), got %d", len(execs))
+	if len(execs) != 2 {
+		t.Fatalf("expected save + design-audit execs, got %d", len(execs))
 	}
 	script := strings.Join(execs[0].Command, " ")
 	if !strings.Contains(script, "tar") || !strings.Contains(script, "https://storage.example/put?sig=abc") {
 		t.Errorf("snapshot save exec should tar and upload to the PUT URL, got: %s", script)
+	}
+	if audit := strings.Join(execs[1].Command, " "); !strings.Contains(audit, "impeccable detect") {
+		t.Errorf("last exec should be the design audit, got: %s", audit)
 	}
 }
 
@@ -82,8 +85,8 @@ func TestBuild_ReiterationRestoresBeforeAgent(t *testing.T) {
 	}
 
 	execs := machines.Execs()
-	if len(execs) != 2 {
-		t.Fatalf("expected restore + save execs, got %d", len(execs))
+	if len(execs) != 3 {
+		t.Fatalf("expected restore + save + design-audit execs, got %d", len(execs))
 	}
 	restore := strings.Join(execs[0].Command, " ")
 	if !strings.Contains(restore, "https://storage.example/get?sig=xyz") ||
@@ -93,6 +96,9 @@ func TestBuild_ReiterationRestoresBeforeAgent(t *testing.T) {
 	save := strings.Join(execs[1].Command, " ")
 	if !strings.Contains(save, "https://storage.example/put?sig=abc") {
 		t.Errorf("second exec should save the snapshot, got: %s", save)
+	}
+	if audit := strings.Join(execs[2].Command, " "); !strings.Contains(audit, "impeccable detect") {
+		t.Errorf("last exec should be the design audit, got: %s", audit)
 	}
 }
 
@@ -112,8 +118,8 @@ func TestBuild_TemplateSeedsFirstBuild(t *testing.T) {
 	}
 
 	execs := machines.Execs()
-	if len(execs) != 2 {
-		t.Fatalf("expected template restore + snapshot save, got %d execs", len(execs))
+	if len(execs) != 3 {
+		t.Fatalf("expected template restore + snapshot save + design-audit, got %d execs", len(execs))
 	}
 	if got := strings.Join(execs[0].Command, " "); !strings.Contains(got, "https://storage.example/template?sig=tpl") {
 		t.Errorf("first exec should unpack the template, got: %s", got)
@@ -141,8 +147,8 @@ func TestBuild_SnapshotWinsOverTemplate(t *testing.T) {
 		t.Fatalf("build: %v", err)
 	}
 	execs := machines.Execs()
-	if len(execs) != 1 {
-		t.Fatalf("expected only the snapshot restore, got %d execs", len(execs))
+	if len(execs) != 2 {
+		t.Fatalf("expected snapshot restore + design-audit, got %d execs", len(execs))
 	}
 	if got := strings.Join(execs[0].Command, " "); !strings.Contains(got, "sig=snap") {
 		t.Errorf("restore should use the snapshot, got: %s", got)
@@ -338,7 +344,7 @@ func TestBuild_ResumedBuildGetsResumeInstruction(t *testing.T) {
 	}
 }
 
-func TestBuild_NoSnapshotURLsNoExecs(t *testing.T) {
+func TestBuild_NoSnapshotURLsOnlyAudit(t *testing.T) {
 	machines := fly.NewFake()
 	b := newTestBuilder(machines)
 
@@ -349,7 +355,13 @@ func TestBuild_NoSnapshotURLsNoExecs(t *testing.T) {
 	if res.SnapshotSaved {
 		t.Error("no PUT URL was given, nothing should have been saved")
 	}
-	if execs := machines.Execs(); len(execs) != 0 {
-		t.Errorf("expected no execs, got %d", len(execs))
+	// With no snapshot URLs there is no restore/save; the only exec is the
+	// deterministic design audit that runs on every successful build.
+	execs := machines.Execs()
+	if len(execs) != 1 {
+		t.Fatalf("expected only the design-audit exec, got %d", len(execs))
+	}
+	if got := strings.Join(execs[0].Command, " "); !strings.Contains(got, "impeccable detect") {
+		t.Errorf("the sole exec should be the design audit, got: %s", got)
 	}
 }

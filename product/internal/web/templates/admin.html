@@ -58,6 +58,25 @@
         {{end}}
       </div>
       {{end}}
+      <div class="design-audit">
+        {{if .Findings}}
+        <details class="findings">
+          <summary>Design audit — {{len .Findings}} finding(s) to review</summary>
+          <ul>
+            {{range .Findings}}
+            <li class="finding finding-{{.Severity}}">
+              <span class="finding-sev">{{.Severity}}</span>
+              <span class="finding-name" title="{{.Description}}">{{.Name}}</span>
+              {{if .Snippet}}<span class="finding-snippet muted small">— {{.Snippet}}</span>{{end}}
+              <span class="finding-where muted small">{{.File}}{{if .Line}}:{{.Line}}{{end}}</span>
+            </li>
+            {{end}}
+          </ul>
+        </details>
+        {{else}}
+        <p class="design-clean muted small">Design audit: clean ✓</p>
+        {{end}}
+      </div>
       <p class="brief muted small">{{.Brief}}</p>
       <div class="admin-actions">
         <form method="post" action="/admin/projects/{{.ID}}/deliver" class="inline">
@@ -109,6 +128,7 @@
         <span class="project-name">{{.Name}}</span>
       </a>
       <a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{.PreviewURL}} ↗</a>
+      {{if .Findings}}<span class="audit-flag" title="{{len .Findings}} design-audit finding(s) — review under Ready for delivery">⚑ {{len .Findings}}</span>{{end}}
       <form method="post" action="/admin/projects/{{.ID}}/destroy-preview" class="inline"
         onsubmit="return confirm('Destroy this preview app? The customer’s link dies immediately.')">
         <input type="hidden" name="csrf_token" value="{{$.CSRF}}">

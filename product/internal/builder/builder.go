@@ -86,7 +86,20 @@ type Result struct {
 	Log           string
 	SnapshotSaved bool           // the workspace snapshot was uploaded to SnapshotPutURL
 	Screenshots   []CapturedPage // pages captured (slot → path)
+	Findings      []Finding      // impeccable design-audit findings (non-nil iff the audit ran; empty = clean)
 	Tokens        int            // model tokens consumed by the build agent
+}
+
+// Finding is one issue the impeccable design detector reported on the built UI.
+// Fields mirror impeccable's --json output verbatim.
+type Finding struct {
+	Antipattern string `json:"antipattern"` // rule id, e.g. "ai-color-palette"
+	Name        string `json:"name"`        // human title
+	Description string `json:"description"`  // why it's a problem + how to fix
+	Severity    string `json:"severity"`     // "warning", "error", …
+	File        string `json:"file"`         // repo-relative file (sandbox prefix stripped)
+	Line        int    `json:"line"`         // 0 when file-level
+	Snippet     string `json:"snippet"`      // the offending context
 }
 
 // Hooks observe a build pass.
@@ -374,8 +387,20 @@ func (b *Sandbox) finalize(ctx context.Context, sb *fly.Sandbox, req Request, re
 		}
 	}
 
+	// Independent design audit for Rasmus's review — the deterministic detector
+	// on the deployed UI, recorded for the /admin checklist. Best-effort like
+	// screenshots; a nil result (audit didn't run) leaves prior findings intact.
+	findings, err := b.auditDesign(ctx, sb.MachineID)
+	if err != nil {
+		emit(hooks.OnLog, "Warning: could not run the design audit.")
+	} else if len(findings) == 0 {
+		emit(hooks.OnLog, "Design audit: clean ✓")
+	} else {
+		emit(hooks.OnLog, fmt.Sprintf("Design audit: %d finding(s) noted for review.", len(findings)))
+	}
+
 	return Result{PreviewURL: preview, Log: res.Log, Tokens: res.Tokens,
-		SnapshotSaved: snapshotSaved, Screenshots: shots}, nil
+		SnapshotSaved: snapshotSaved, Screenshots: shots, Findings: findings}, nil
 }
 
 // crawlerJS crawls a deployed site's same-origin pages and screenshots each
@@ -447,6 +472,36 @@ func (b *Sandbox) captureScreenshots(ctx context.Context, machineID, siteURL str
 		return nil, fmt.Errorf("screenshots: bad manifest %q: %w", res.Stdout, err)
 	}
 	return pages, nil
+}
+
+// auditDesign runs the deterministic impeccable detector on the built UI and
+// returns what it flags, for Rasmus's design review in /admin. impeccable is
+// baked into the sandbox image (no LLM, no key) and exits 0 when clean ([]) and
+// 2 when it has findings, so a non-zero exit is expected — the JSON is always on
+// stdout. Best-effort: a miss (non-goapp site, missing dirs) just means no
+// checklist. A successful run returns a non-nil slice (empty when clean) so the
+// caller can tell "audited, clean" from "audit didn't run".
+func (b *Sandbox) auditDesign(ctx context.Context, machineID string) ([]Finding, error) {
+	script := "cd /workspace && impeccable detect --json internal/web/static internal/web/templates"
+	res, err := b.machines.Exec(ctx, machineID, []string{"/bin/sh", "-c", script}, 60)
+	if err != nil {
+		return nil, fmt.Errorf("design audit: %w", err)
+	}
+	out := strings.TrimSpace(res.Stdout)
+	if out == "" {
+		return nil, fmt.Errorf("design audit: no output (exit %d): %s", res.ExitCode, res.Stderr)
+	}
+	var findings []Finding
+	if err := json.Unmarshal([]byte(out), &findings); err != nil {
+		return nil, fmt.Errorf("design audit: bad json %q: %w", out, err)
+	}
+	if findings == nil {
+		findings = []Finding{} // audited and clean — distinct from "not audited"
+	}
+	for i := range findings {
+		findings[i].File = strings.TrimPrefix(findings[i].File, "/workspace/")
+	}
+	return findings, nil
 }
 
 // templatePreamble tells the agent the workspace is a working starter app, not

@@ -276,6 +276,28 @@ label.design-option:hover { border-color: var(--accent); }
   border: 1px solid var(--border); border-radius: 6px; background: var(--bg-2);
 }
 
+/* Impeccable design-audit checklist (Ready for delivery) + preview flag. */
+.design-audit { margin: .6rem 0; }
+.design-clean { color: var(--green); }
+.findings > summary { cursor: pointer; color: var(--accent); }
+.findings ul { list-style: none; margin: .5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .4rem; }
+.finding {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem;
+  padding: .5rem .7rem; border: 1px solid var(--border); border-left-width: 3px;
+  border-radius: var(--radius); background: var(--bg-2);
+}
+.finding-warning { border-left-color: var(--accent); }
+.finding-error { border-left-color: var(--red); }
+.finding-sev {
+  font-size: .7rem; text-transform: uppercase; letter-spacing: .04em;
+  padding: .05rem .4rem; border: 1px solid var(--border); border-radius: 6px; color: var(--muted);
+}
+.finding-error .finding-sev { color: var(--red); border-color: var(--red); }
+.finding-warning .finding-sev { color: var(--accent); border-color: var(--accent); }
+.finding-name { font-weight: 600; cursor: help; }
+.finding-where { margin-left: auto; font-family: monospace; }
+.audit-flag { color: var(--accent); font-size: .85rem; white-space: nowrap; }
+
 .stat-row { list-style: none; display: flex; gap: 2rem; flex-wrap: wrap; }
 .stat-row li { display: flex; flex-direction: column; gap: .15rem; }
 .stat-num { font-size: 1.5rem; font-weight: 600; color: var(--text); line-height: 1; }

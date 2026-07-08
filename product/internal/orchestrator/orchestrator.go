@@ -703,6 +703,18 @@ func (o *Orchestrator) finishBuild(ctx context.Context, p *project.Project, it *
 		}
 		p.Screenshots = shots
 	}
+	// Findings is non-nil exactly when the design audit ran (empty = clean); a nil
+	// result means the audit failed, so leave any prior findings untouched.
+	if res.Findings != nil {
+		fs := make([]project.Finding, len(res.Findings))
+		for i, f := range res.Findings {
+			fs[i] = project.Finding{
+				Antipattern: f.Antipattern, Name: f.Name, Description: f.Description,
+				Severity: f.Severity, File: f.File, Line: f.Line, Snippet: f.Snippet,
+			}
+		}
+		p.Findings = fs
+	}
 	p.Status = project.StatusPreviewReady
 	if err := o.save(ctx, p); err != nil {
 		return err

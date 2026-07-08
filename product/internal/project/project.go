@@ -60,6 +60,18 @@ type Screenshot struct {
 	Key  string `json:"key"`  // object-storage key of the PNG
 }
 
+// Finding is one impeccable design-audit issue on a built site, shown as a
+// review checklist in /admin. Stored inline (plain JSON — no object storage).
+type Finding struct {
+	Antipattern string `json:"antipattern"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Severity    string `json:"severity"`
+	File        string `json:"file"`
+	Line        int    `json:"line"`
+	Snippet     string `json:"snippet"`
+}
+
 // Project is a single customer request to have a website built.
 type Project struct {
 	ID             string
@@ -78,6 +90,7 @@ type Project struct {
 	RepoURL        string         // vestigial: GitHub mirroring was removed; kept to avoid a DB migration (always "")
 	SnapshotKey    string         // object-storage key of the workspace snapshot from the last successful build
 	Screenshots    []Screenshot   // one per page of the deployed site (for /admin review)
+	Findings       []Finding      // impeccable design-audit findings from the last build (for /admin review)
 	IterationsUsed int            // number of build passes consumed (1..MaxIterations)
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
