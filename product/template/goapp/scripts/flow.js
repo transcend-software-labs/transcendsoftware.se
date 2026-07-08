@@ -62,6 +62,27 @@ async function settle(page) {
 // (asset-load noise filtered). A broken client script fails the flow.
 const jsErrors = [];
 
+// On a selector failure, dump the page's real form fields + clickables so the
+// fix is obvious (correct field name / button text) — no manual curl-probing of
+// the HTML to reverse-engineer selectors, which is a big time sink.
+async function describePage(page) {
+  try {
+    return await page.evaluate(() => {
+      const take = (arr, f) => arr.map(f).filter(Boolean).slice(0, 20);
+      const fields = take([...document.querySelectorAll('input, select, textarea')], (e) => {
+        const id = e.name ? 'name="' + e.name + '"' : e.id ? 'id="' + e.id + '"' : '';
+        if (!id) return '';
+        return e.tagName.toLowerCase() + (e.type ? '[type=' + e.type + ']' : '') + ' ' + id;
+      });
+      const clickables = take([...document.querySelectorAll('button, input[type=submit], a[href]')], (e) => {
+        const txt = (e.innerText || e.value || '').trim().replace(/\s+/g, ' ').slice(0, 30);
+        return txt ? e.tagName.toLowerCase() + ' "' + txt + '"' : '';
+      });
+      return { fields, clickables };
+    });
+  } catch { return null; }
+}
+
 async function run(page, step, i) {
   const label = 'step ' + (i + 1) + ': ' + Object.keys(step)[0];
   try {
@@ -81,7 +102,16 @@ async function run(page, step, i) {
         throw new Error(step.css + ' not loaded after the click (unstyled — hx-boost="false" needed?)');
     } else throw new Error('unknown step: ' + JSON.stringify(step));
     pass(label);
-  } catch (e) { fail(label, e.message); }
+  } catch (e) {
+    let detail = e.message;
+    // Selector-based step failed → show what IS on the page so the fix is obvious.
+    if (step.fill || step.click || step.expectFirstClick || step.signup || step.signupOwner || step.login) {
+      const d = await describePage(page);
+      if (d) detail += '\n      page ' + page.url() + ' has fields: [' +
+        (d.fields.join(', ') || 'none') + ']  clickables: [' + (d.clickables.join(', ') || 'none') + ']';
+    }
+    fail(label, detail);
+  }
 }
 
 async function main() {
