@@ -28,6 +28,17 @@ func mockGitHub(t *testing.T) (*httptest.Server, *mockState) {
 		case strings.HasSuffix(p, "/git/blobs"):
 			_, _ = w.Write([]byte(`{"sha":"blobsha"}`))
 		case strings.HasSuffix(p, "/git/trees"):
+			body, _ := io.ReadAll(r.Body)
+			// Simulate GitHub rejecting a tree that touches .github/workflows/
+			// when the token lacks workflow-write.
+			if st.rejectWorkflowTree && strings.Contains(string(body), ".github/workflows/") {
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+				return
+			}
+			st.mu.Lock()
+			st.lastTree = string(body)
+			st.mu.Unlock()
 			_, _ = w.Write([]byte(`{"sha":"treesha"}`))
 		case strings.HasSuffix(p, "/git/commits"):
 			_, _ = w.Write([]byte(`{"sha":"commitsha"}`))
@@ -52,10 +63,12 @@ func mockGitHub(t *testing.T) (*httptest.Server, *mockState) {
 }
 
 type mockState struct {
-	mu      sync.Mutex
-	files   map[string]string
-	secrets map[string]bool
-	pubKey  string
+	mu                 sync.Mutex
+	files              map[string]string
+	secrets            map[string]bool
+	pubKey             string
+	rejectWorkflowTree bool   // 404 any tree containing .github/workflows/
+	lastTree           string // body of the last accepted tree POST
 }
 
 func TestPush_FullFlow(t *testing.T) {
@@ -82,6 +95,39 @@ func TestPush_FullFlow(t *testing.T) {
 	defer st.mu.Unlock()
 	if !st.secrets["FLY_API_TOKEN"] {
 		t.Error("FLY_API_TOKEN secret was not set (encrypted)")
+	}
+}
+
+// When the token can't write workflows, GitHub 404s the whole tree. The mirror
+// must degrade to pushing the source without the workflow file — not lose
+// everything (which previously left an empty repo with only its auto README).
+func TestPush_DegradesWhenWorkflowRejected(t *testing.T) {
+	srv, st := mockGitHub(t)
+	defer srv.Close()
+	st.rejectWorkflowTree = true
+	m := NewHTTP(Options{Org: "acme", Token: "t", APIBase: srv.URL, WebBase: "https://github.com"})
+
+	url, err := m.Push(context.Background(), PushSpec{
+		Repo:    "testrepo",
+		Message: "Build",
+		Files: map[string][]byte{
+			"index.html":                   []byte("<h1>hi</h1>"),
+			".github/workflows/deploy.yml": []byte("name: Deploy"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("push should succeed by degrading to source-only, got: %v", err)
+	}
+	if url != "https://github.com/acme/testrepo" {
+		t.Errorf("unexpected url %q", url)
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if !strings.Contains(st.lastTree, "index.html") {
+		t.Errorf("source file not in final tree: %s", st.lastTree)
+	}
+	if strings.Contains(st.lastTree, ".github/workflows/") {
+		t.Errorf("workflow file should have been dropped from final tree: %s", st.lastTree)
 	}
 }
 

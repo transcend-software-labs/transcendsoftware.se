@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/blake2b"
@@ -108,12 +109,47 @@ func (h *HTTP) ensureRepo(ctx context.Context, repo string) error {
 	}
 }
 
-// commitFiles pushes all files as one commit on main via the Git Data API: a
-// blob per file (base64, so binary is fine), one tree (nested paths and all),
-// one commit, then advance main. NOTE: the token must carry the `workflow`
-// scope, since the tree includes .github/workflows/deploy.yml — without it
-// GitHub 404s the whole tree.
+// commitFiles pushes files as one commit on main. The tree includes
+// .github/workflows/deploy.yml, which GitHub rejects WHOLESALE (404) if the
+// token can't write workflows (classic PATs: the `workflow` scope; fine-grained:
+// the "Workflows" permission). Rather than mirror NOTHING in that case, retry
+// with the workflow files dropped so the source still lands — the deploy
+// workflow just won't be wired until the token scope is fixed. The warning makes
+// the degraded state visible instead of a silent empty repo.
 func (h *HTTP) commitFiles(ctx context.Context, repo, message string, files map[string][]byte) error {
+	if err := h.pushCommit(ctx, repo, message, files); err == nil {
+		return nil
+	} else {
+		src, wf := splitWorkflowFiles(files)
+		if len(wf) == 0 || len(src) == 0 {
+			return err // nothing to drop, or nothing left to push — a real failure
+		}
+		h.log.Warn("mirror: push with workflow files failed; retrying source-only "+
+			"(token likely lacks workflow-write — deploy workflow will be missing)",
+			"repo", repo, "err", err)
+		return h.pushCommit(ctx, repo, message, src)
+	}
+}
+
+// splitWorkflowFiles partitions files into those under .github/workflows/ (which
+// need workflow-write) and everything else (needs only contents-write).
+func splitWorkflowFiles(files map[string][]byte) (src, wf map[string][]byte) {
+	src = make(map[string][]byte)
+	wf = make(map[string][]byte)
+	for p, b := range files {
+		if strings.HasPrefix(p, ".github/workflows/") {
+			wf[p] = b
+		} else {
+			src[p] = b
+		}
+	}
+	return src, wf
+}
+
+// pushCommit writes every file as one commit advancing main via the Git Data
+// API: a blob per file (base64, so binary is fine), one tree, one commit, then
+// move the ref.
+func (h *HTTP) pushCommit(ctx context.Context, repo, message string, files map[string][]byte) error {
 	base := "/repos/" + h.org + "/" + repo
 
 	type treeEntry struct {
