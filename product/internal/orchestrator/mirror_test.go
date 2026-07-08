@@ -28,7 +28,7 @@ func gzTar(t *testing.T, files map[string]string) []byte {
 	return buf.Bytes()
 }
 
-func TestMirrorToGitHub_PushesSnapshotPlusWorkflow(t *testing.T) {
+func TestMirrorToGitHub_PushesSourceOnly(t *testing.T) {
 	st := store.NewMemory()
 	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
 	mirror := github.NewFake()
@@ -63,9 +63,12 @@ func TestMirrorToGitHub_PushesSnapshotPlusWorkflow(t *testing.T) {
 	if _, ok := push.Files[".git/config"]; ok {
 		t.Error(".git files must be skipped")
 	}
-	wf, ok := push.Files[".github/workflows/deploy.yml"]
-	if !ok || !strings.Contains(string(wf), "flyctl deploy") || !strings.Contains(string(wf), "forge-p1") {
-		t.Errorf("deploy workflow missing or wrong: %q", wf)
+	// Source-only mirror: no deploy-on-push Action (the agent already deployed).
+	if _, ok := push.Files[".github/workflows/deploy.yml"]; ok {
+		t.Error("deploy workflow must NOT be pushed — the mirror is source-only")
+	}
+	if push.FlyToken != "" {
+		t.Error("no FLY_API_TOKEN should be set — there is no deploy Action to use it")
 	}
 	// RepoURL persisted on the project.
 	got, _ := st.ProjectByID(context.Background(), "p1")

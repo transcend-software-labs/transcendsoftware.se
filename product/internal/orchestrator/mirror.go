@@ -21,7 +21,7 @@ const maxMirrorFile = 8 << 20 // 8 MB
 func (o *Orchestrator) SetMirror(m github.Mirror) { o.mirror = m }
 
 // mirrorToGitHub pushes the given workspace snapshot to the project's private
-// repo (source review + a deploy-on-push Action) and persists p.RepoURL on
+// repo (source-only, for human review + ownership) and persists p.RepoURL on
 // success. It returns an error so callers can decide how to treat a failure:
 // the build flow logs it and moves on (best-effort — never blocks a build),
 // while RemirrorProject surfaces it to the admin.
@@ -45,18 +45,14 @@ func (o *Orchestrator) mirrorToGitHub(ctx context.Context, p *project.Project, s
 	}
 
 	appName := builder.DeployAppName(p.ID)
-	files[".github/workflows/deploy.yml"] = []byte(deployWorkflow(appName))
 
-	// The CI deploy token is longer-lived than the build token and lives only
-	// as the repo's encrypted FLY_API_TOKEN secret. Non-fatal: without it the
-	// mirror still lands, the deploy Action just can't authenticate yet.
-	ciToken, err := o.machines.RepoDeployToken(ctx, appName)
-	if err != nil {
-		o.log.Warn("mirror: ci token unavailable; FLY_API_TOKEN will be unset", "project", p.ID, "err", err)
-	}
-
+	// Source-only mirror: no deploy-on-push Action. The agent already deployed
+	// the site directly during the build, so a git-push deploy would only
+	// redundantly re-deploy the same code — and dropping the workflow file +
+	// FLY_API_TOKEN secret also drops the token's Workflows/Secrets permission
+	// requirements. The repo is for human review + ownership, not deploying.
 	url, err := o.mirror.Push(ctx, github.PushSpec{
-		Repo: appName, Message: message, Files: files, FlyToken: ciToken,
+		Repo: appName, Message: message, Files: files,
 	})
 	if err != nil {
 		return fmt.Errorf("push: %w", err)
@@ -118,25 +114,4 @@ func untarGz(raw []byte) (map[string][]byte, error) {
 		files[name] = b
 	}
 	return files, nil
-}
-
-// deployWorkflow is the per-project GitHub Action: deploy to Fly on push to main.
-func deployWorkflow(appName string) string {
-	return fmt.Sprintf(`name: Deploy to Fly
-on:
-  push:
-    branches: [main]
-concurrency:
-  group: deploy-%[1]s
-  cancel-in-progress: true
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --remote-only --app %[1]s
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-`, appName)
 }
