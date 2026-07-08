@@ -107,8 +107,15 @@ Design section with the customer's chosen direction — implement *that*:
   is genuinely secret — the admin masks such columns.
 - Stdlib only unless the plan clearly needs more; no JS frameworks by default.
 - Validate and length-cap all user input (see `maxFieldLen`).
-- Run `make test` (or `go test ./...`) and `go vet ./...` before deploying;
-  fix what they find.
+- Run `go test ./...` and `go vet ./...` before deploying — code must compile
+  and tests must pass. But note: the starter's `web_test.go` asserts the
+  SCAFFOLD's exact behavior (specific pages, confirmation text, which tables
+  `/admin` lists). When you deliberately change that behavior, those assertions
+  are now WRONG — update or delete the obsolete ones to match what you actually
+  built, in ONE pass. Do NOT loop re-editing tests to satisfy stale assertions,
+  and do NOT weaken auth/CSRF/persistence coverage. Unit tests are a compile +
+  invariant check; the browser smoke test above is the real functional gate —
+  don't rabbit-hole here.
 - **Test every user path in a real browser before deploying — required.** Unit
   tests and `curl`/health checks run no JavaScript, so they miss broken
   htmx/form/redirect flows (the #1 "I click the button and nothing happens"
