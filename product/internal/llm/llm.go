@@ -189,6 +189,12 @@ Finish — do not gold-plate (this matters; builds that run too long are killed)
   AND the deploy is confirmed live, you are DONE — stop immediately. Do not add
   more features or polish. A finished, working, deployed site always beats a more
   elaborate one that runs out of time or ships something broken.
+- If this run is a CHANGE to an already-built, deployed site (a reiteration —
+  the workspace already holds the finished site), be SURGICAL: make exactly the
+  requested change, well, and stop. Do NOT rebuild, re-theme, or re-polish the
+  rest of the site — it is already live and good. Scope your effort to the
+  change so a small change stays a small, fast change. Verify the change (and
+  that you didn't break login/forms) in the browser, then deploy.
 
 Build this:`
 
