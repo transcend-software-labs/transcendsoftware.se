@@ -91,9 +91,27 @@ Return markdown with these sections:
 ## Features & flows — each interactive feature as a precise flow: who does it,
    the exact steps, what is validated, what is stored, and what they see
    afterwards. Spell out auth/roles (who reaches /admin; owner vs member).
-## Design — the concrete visual direction. Honor the customer's stated choice;
-   translate it into a specific palette, typography, spacing/mood, component
-   style and imagery direction — enough that the builder invents no taste.
+## Design — the concrete visual direction, and the section customers judge most.
+   Honor the customer's stated choice; where they left it open, DECIDE the look —
+   don't hand the builder a vague mood. Ground it in THIS business's own world
+   (its materials, audience, vernacular), not a generic "clean and modern".
+   Specify concretely enough that the builder invents no taste:
+   - Palette: 4-6 named HEX values (background, ink, 1-2 accents, a muted tone)
+     and where each is used.
+   - Typography: a deliberate pairing named outright — a display face with
+     character for headings + a readable body face — with the scale and weights.
+     Never the browser default; don't reflex to Inter/Roboto.
+   - Layout & hero: the hero is the thesis — open with the most characteristic
+     thing about this business, not a stock "big number + gradient" block; then
+     sketch the section rhythm below it.
+   - Signature: ONE element this site is remembered by — spend the boldness there
+     and keep everything else quiet and disciplined.
+   Steer AWAY from the AI-generated tells unless the customer asked for them:
+   purple/violet or cyan-on-dark gradients, and the three overused defaults
+   (cream + serif + terracotta; near-black + acid-green/vermilion accent;
+   broadsheet hairline rules at zero radius). The builder runs a "frontend-design"
+   skill to EXECUTE the look well; your job is to hand it a distinctive, specific
+   direction worth executing.
 ## Content & assets — the real copy/photos/logo the customer must provide, plus
    sensible, on-brand placeholder copy to ship meanwhile (never lorem ipsum).
 ## Out of scope — a short list of things NOT to build, to keep the build tight.
