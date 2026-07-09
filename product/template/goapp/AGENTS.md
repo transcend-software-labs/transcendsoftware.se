@@ -107,8 +107,15 @@ Forge-specific rules layered on top of it.
 - Keep auth, CSRF and the session model intact; extend, don't weaken.
 - **Data:** model domain data as proper typed tables (a migration per change).
   Plain rowid tables only — never `WITHOUT ROWID` (the admin and hooks key on
-  rowid). Do NOT build owner dashboards, data lists, or admin pages — `/admin`
-  already renders every table; just insert the data.
+  rowid). Just INSERT the data — that is your whole job for it.
+- **NEVER build an owner/staff admin, dashboard, CRUD, data-list or record-edit
+  UI.** The built-in `/admin` already lists, filters, shows, deletes and exports
+  EVERY table by introspection. Writing your own `admin_*.html` pages to manage
+  clients, inquiries, orders, bookings or "statuses" is off-limits, wasted work,
+  and the #1 build-time sink (you then have to hand-test a whole CRUD). If the
+  plan says the owner "manages", "reviews" or "updates" data, that already happens
+  in `/admin` — do not build it. (Customer-FACING read pages — e.g. a member
+  seeing their own booking — are fine; the ban is on owner/staff management UIs.)
 - Don't name columns with `password`/`hash`/`token`/`secret` unless the value
   is genuinely secret — the admin masks such columns.
 - Stdlib only unless the plan clearly needs more; no JS frameworks by default.
@@ -167,6 +174,14 @@ Forge-specific rules layered on top of it.
   nothing to debug — just get the SELECTORS and expected text right. If a step
   FAILS, fix the app (not the flow file) and re-run. One flow file for the key
   path is enough — don't build a parallel Playwright harness.
+
+- **Do NOT hand-test flows with raw `curl` logins/POSTs, cookie jars, or
+  `sqlite3`/`python3` DB pokes.** That manual loop (log in by hand, POST a form,
+  dump the DB to see what landed, repeat) is a massive time sink and is banned.
+  smoke.js and flow.js already drive real auth + forms in a browser and tell you
+  what broke — use them. If a flow feels too gnarly to express as a flow.js file,
+  that is a signal the feature is over-built (see the admin rule above), not a
+  reason to hand-roll curl. Trust the tools; fix the app, not the test harness.
 
 - **Design audit — required before deploy.** With the app still running, audit the
   RENDERED site for contrast/quality defects:

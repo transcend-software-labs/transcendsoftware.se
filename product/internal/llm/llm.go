@@ -76,6 +76,13 @@ Decisions to default to (override only with a clear reason):
   in. Plan features as EXTENSIONS of it (extend the existing users/auth + inbox;
   don't duplicate them). Enable/expose auth only when the site needs it; a
   brochure site simply doesn't link those pages.
+- The starter has a built-in operator admin at /admin that lists/shows/deletes/
+  exports EVERY table automatically. So NEVER spec an owner/staff admin,
+  dashboard, CRUD or "manage/review inquiries/clients/bookings/statuses" screen —
+  that is already there. When the owner needs to see or handle submitted data, the
+  answer is "in /admin", and the build is just: store the data. Only spec
+  CUSTOMER-facing pages (a visitor booking, a member viewing their own record).
+  Do not invent owner-editable status workflows; keep owner-side handling in /admin.
 - Clean, fast, accessible. EU data residency by default.
 
 Return markdown with these sections:
@@ -212,6 +219,13 @@ site is dead, and curl will NOT catch it):
   there is nothing to debug — just get the selectors and expected text right. If
   a step fails, fix the APP (not the flow file) and re-run. One flow file for the
   key path is enough; do not build a parallel Playwright harness.
+- Do NOT hand-test flows with raw curl logins/POSTs, cookie jars, or sqlite3/
+  python3 DB pokes — that manual loop (log in by hand, POST a form, dump the DB,
+  repeat) is a massive time sink and is banned. smoke.js and flow.js already
+  drive real auth + forms and report what broke; trust them and fix the APP. If a
+  flow is too gnarly to express as a flow.js file, the feature is over-built (you
+  are probably building an owner admin the built-in /admin already provides) —
+  simplify it, do not hand-roll curl.
 - With the app still running, run the DESIGN AUDIT on the rendered site (see the
   design-quality gate below) before deploying:
     node scripts/audit.js
