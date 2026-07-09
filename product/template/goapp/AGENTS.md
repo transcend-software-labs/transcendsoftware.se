@@ -89,7 +89,12 @@ Forge-specific rules layered on top of it.
 - No bounce/elastic/overshoot easing; use calm, natural motion (or none).
 - No nested cards, side-tab accent borders, or dark drop-glows.
 - Never gray text on a colored background (contrast + it looks cheap).
-- Generous padding and whitespace — cramped layouts feel unfinished.
+- Generous, CONSISTENT padding — draw spacing from one scale and apply it evenly.
+  Never let content sit flush against a container edge: every section AND the
+  footer needs the same horizontal inset as the page body (a shared container /
+  side padding — a footer with `padding: … 0` so its text touches the viewport
+  edge is a recurring, visible defect), plus balanced vertical padding (don't pair
+  a big top with a tiny bottom). Cramped or lopsided padding reads as unfinished.
 - Tap targets ≥ 44px; comfortable line length (~45–75 chars); never skip
   heading levels (h1 → h2 → h3).
 - **Mobile nav is a hamburger, always.** Any site with more than ~2 nav links

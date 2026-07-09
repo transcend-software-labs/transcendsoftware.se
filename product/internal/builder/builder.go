@@ -543,10 +543,14 @@ ONLY once the page is composed and never appear in a single template file — e.
 a section rule (.section-dark a) overriding a .btn text color so the button is
 invisible until hover, or opacity making footer text too faint. Scanning the
 template source misses all of these; auditing the rendered page catches them.
-Fix every issue it reports (see DESIGN.md and AGENTS.md), then run it again.
-"clean" means it passes. Repeat at most TWICE — then deploy your best result; do
-not let this gate block the deploy indefinitely. Only run fly deploy once this is
-clean (or after two fix passes).`
+Fix EVERY issue it reports and re-run until it prints "clean". A warning is a real
+defect (an invisible button, faded text, an overused AI-tell font like Space
+Grotesk or Inter, all-caps body text) — NOT optional polish — so do NOT deploy
+with unresolved findings; keep fixing and re-running. The bar is a clean report.
+Only leave a finding if it directly conflicts with the customer's explicit stated
+design choice (then note why), or if after a few honest attempts that one specific
+finding genuinely will not clear. Run fly deploy only once audit.js is clean (or
+down to such a noted exception).`
 
 // resumePreamble tells the agent the workspace holds an interrupted build's
 // progress: finish and deploy, don't redo completed work.

@@ -47,6 +47,35 @@ async function main() {
     ok('home page renders');
   } catch (e) { fail('home page renders', e.message); }
 
+  // 1b) Nav must be legible at the TOP of the page. Catches a transparent fixed
+  //     header whose text colour matches the dark hero it overlays (invisible
+  //     until you scroll and a background fades in) — impeccable misses this
+  //     because the header's own background is transparent and the hero is a
+  //     visually-overlapping DOM sibling, not an ancestor.
+  try {
+    const bad = await page.evaluate(() => {
+      const T = (c) => !c || c === 'rgba(0, 0, 0, 0)' || c === 'transparent';
+      const lum = (c) => { const m = c.match(/[\d.]+/g); if (!m) return null;
+        const [r, g, b] = m.map(Number).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+      const ratio = (a, b) => { const L1 = lum(a), L2 = lum(b); if (L1 == null || L2 == null) return null; return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05); };
+      const nav = document.querySelector('header, .nav, nav'); if (!nav) return null;
+      const textEl = nav.querySelector('a, span, .brand, li') || nav;
+      const color = getComputedStyle(textEl).color;
+      const r = nav.getBoundingClientRect();
+      const prev = nav.style.visibility; nav.style.visibility = 'hidden'; // so elementFromPoint sees what's BEHIND it
+      let behind = document.elementFromPoint(r.left + Math.min(30, r.width / 2), r.top + r.height / 2);
+      nav.style.visibility = prev;
+      let bg = behind ? getComputedStyle(behind).backgroundColor : ''; let e = behind;
+      while (e && T(bg)) { e = e.parentElement; bg = e ? getComputedStyle(e).backgroundColor : ''; }
+      if (T(bg)) bg = getComputedStyle(document.body).backgroundColor;
+      const cr = ratio(color, bg);
+      return (cr != null && cr < 3) ? { color, bg, ratio: cr.toFixed(2) } : null;
+    });
+    if (bad) fail('nav is legible at the top of the page', `nav text ${bad.color} on ${bad.bg} = ${bad.ratio}:1 — a transparent/fixed header over a dark hero? give the nav a background or light text at scroll 0`);
+    else ok('nav is legible at the top of the page');
+  } catch (e) { ok('nav legibility check skipped (' + e.message + ')'); }
+
   // Detect whether this site has accounts (a real /login form).
   let hasAuth = false;
   try {
