@@ -212,6 +212,11 @@ site is dead, and curl will NOT catch it):
   there is nothing to debug — just get the selectors and expected text right. If
   a step fails, fix the APP (not the flow file) and re-run. One flow file for the
   key path is enough; do not build a parallel Playwright harness.
+- With the app still running, run the DESIGN AUDIT on the rendered site (see the
+  design-quality gate below) before deploying:
+    node scripts/audit.js
+  It catches contrast/design defects that only exist in the composed page — the
+  #1 thing that ships broken. Fix what it flags and re-run until it is clean.
 - In that real browser, walk through EVERY path a visitor actually uses: sign
   up, log in, log out, and each core feature — submit each form, click each
   primary button ONCE, and assert the RESULT page/state actually appears on the
@@ -256,9 +261,9 @@ Then make it deployable and deploy it:
   fly deploy --remote-only --ha=false --app "$FLY_APP" --access-token "$FLY_DEPLOY_TOKEN"
   (--ha=false is required: these apps run as ONE machine; if the app uses
   SQLite, a second machine would be a second, diverging database.)
-- Confirm the deploy finished successfully. Do NOT re-run impeccable or the smoke
-  test against the deployed site — they already passed locally; the deploy is the
-  last step.
+- Confirm the deploy finished successfully. Do NOT re-run the design audit or the
+  smoke test against the deployed site — they already passed locally; the deploy
+  is the last step.
 
 Finish — do not gold-plate (this matters; builds that run too long are killed):
 - Build exactly what the plan asks, nothing more. Do NOT add extra pages,

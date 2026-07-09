@@ -168,6 +168,19 @@ Forge-specific rules layered on top of it.
   FAILS, fix the app (not the flow file) and re-run. One flow file for the key
   path is enough — don't build a parallel Playwright harness.
 
+- **Design audit — required before deploy.** With the app still running, audit the
+  RENDERED site for contrast/quality defects:
+
+      node scripts/audit.js
+
+  It crawls your running pages, renders each, and runs the impeccable detector on
+  the REAL assembled HTML — so it catches defects that live only in the composed
+  page and never in a template file (a section rule like `.section-dark a`
+  overriding a `.btn` colour so a button is invisible until hover; opacity making
+  footer text too faint; low-contrast text). Auditing the template SOURCE misses
+  all of these. Fix what it flags in the CSS and re-run until it prints `clean`.
+  Do NOT edit `audit.js`.
+
 ## Build, test, deploy
 
     make run        # local dev on :8080

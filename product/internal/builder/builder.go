@@ -534,14 +534,19 @@ func emailFrom(siteName, address string) string {
 const impeccableStep = `DESIGN-QUALITY GATE — this runs BEFORE the fly deploy command, together with
 the browser test, as your last pre-deploy checks. Do NOT deploy first and fix
 after: that wastes an entire deploy on an unpolished site.
-This sandbox has the "impeccable" design detector. After the UI is built and the
-browser test passes, but BEFORE you run fly deploy, run:
-  impeccable detect --json internal/web/static internal/web/templates
-Fix every issue it reports (they flag AI-generated-design tells and quality
-problems — see DESIGN.md and AGENTS.md), then run it again. An empty report ([])
-means it's clean. Repeat at most TWICE — then deploy your best result; do not let
-this gate block the deploy indefinitely. Only run fly deploy once this is clean
-(or after two fix passes).`
+With the app running locally (./scripts/serve.sh) and the browser tests passing,
+audit the RENDERED site — not the source — with the provided script:
+  node scripts/audit.js
+It crawls your running pages, renders each, and runs the impeccable design
+detector on the REAL assembled HTML. This is load-bearing: many defects exist
+ONLY once the page is composed and never appear in a single template file — e.g.
+a section rule (.section-dark a) overriding a .btn text color so the button is
+invisible until hover, or opacity making footer text too faint. Scanning the
+template source misses all of these; auditing the rendered page catches them.
+Fix every issue it reports (see DESIGN.md and AGENTS.md), then run it again.
+"clean" means it passes. Repeat at most TWICE — then deploy your best result; do
+not let this gate block the deploy indefinitely. Only run fly deploy once this is
+clean (or after two fix passes).`
 
 // resumePreamble tells the agent the workspace holds an interrupted build's
 // progress: finish and deploy, don't redo completed work.

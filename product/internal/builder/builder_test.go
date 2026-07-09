@@ -272,8 +272,8 @@ func TestBuild_ImpeccableGateOnlyWhenEnabled(t *testing.T) {
 	if _, err := b.Build(context.Background(), Request{ProjectID: "pa", Plan: "build"}, Hooks{}); err != nil {
 		t.Fatalf("build: %v", err)
 	}
-	if strings.Contains(off.spec.Instruction, "impeccable detect") {
-		t.Error("impeccable gate must not appear when disabled")
+	if strings.Contains(off.spec.Instruction, "scripts/audit.js") {
+		t.Error("design-quality gate must not appear when disabled")
 	}
 
 	// On: the instruction carries the detector gate.
@@ -282,8 +282,8 @@ func TestBuild_ImpeccableGateOnlyWhenEnabled(t *testing.T) {
 	if _, err := b2.Build(context.Background(), Request{ProjectID: "pb", Plan: "build"}, Hooks{}); err != nil {
 		t.Fatalf("build: %v", err)
 	}
-	if !strings.Contains(on.spec.Instruction, "impeccable detect --json") {
-		t.Errorf("impeccable gate missing when enabled: %q", on.spec.Instruction)
+	if !strings.Contains(on.spec.Instruction, "scripts/audit.js") {
+		t.Errorf("design-quality gate missing when enabled: %q", on.spec.Instruction)
 	}
 }
 
