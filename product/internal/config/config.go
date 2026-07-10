@@ -221,25 +221,6 @@ func Load() Config {
 			c.PlannerLLMAPIKey = zen
 		}
 	}
-	// Critic defaults: whatever the impl model is wired to. Runs after the Zen
-	// default so the fallback picks up the resolved base/key.
-	defer func() {
-		if c.CriticLLMBaseURL == "" {
-			c.CriticLLMBaseURL = c.LLMBaseURL
-		}
-		if c.CriticLLMAPIKey == "" {
-			c.CriticLLMAPIKey = c.LLMAPIKey
-		}
-		if c.CriticLLMModel == "" {
-			c.CriticLLMModel = c.LLMModel
-		}
-		if strings.Contains(c.CriticLLMBaseURL, "api.openai.com") && os.Getenv("CRITIC_LLM_API_KEY") == "" {
-			if oa := os.Getenv("OPENAI_API_KEY"); oa != "" {
-				c.CriticLLMAPIKey = oa
-			}
-		}
-	}()
-
 	// OPENAI_API_KEY backs any role whose base URL points at OpenAI directly
 	// (make model-openai). Runs after the Zen default so it wins for those roles.
 	if oa := os.Getenv("OPENAI_API_KEY"); oa != "" {
@@ -248,6 +229,22 @@ func Load() Config {
 		}
 		if strings.Contains(c.PlannerLLMBaseURL, "api.openai.com") && os.Getenv("PLANNER_LLM_API_KEY") == "" {
 			c.PlannerLLMAPIKey = oa
+		}
+	}
+
+	// Critic defaults: whatever the impl model resolved to above (Zen/OpenAI
+	// included), unless CRITIC_LLM_* points it somewhere else explicitly.
+	if c.CriticLLMBaseURL == "" {
+		c.CriticLLMBaseURL = c.LLMBaseURL
+	}
+	if c.CriticLLMModel == "" {
+		c.CriticLLMModel = c.LLMModel
+	}
+	if c.CriticLLMAPIKey == "" {
+		if strings.Contains(c.CriticLLMBaseURL, "api.openai.com") {
+			c.CriticLLMAPIKey = os.Getenv("OPENAI_API_KEY")
+		} else {
+			c.CriticLLMAPIKey = c.LLMAPIKey
 		}
 	}
 	return c
