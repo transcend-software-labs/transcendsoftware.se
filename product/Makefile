@@ -48,3 +48,23 @@ template-push:
 
 template-test:
 	cd template/goapp && go vet ./... && go test ./...
+
+# --- Model experiments -------------------------------------------------------
+# Switch which models plan + build, env-only (no code change, app restarts
+# automatically). The OPENCODE_GO_API_KEY secret backs both Zen endpoints, so
+# no new keys are needed. Verify what's live: make model-status
+model-grok:
+	fly secrets set -a transcend-forge \
+	  LLM_BASE_URL=https://opencode.ai/zen/v1 \
+	  LLM_MODEL=grok-4.5 \
+	  PLANNER_LLM_BASE_URL=https://opencode.ai/zen/v1 \
+	  PLANNER_LLM_MODEL=grok-4.5
+
+# Back to the standard wiring: kimi-k2.7-code impl + glm-5.2 planning on zen/go/v1.
+model-default:
+	fly secrets unset -a transcend-forge \
+	  LLM_BASE_URL LLM_MODEL PLANNER_LLM_BASE_URL PLANNER_LLM_MODEL
+
+# Show the live model wiring from the app's startup log.
+model-status:
+	fly logs -a transcend-forge --no-tail 2>/dev/null | grep "llm: model config" | tail -1

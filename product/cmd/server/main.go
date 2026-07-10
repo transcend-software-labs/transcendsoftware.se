@@ -74,6 +74,11 @@ func main() {
 		log.Info("template: starter app enabled", "key", cfg.TemplateKey)
 		orch.SetTemplate(cfg.TemplateKey)
 	}
+	// The active model wiring, so `fly logs` always shows which experiment is
+	// live (see `make model-*`). Never log keys.
+	log.Info("llm: model config",
+		"impl_model", cfg.LLMModel, "impl_base", cfg.LLMBaseURL,
+		"planner_model", cfg.PlannerLLMModel, "planner_base", cfg.PlannerLLMBaseURL)
 	orch.RecoverInterrupted(context.Background()) // reap builds left running by a prior run
 	// Reap zombie infrastructure hourly: preview apps of failed projects,
 	// previews idle past PREVIEW_TTL_DAYS, and leaked sandbox machines.

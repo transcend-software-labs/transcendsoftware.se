@@ -183,14 +183,27 @@ func Load() Config {
 	}
 
 	// OPENCODE_GO_API_KEY: a single OpenCode Zen key that backs the whole
-	// pipeline. When set, route impl+intake+gate AND the plan step through Zen —
-	// impl/intake/gate keep LLMModel (Kimi), the plan step keeps PlannerLLMModel
-	// (GLM 5.2) — overriding any LLM_* / PLANNER_LLM_* endpoint and key. The
-	// sandbox opencode provider is OpenAI-compatible, so Zen drops straight in.
+	// pipeline (impl+intake+gate on LLMModel, plan on PlannerLLMModel). When set
+	// it is the DEFAULT wiring, not a lock: base URLs default to the Zen Go
+	// gateway and both clients use this key, but an explicitly set LLM_BASE_URL /
+	// PLANNER_LLM_BASE_URL / *_API_KEY env still wins. That makes model
+	// experiments env-only — e.g. `make model-grok` points both roles at
+	// https://opencode.ai/zen/v1 (grok-4.5 etc. — same key works there) and
+	// `make model-default` unsets everything back to kimi+glm on zen/go/v1.
 	if zen := os.Getenv("OPENCODE_GO_API_KEY"); zen != "" {
 		const zenBase = "https://opencode.ai/zen/go/v1"
-		c.LLMBaseURL, c.LLMAPIKey = zenBase, zen
-		c.PlannerLLMBaseURL, c.PlannerLLMAPIKey = zenBase, zen
+		if os.Getenv("LLM_BASE_URL") == "" {
+			c.LLMBaseURL = zenBase
+		}
+		if os.Getenv("LLM_API_KEY") == "" {
+			c.LLMAPIKey = zen
+		}
+		if os.Getenv("PLANNER_LLM_BASE_URL") == "" {
+			c.PlannerLLMBaseURL = zenBase
+		}
+		if os.Getenv("PLANNER_LLM_API_KEY") == "" {
+			c.PlannerLLMAPIKey = zen
+		}
 	}
 	return c
 }
