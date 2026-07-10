@@ -106,7 +106,11 @@ func (o *OpenAICompat) completeOnce(ctx context.Context, system, user string, ma
 		},
 	}
 	if strings.Contains(o.baseURL, "api.openai.com") {
-		r.MaxCompletionTokens = maxTokens
+		// max_completion_tokens caps hidden reasoning + visible output COMBINED
+		// on GPT-5.x. Reasoning-heavy calls (planning) can spend a whole classic
+		// budget before writing a single visible token, which comes back as an
+		// empty 200. 4x is a ceiling, not a spend — only generated tokens bill.
+		r.MaxCompletionTokens = maxTokens * 4
 	} else {
 		r.MaxTokens = maxTokens
 		r.Temperature = &o.temperature

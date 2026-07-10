@@ -49,8 +49,10 @@ RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" \
 ENV PATH="/usr/local/go/bin:/root/.opencode/bin:${PATH}"
 
 # opencode — the agent engine the orchestrator drives over HTTP.
-# Pin a version in production rather than tracking the install script's latest.
-RUN curl -fsSL https://opencode.ai/install | bash
+# PINNED via npm: deterministic rebuilds (the install script tracks latest and
+# its releases occasionally 404 mid-publish), and the version is visible right
+# here. Bump deliberately — newer models need a newer bundled model catalog.
+RUN npm i -g opencode-ai@1.17.18
 
 # flyctl — the agent deploys the finished site to its per-customer app using an
 # app-scoped token the orchestrator injects (the org token never enters here).
