@@ -66,7 +66,17 @@ func main() {
 		bytes.NewReader(tarball), int64(len(tarball))); err != nil {
 		fatal(err)
 	}
-	fmt.Printf("uploaded %s → %s (%d files, %.1f KB)\n", *dir, *key, files, float64(len(tarball))/1024)
+	// Read the object back and compare — a corrupt server-side write (seen in
+	// production: Tigris served a 200 with a dead body) otherwise fails every
+	// subsequent build at template restore instead of failing this push.
+	back, err := store.Get(ctx, *key)
+	if err != nil {
+		fatal(fmt.Errorf("readback: %w", err))
+	}
+	if sha256.Sum256(back) != sha256.Sum256(tarball) {
+		fatal(fmt.Errorf("readback: uploaded object does not match what was sent (%d vs %d bytes) — retry the push", len(back), len(tarball)))
+	}
+	fmt.Printf("uploaded %s → %s (%d files, %.1f KB, readback verified)\n", *dir, *key, files, float64(len(tarball))/1024)
 }
 
 // tarDir packs dir into a gzipped tar whose paths are relative to dir's root
