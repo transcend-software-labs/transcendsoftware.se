@@ -562,8 +562,13 @@ getting the existing site deployed. The plan it was built against:`
 
 // restoreSnapshot unpacks the previous build's workspace into /workspace.
 func (b *Sandbox) restoreSnapshot(ctx context.Context, machineID, getURL string) error {
-	script := `curl -fsSL '` + getURL + `' | tar -xzf - -C /workspace`
-	res, err := b.machines.Exec(ctx, machineID, []string{"/bin/sh", "-c", script}, 60)
+	// Download to a file first, then extract: a mid-stream failure piped straight
+	// into tar is unretryable (tar already consumed partial input). --http1.1
+	// because HTTP/2 to S3 gateways intermittently dies with PROTOCOL_ERROR
+	// (curl exit 92) — it killed real builds; retries cover the rest.
+	script := `curl -fsSL --http1.1 --retry 3 --retry-all-errors -o /tmp/seed.tgz '` + getURL + `'` +
+		` && tar -xzf /tmp/seed.tgz -C /workspace && rm -f /tmp/seed.tgz`
+	res, err := b.machines.Exec(ctx, machineID, []string{"/bin/sh", "-c", script}, 120)
 	if err != nil {
 		return fmt.Errorf("restore snapshot: %w", err)
 	}
@@ -584,7 +589,7 @@ func (b *Sandbox) saveSnapshot(ctx context.Context, machineID, putURL string) er
 // where the machine may be recovering from a saturated agent).
 func (b *Sandbox) saveSnapshotTimeout(ctx context.Context, machineID, putURL string, timeoutSec int) error {
 	script := `cd /workspace && tar --exclude=node_modules --exclude=.cache -czf /tmp/snapshot.tgz . && ` +
-		`curl -fsS -T /tmp/snapshot.tgz -o /dev/null '` + putURL + `'`
+		`curl -fsS --http1.1 --retry 3 --retry-all-errors -T /tmp/snapshot.tgz -o /dev/null '` + putURL + `'`
 	res, err := b.machines.Exec(ctx, machineID, []string{"/bin/sh", "-c", script}, timeoutSec)
 	if err != nil {
 		return fmt.Errorf("save snapshot: %w", err)
