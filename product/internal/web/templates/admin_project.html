@@ -1,0 +1,99 @@
+{{define "admin_project"}}{{template "head" .}}
+{{with .Data.Item}}
+<section class="page-head">
+  <div>
+    <a class="muted small" href="/admin">← Operator review</a>
+    <h1>{{.Name}}</h1>
+    <p class="muted small">{{$.Data.OwnerEmail}} · <a href="/projects/{{.ID}}">customer view →</a></p>
+  </div>
+  <span class="badge badge-{{.Status}}">{{statusLabel .Status}}</span>
+</section>
+
+{{if .PreviewURL}}
+<p><a class="btn btn-sm" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{.PreviewURL}} ↗</a>
+  {{if .RepoURL}} <a class="muted small" href="{{.RepoURL}}" target="_blank" rel="noopener">source ↗</a>{{end}}</p>
+{{end}}
+
+{{if or (eq .Status "planning") (eq .Status "screening") (eq .Status "building")}}
+{{/* The live build log lives OUTSIDE the polled #status box on purpose: the
+     status poll swaps #status every few seconds, and if the log were inside it
+     the element would be recreated each poll — reconnecting the SSE, replaying
+     the whole history (flicker) and resetting scroll to the top. As a stable
+     sibling it connects once, appends new lines, and auto-scrolls to newest. */}}
+<div class="log livelog" id="livelog"
+     hx-ext="sse" sse-connect="/projects/{{.ID}}/stream" sse-swap="log"
+     hx-swap="beforeend" hx-on::after-swap="this.scrollTop = this.scrollHeight"></div>
+{{end}}
+
+{{if .Shots}}
+<section class="panel">
+  <h2>Screenshots</h2>
+  <div class="review-shots">
+    {{range .Shots}}
+    <figure>
+      <figcaption class="muted small">{{.Path}}</figcaption>
+      <a href="{{.URL}}" target="_blank" rel="noopener"><img class="review-shot" src="{{.URL}}" alt="Page {{.Path}}" loading="lazy"></a>
+    </figure>
+    {{end}}
+  </div>
+</section>
+{{end}}
+
+{{if .Findings}}
+<section class="panel">
+  <h2>Design audit — {{len .Findings}} finding(s)</h2>
+  <ul>
+    {{range .Findings}}
+    <li class="finding finding-{{.Severity}}">
+      <span class="finding-sev">{{.Severity}}</span>
+      <span class="finding-name" title="{{.Description}}">{{.Name}}</span>
+      {{if .Snippet}}<span class="finding-snippet muted small">— {{.Snippet}}</span>{{end}}
+      <span class="finding-where muted small">{{.File}}{{if .Line}}:{{.Line}}{{end}}</span>
+    </li>
+    {{end}}
+  </ul>
+</section>
+{{end}}
+
+{{if .Critique}}
+<section class="panel">
+  <h2>Visual critique {{if eq .Critique "SHIP"}}— SHIP ✓{{end}}</h2>
+  <p class="small critique-text">{{.Critique}}</p>
+</section>
+{{end}}
+
+<section class="panel">
+  <h2>Brief</h2>
+  <p class="brief">{{.Brief}}</p>
+  {{if .Answers}}<h3 class="muted small" style="margin-top:1rem">Answers</h3><p class="brief">{{.Answers}}</p>{{end}}
+  {{if .DesignBrief}}<h3 class="muted small" style="margin-top:1rem">Design direction</h3><p class="brief">{{.DesignBrief}}</p>{{end}}
+  {{if .RejectReason}}<h3 class="muted small" style="margin-top:1rem">Reject/flag reason</h3><p class="brief">{{.RejectReason}}</p>{{end}}
+</section>
+
+{{if .Plan}}
+<section class="panel">
+  <h2>Plan (raw)</h2>
+  <pre class="plan">{{.Plan}}</pre>
+</section>
+{{end}}
+{{end}}
+
+{{if .Data.Iterations}}
+<section class="panel">
+  <h2>Iterations</h2>
+  <ol class="iterations">
+    {{range .Data.Iterations}}
+    <li>
+      <span class="badge badge-{{.Status}}">#{{.Number}} · {{statusLabel .Status}}</span>
+      <span class="muted small">machine {{if .MachineID}}{{.MachineID}}{{else}}—{{end}}
+        · {{if .ImplModel}}{{.ImplModel}}{{else}}—{{end}}
+        · {{dur .Duration}}
+        {{if .Tokens}}· {{.Tokens}} tok{{end}}</span>
+      {{if .Prompt}}<p class="muted small">“{{.Prompt}}”</p>{{end}}
+      {{if .Log}}<details><summary class="muted small">build log</summary><pre class="log">{{.Log}}</pre></details>{{end}}
+    </li>
+    {{end}}
+  </ol>
+</section>
+{{end}}
+{{template "foot" .}}{{end}}

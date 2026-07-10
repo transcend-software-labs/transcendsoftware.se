@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/auth"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
@@ -110,6 +111,7 @@ func (s *Server) Handler() http.Handler {
 
 	// Operator/admin views (gated by ADMIN_EMAIL).
 	mux.HandleFunc("GET /admin", s.requireAdmin(s.handleAdmin))
+	mux.HandleFunc("GET /admin/projects/{id}", s.requireAdmin(s.handleAdminProject))
 	mux.HandleFunc("POST /admin/projects/{id}/approve", s.requireAdmin(s.handleAdminApprove))
 	mux.HandleFunc("POST /admin/projects/{id}/reject", s.requireAdmin(s.handleAdminReject))
 	mux.HandleFunc("POST /admin/projects/{id}/destroy-preview", s.requireAdmin(s.handleAdminDestroyPreview))
@@ -147,9 +149,10 @@ func templateFuncs() template.FuncMap {
 		"statusLabel": statusLabel, // admin pages: always English
 		"trStatus":    trStatus,    // customer pages: localized status
 		"tr":          i18n.T,      // for fragments rendered without a View
-		"withLang":    func(lang string, p *project.Project) statusView { return statusView{p, lang} },
+		"withLang":    func(lang, act string, p *project.Project) statusView { return statusView{p, lang, act} },
 		"polling":     polling,
 		"pollEvery":   pollEvery,
+		"dur":         func(d time.Duration) string { return d.Round(time.Second).String() },
 	}
 }
 
@@ -177,7 +180,8 @@ func (v View) Languages() []i18n.Lang { return i18n.Langs }
 // can't rely on a surrounding View.
 type statusView struct {
 	*project.Project
-	Lang string
+	Lang     string
+	Activity string // language-neutral activity code of a running build ("" = none)
 }
 
 // trStatus is statusLabel's localized sibling; unknown statuses fall back to

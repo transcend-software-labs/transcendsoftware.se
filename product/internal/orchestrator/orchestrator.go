@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/transcend-software-labs/rasmus-ai/internal/activity"
 	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
 	"github.com/transcend-software-labs/rasmus-ai/internal/id"
@@ -63,6 +64,15 @@ type Orchestrator struct {
 
 	critic     llm.Critic // vision design review of preview screenshots (nil = off)
 	autoPolish bool       // let a POLISH critique trigger one internal refinement pass
+
+	activity *activity.Tracker // debounced per-project build activity for the customer status line
+}
+
+// Activity returns the language-neutral activity code of a project's running
+// build ("building", "testing", …), or "" when none is tracked. The web layer
+// localizes it (i18n "act.<code>").
+func (o *Orchestrator) Activity(projectID string) string {
+	return string(o.activity.Current(projectID))
 }
 
 // SetTemplate points first builds at a starter-app tarball in object storage.
@@ -82,7 +92,7 @@ func (o *Orchestrator) SetCritic(c llm.Critic, autoPolish bool) {
 
 // New returns an orchestrator.
 func New(s store.Store, in llm.Intake, p llm.Planner, g llm.SafetyGate, b builder.Builder, m fly.Machines, as storage.Store, br *stream.Broker, v Verifier, log *slog.Logger) *Orchestrator {
-	return &Orchestrator{store: s, intake: in, planner: p, gate: g, builder: b, machines: m, storage: as, broker: br, verifier: v, log: log, notifier: notify.Noop{}, active: map[string]bool{}}
+	return &Orchestrator{store: s, intake: in, planner: p, gate: g, builder: b, machines: m, storage: as, broker: br, verifier: v, log: log, notifier: notify.Noop{}, active: map[string]bool{}, activity: activity.NewTracker()}
 }
 
 // SetNotifications wires transactional email. operatorEmail receives escalation
@@ -259,6 +269,7 @@ func (o *Orchestrator) resumeBuild(ctx context.Context, it *project.Iteration, r
 		line = strings.ToValidUTF8(line, "")
 		logBuf.WriteString(line)
 		logBuf.WriteByte('\n')
+		o.activity.Observe(p.ID, line)
 		o.broker.Publish(p.ID, stream.Event{Type: "log", Data: line})
 		lines++
 		if lines%8 == 0 {
@@ -642,6 +653,7 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string, i
 		line = strings.ToValidUTF8(line, "")
 		logBuf.WriteString(line)
 		logBuf.WriteByte('\n')
+		o.activity.Observe(p.ID, line)
 		o.broker.Publish(p.ID, stream.Event{Type: "log", Data: line})
 		lines++
 		if lines%8 == 0 {
@@ -731,6 +743,7 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string, i
 func (o *Orchestrator) finishBuild(ctx context.Context, p *project.Project, it *project.Iteration,
 	res builder.Result, err error, snapshotKey string, screenshotKeys []string,
 	logSnapshot func() string, onLog func(string)) error {
+	defer o.activity.Clear(p.ID) // the status line only exists while a build runs
 	// Never assert "preview ready" — verify it. The agent ran `fly deploy`
 	// inside the sandbox; a politely-failed deploy would otherwise hand the
 	// customer a dead link.

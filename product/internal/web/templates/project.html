@@ -7,17 +7,19 @@
   </div>
 </section>
 
-{{template "project_status" (withLang $.Lang .)}}
+{{template "project_status" (withLang $.Lang $.Data.Activity .)}}
 
-{{if or (eq .Status "planning") (eq .Status "screening") (eq .Status "building")}}
-{{/* The live build log lives OUTSIDE the polled #status box on purpose: the
-     status poll swaps #status every few seconds, and if the log were inside it
-     the element would be recreated each poll — reconnecting the SSE, replaying
-     the whole history (flicker) and resetting scroll to the top. As a stable
-     sibling it connects once, appends new lines, and auto-scrolls to newest. */}}
-<div class="log livelog" id="livelog"
-     hx-ext="sse" sse-connect="/projects/{{.ID}}/stream" sse-swap="log"
-     hx-swap="beforeend" hx-on::after-swap="this.scrollTop = this.scrollHeight"></div>
+{{if $.Data.Shots}}
+<section class="panel">
+  <h2>{{$.T "prj.shots.h2"}}</h2>
+  <div class="review-shots">
+    {{range $.Data.Shots}}
+    <figure>
+      <a href="{{.URL}}" target="_blank" rel="noopener"><img class="review-shot" src="{{.URL}}" alt="" loading="lazy"></a>
+    </figure>
+    {{end}}
+  </div>
+</section>
 {{end}}
 
 {{if eq .Status "needs_input"}}
@@ -83,13 +85,6 @@
   </form>
 </section>
 
-{{if .Plan}}
-<section class="panel">
-  <h2>{{$.T "prj.plan.h2"}}</h2>
-  <pre class="plan">{{.Plan}}</pre>
-</section>
-{{end}}
-
 {{if .CanRetry}}
 <section class="panel">
   <h2>{{$.T "prj.retry.h2"}}</h2>
@@ -135,7 +130,6 @@
       <span class="badge badge-{{.Status}}">#{{.Number}} · {{trStatus $.Lang .Status}}</span>
       {{if .Prompt}}<p class="muted small">“{{.Prompt}}”</p>{{end}}
       {{if .PreviewURL}}<a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{$.T "prj.hist.preview"}}</a>{{end}}
-      {{if .Log}}<details><summary class="muted small">{{$.T "prj.hist.log"}}</summary><pre class="log">{{.Log}}</pre></details>{{end}}
     </li>
     {{end}}
   </ol>

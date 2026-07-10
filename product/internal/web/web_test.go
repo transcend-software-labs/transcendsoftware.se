@@ -115,6 +115,25 @@ func signedInClient(t *testing.T, base string) *http.Client {
 	return c
 }
 
+// signedInAdminClient signs up the configured operator (AdminEmail) and
+// returns a client whose session passes requireAdmin.
+func signedInAdminClient(t *testing.T, base string) *http.Client {
+	t.Helper()
+	jar, _ := cookiejar.New(nil)
+	c := &http.Client{Jar: jar}
+	resp, err := c.PostForm(base+"/signup", url.Values{
+		"email": {"admin@example.com"}, "password": {"apples12345"},
+	})
+	if err != nil {
+		t.Fatalf("admin signup: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("admin signup status = %d", resp.StatusCode)
+	}
+	return c
+}
+
 func TestQuota_DailyProjectCap(t *testing.T) {
 	srv := newTestServerWithConfig(t, config.Config{AdminEmail: "admin@example.com", MaxProjectsPerDay: 1})
 	defer srv.Close()
@@ -276,11 +295,11 @@ func TestLoginPage_MethodGating(t *testing.T) {
 	}
 }
 
-// TestProjectStatus_BuildingStreamsInline guards the fix for "had to refresh
-// for live build streaming to start": the live-log element must live inside the
-// polled #status fragment (so the 2s poll swaps it in the moment a build
-// starts, no manual refresh), carry hx-preserve (so the SSE connection + logs
-// survive later polls), and NOT appear for other statuses.
+// TestProjectStatus_BuildingStreamsInline guards the customer/operator split:
+// the customer project page never shows the raw live log (it reads as a
+// devtool, not "my tech guy is building my site") — that stream lives on the
+// operator page /admin/projects/{id}. The customer's polled #status fragment
+// stays log-free too.
 func TestProjectStatus_BuildingStreamsInline(t *testing.T) {
 	srv, st, _ := newTestServerAuth(t, config.Config{AdminEmail: "admin@example.com"}, nil)
 	defer srv.Close()
@@ -310,24 +329,31 @@ func TestProjectStatus_BuildingStreamsInline(t *testing.T) {
 	getPage := func(id string) string { return fetch("/projects/" + id) }
 
 	buildingID := seed(project.StatusBuilding)
-	// The live log is DECOUPLED from the polled status fragment: it lives as a
-	// stable sibling on the project page so the status poll can't recreate it
-	// (which caused flicker + scroll-reset). The /status fragment must not carry
-	// it...
+	// Neither the status fragment nor the customer page may carry the raw log.
 	if frag := get(buildingID); strings.Contains(frag, "livelog") {
-		t.Errorf("status fragment must not carry the live log (it is a stable sibling now):\n%s", frag)
+		t.Errorf("status fragment must not carry the live log:\n%s", frag)
 	}
-	// ...and the full project page while building must render it once.
-	page := getPage(buildingID)
+	if page := getPage(buildingID); strings.Contains(page, "livelog") {
+		t.Errorf("customer project page must not carry the live log (operator-only now):\n%s", page)
+	}
+	// The operator page streams it while the build runs.
+	adm := signedInAdminClient(t, srv.URL)
+	resp, err := adm.Get(srv.URL + "/admin/projects/" + buildingID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	page := string(b)
 	for _, want := range []string{
 		`sse-connect="/projects/` + buildingID + `/stream"`,
 		`id="livelog"`,
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("building project page missing %q:\n%s", want, page)
+			t.Errorf("admin project page missing %q:\n%s", want, page)
 		}
 	}
-	// A finished project page (delivered) must not stream a live log.
+	// A finished project shows no live log anywhere.
 	if strings.Contains(getPage(seed(project.StatusDelivered)), "livelog") {
 		t.Errorf("a finished project page should not stream a live log")
 	}

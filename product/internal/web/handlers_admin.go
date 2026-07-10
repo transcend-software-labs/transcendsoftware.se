@@ -191,6 +191,37 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 	s.render(w, http.StatusOK, "admin", v)
 }
 
+// adminProjectView backs the operator's technical view of one project.
+type adminProjectView struct {
+	Item       reviewItem
+	Iterations []*project.Iteration
+	OwnerEmail string
+}
+
+// handleAdminProject is the operator's technical view of one project: raw plan,
+// live build stream, full iteration logs, machine ids, audit and critique —
+// everything the customer page deliberately no longer shows.
+func (s *Server) handleAdminProject(w http.ResponseWriter, r *http.Request, _ *user.User) {
+	p, err := s.store.ProjectByID(r.Context(), r.PathValue("id"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	its, err := s.store.IterationsByProject(r.Context(), p.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	owner := ""
+	if u, err := s.store.UserByID(r.Context(), p.UserID); err == nil {
+		owner = u.Email
+	}
+	v := s.view(r, p.Name+" — operator", adminProjectView{
+		Item: s.withScreenshots(r.Context(), p), Iterations: its, OwnerEmail: owner})
+	v.Lang = "en" // operator pages are English regardless of the customer-facing selector
+	s.render(w, http.StatusOK, "admin_project", v)
+}
+
 // handleAdminDestroyPreview tears down a project's preview app immediately.
 func (s *Server) handleAdminDestroyPreview(w http.ResponseWriter, r *http.Request, _ *user.User) {
 	if err := s.orch.DestroyPreview(r.Context(), r.PathValue("id")); err != nil {

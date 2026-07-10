@@ -46,7 +46,7 @@
   <ul class="project-list">
     {{range .Data.Accepted}}
     <li class="panel">
-      <h3>{{.Name}}</h3>
+      <h3><a href="/admin/projects/{{.ID}}">{{.Name}}</a></h3>
       <p><a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{.PreviewURL}} ↗</a>
         {{if .RepoURL}}· <a class="muted small" href="{{.RepoURL}}" target="_blank" rel="noopener">source ↗</a>{{end}}</p>
       {{if .Shots}}
@@ -110,7 +110,7 @@
   <ul class="project-list">
     {{range .Data.Active}}
     <li class="project-row">
-      <a href="/projects/{{.ProjectID}}">
+      <a href="/admin/projects/{{.ProjectID}}">
         <span class="project-name">{{.ProjectName}}</span>
         <span class="badge badge-building">building <span class="spinner"></span></span>
       </a>
@@ -131,7 +131,7 @@
     {{range .Data.Previews}}
     <li class="project-row">
       {{if .Thumb}}<a href="{{.PreviewURL}}" target="_blank" rel="noopener"><img class="review-thumb" src="{{.Thumb}}" alt="Preview of {{.Name}}" loading="lazy"></a>{{end}}
-      <a href="/projects/{{.ID}}">
+      <a href="/admin/projects/{{.ID}}">
         <span class="project-name">{{.Name}}</span>
       </a>
       <a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{.PreviewURL}} ↗</a>
@@ -156,7 +156,7 @@
   <ul class="project-list">
     {{range .Data.Escalated}}
     <li class="panel">
-      <h3>{{.Name}}</h3>
+      <h3><a href="/admin/projects/{{.ID}}">{{.Name}}</a></h3>
       {{if .RejectReason}}<p class="reason small">Flagged: {{.RejectReason}}</p>{{end}}
       <p class="brief">{{.Brief}}</p>
       {{if .Answers}}<p class="brief muted small">Answers: {{.Answers}}</p>{{end}}

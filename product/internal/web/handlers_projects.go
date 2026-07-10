@@ -161,6 +161,8 @@ type projectView struct {
 	Project    *project.Project
 	Iterations []*project.Iteration
 	Assets     []*project.Asset
+	Shots      []reviewShot // presigned page screenshots of the current build
+	Activity   string       // live build activity code for the status line
 }
 
 func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.User) {
@@ -178,7 +180,8 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	s.render(w, http.StatusOK, "project", s.view(r, p.Name, projectView{Project: p, Iterations: its, Assets: assets}))
+	s.render(w, http.StatusOK, "project", s.view(r, p.Name, projectView{Project: p, Iterations: its, Assets: assets,
+		Shots: s.withScreenshots(r.Context(), p).Shots, Activity: s.orch.Activity(p.ID)}))
 }
 
 var allowedAssetTypes = map[string]bool{
@@ -264,7 +267,7 @@ func (s *Server) handleProjectStatus(w http.ResponseWriter, r *http.Request, u *
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "project_status", statusView{p, s.lang(r)}); err != nil {
+	if err := s.tmpl.ExecuteTemplate(w, "project_status", statusView{p, s.lang(r), s.orch.Activity(p.ID)}); err != nil {
 		s.log.Error("render status", "err", err)
 	}
 }
