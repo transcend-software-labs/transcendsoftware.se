@@ -93,6 +93,11 @@ Forge-specific rules layered on top of it.
   it to any link you introduce that crosses the public-site ↔ `/admin` boundary.
 - Keep: semantic HTML, accessibility (contrast, focus states, labels), and the
   responsive behavior. Beauty never trumps usability.
+- **The site's language drives more than copy**: set `<html lang="…">` in
+  `layout.html` to the site's language, and pick typefaces that actually cover
+  its script — many display faces are Latin-only, so for Cyrillic, Greek, etc.
+  verify the display font has the glyphs (or use a well-covered face / system
+  stack for headings). Tofu or silent fallback in headings is a shipped bug.
 - **Record the chosen direction in `DESIGN.md`** (palette, type, spacing, voice)
   before you build the UI, then build to it.
 
