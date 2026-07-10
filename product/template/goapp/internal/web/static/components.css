@@ -99,14 +99,16 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); }
 
 /* --- Footer -------------------------------------------------------------- */
 /* Symmetric vertical padding + the same horizontal inset as every section —
-   footer content never sits flush against the viewport edge. Build richer
-   footers by putting a .container (with your own grid) inside .footer. */
+   footer content never sits flush against the viewport edge. Alignment is
+   yours: add .center for a simple one-line footer, or build richer footers by
+   putting a .container (with your own grid) inside — but pick ONE alignment
+   per footer; mixing centered and left-aligned blocks reads as broken. */
 .foot, .footer {
   padding: var(--space-7) var(--container-pad);
   color: var(--muted); font-size: .85rem;
 }
-.foot { text-align: center; }
 .footer > .container { padding: 0; }
+.center { text-align: center; }
 
 /* --- Forms ---------------------------------------------------------------- */
 .stack { display: flex; flex-direction: column; gap: var(--space-3); }

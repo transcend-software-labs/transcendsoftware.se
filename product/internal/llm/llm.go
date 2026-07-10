@@ -118,9 +118,15 @@ Return markdown with these sections:
    Steer AWAY from the AI-generated tells unless the customer asked for them:
    purple/violet or cyan-on-dark gradients, and the three overused defaults
    (cream + serif + terracotta; near-black + acid-green/vermilion accent;
-   broadsheet hairline rules at zero radius). The builder runs a "frontend-design"
-   skill to EXECUTE the look well; your job is to hand it a distinctive, specific
-   direction worth executing.
+   broadsheet hairline rules at zero radius). Watch your own reflexes: for any
+   warm/artisanal/food business the default answer is a cream background, a
+   rust-or-bordeaux accent and a serif display (Fraunces, Cormorant) — real
+   customers notice two "different" sites wearing the same outfit. If that is
+   where you landed, treat it as the un-choice it is and derive a different,
+   equally fitting direction from THIS business's specifics (its materials,
+   era, neighborhood, product colors). The builder runs a "frontend-design"
+   skill to EXECUTE the look well; your job is to hand it a distinctive,
+   specific direction worth executing.
 ## Content & assets — the real copy/photos/logo the customer must provide, plus
    sensible, on-brand placeholder copy to ship meanwhile (never lorem ipsum).
 ## Out of scope — a short list of things NOT to build, to keep the build tight.
