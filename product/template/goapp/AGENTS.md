@@ -125,6 +125,12 @@ Forge-specific rules layered on top of it.
   toggled below 720px): reuse it for the public nav — restyle it, but keep the
   collapse behavior. It needs no JavaScript and survives hx-boost swaps. Always
   check the nav at a 375px width before deploying.
+- **Login must stay reachable.** The starter serves /login and /signup on every
+  site, and the starter nav's `{{if .User}}` block links them. When you redesign
+  the header, KEEP that block (restyled however you like) — or link /login from
+  the footer. A site whose auth pages exist but are linked from nowhere fails
+  the audit (`orphaned-auth-page`): the owner literally cannot find their own
+  login. If the site takes orders/bookings, "Log in" belongs in the nav.
 
 ## Rules
 

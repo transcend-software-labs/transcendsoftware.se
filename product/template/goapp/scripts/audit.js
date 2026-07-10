@@ -69,10 +69,12 @@ async function main() {
   }
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-audit-'));
+  const pages = [];
   let n = 0;
   for (const r of routes) {
     const html = await get(BASE + r);
     if (!html) continue;
+    pages.push(html);
     fs.writeFileSync(path.join(dir, 'page' + n + '.html'), await inlineCss(html));
     n++;
   }
@@ -89,6 +91,25 @@ async function main() {
   let findings;
   try { findings = JSON.parse(out); }
   catch { console.error('audit: impeccable output was not JSON:\n' + out.slice(0, 200)); process.exit(1); }
+
+  // Orphaned auth pages: the starter always serves /login and /signup. If a
+  // route serves a real page (200, not a redirect) but no crawled page links
+  // to it, visitors can never reach it — a recurring nav-rebuild mistake.
+  const linked = new Set();
+  for (const html of pages)
+    for (const m of html.matchAll(/href=["'](\/[a-z0-9/_-]*)["']/gi)) linked.add(m[1]);
+  for (const route of ['/login', '/signup']) {
+    let status = 0;
+    try { status = (await fetch(BASE + route, { redirect: 'manual' })).status; } catch {}
+    if (status === 200 && !linked.has(route)) {
+      findings.push({
+        antipattern: 'orphaned-auth-page', name: 'Orphaned auth page', severity: 'error',
+        description: route + ' serves a page but no page links to it.',
+        file: 'internal/web/templates/layout.html', line: 0,
+        snippet: route + ' exists but is unreachable — keep the starter nav\'s {{if .User}} auth block (Log in / Sign up) when you redesign the header, or link it from the footer.',
+      });
+    }
+  }
   try { fs.writeFileSync('/tmp/forge-audit-findings.json', JSON.stringify(findings)); } catch {}
 
   if (!findings.length) { console.log('\n=== design audit: clean ✓ ==='); process.exit(0); }
