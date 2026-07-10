@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -291,6 +292,10 @@ func (h *HTTP) graphql(ctx context.Context, query string, vars map[string]any, o
 	return json.Unmarshal(env.Data, out)
 }
 
+// reStaleMachine matches Fly's 409 unique-machine-name violation and captures
+// the squatting machine's id.
+var reStaleMachine = regexp.MustCompile(`machine ID (\w+) already exists`)
+
 func (h *HTTP) SpawnSandbox(ctx context.Context, spec SpawnSpec) (*Sandbox, error) {
 	port := spec.Port
 	if port == 0 {
@@ -318,7 +323,20 @@ func (h *HTTP) SpawnSandbox(ctx context.Context, spec SpawnSpec) (*Sandbox, erro
 	}
 	if err := h.do(ctx, http.MethodPost,
 		fmt.Sprintf("/apps/%s/machines", h.sandboxApp), payload, &created); err != nil {
-		return nil, err
+		// A stale sandbox from an interrupted build can still hold this
+		// project's deterministic machine name (seen live as a 409 unique-name
+		// violation). Destroy the squatter and retry once instead of failing
+		// the build.
+		m := reStaleMachine.FindStringSubmatch(err.Error())
+		if m == nil {
+			return nil, err
+		}
+		_ = h.DestroySandbox(ctx, &Sandbox{MachineID: m[1], AppName: h.sandboxApp})
+		time.Sleep(3 * time.Second) // let the name release
+		if err2 := h.do(ctx, http.MethodPost,
+			fmt.Sprintf("/apps/%s/machines", h.sandboxApp), payload, &created); err2 != nil {
+			return nil, err2
+		}
 	}
 
 	sb := &Sandbox{MachineID: created.ID, AppName: h.sandboxApp}

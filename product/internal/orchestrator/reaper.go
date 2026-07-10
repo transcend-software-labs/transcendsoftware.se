@@ -23,6 +23,27 @@ const sandboxMaxAge = 150 * time.Minute
 // Idempotent and best-effort: one broken project must not stop the sweep.
 // Called on startup and periodically (see StartReaper).
 func (o *Orchestrator) Reap(ctx context.Context, previewTTL time.Duration) {
+	// Zombie builds: a 'building' iteration whose heartbeat has been silent far
+	// past any healthy quiet stretch, with no goroutine in this process driving
+	// it — left behind by a crash/restart race. Without this sweep it stays
+	// "building" forever, blocks a concurrency slot, and gets resurrected by
+	// every restart. Re-attach if its sandbox is still alive, else reap — the
+	// same idempotent pair startup recovery uses.
+	const zombieAfter = 20 * time.Minute
+	if its, err := o.store.ActiveIterations(ctx); err == nil {
+		for _, it := range its {
+			if time.Since(it.HeartbeatAt) < zombieAfter || o.hasActive(it.ProjectID) {
+				continue
+			}
+			o.log.Warn("reap: zombie build", "project", it.ProjectID,
+				"silent", time.Since(it.HeartbeatAt).Round(time.Minute))
+			if o.reattachInterrupted(ctx, it) {
+				continue
+			}
+			o.reapInterrupted(ctx, it)
+		}
+	}
+
 	projects, err := o.store.Projects(ctx)
 	if err != nil {
 		o.log.Error("reap: list projects", "err", err)

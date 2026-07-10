@@ -170,12 +170,53 @@ func (h *HTTP) Attach(ctx context.Context, sessionID string, onLog func(string))
 		return Result{SessionID: sessionID}, fmt.Errorf("opencode: reattach event stream: %w", err)
 	}
 	defer stream.Close()
-	log, err := h.consume(sessionID, stream, onLog)
-	tokens := 0
-	if err == nil {
-		tokens = h.sessionTokens(ctx, sessionID)
+
+	type consumed struct {
+		log string
+		err error
 	}
-	return Result{Log: log, SessionID: sessionID, Tokens: tokens}, err
+	ch := make(chan consumed, 1)
+	go func() {
+		l, e := h.consume(sessionID, stream, onLog)
+		ch <- consumed{l, e}
+	}()
+
+	// Watchdog: a session that finished while we were detached emits no further
+	// events, so consume would sit on the stream until the build deadline (this
+	// exact gap kept a finished site "building" for two extra hours). A live
+	// agent grows the session's token count with every model call; a finished
+	// (or irrecoverably wedged) one freezes it. Ten quiet minutes → finalize
+	// with what we have — the verifier decides whether it actually shipped.
+	const frozenLimit = 10
+	frozen, last := 0, -1
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case c := <-ch:
+			tokens := 0
+			if c.err == nil {
+				tokens = h.sessionTokens(ctx, sessionID)
+			}
+			return Result{Log: c.log, SessionID: sessionID, Tokens: tokens}, c.err
+		case <-ticker.C:
+			cur := h.sessionTokens(ctx, sessionID)
+			if cur == last {
+				frozen++
+			} else {
+				frozen, last = 0, cur
+			}
+			if frozen >= frozenLimit {
+				emit(onLog, "The build finished while the connection was down — finalising…")
+				stream.Close()
+				return Result{SessionID: sessionID, Tokens: cur}, nil
+			}
+		case <-ctx.Done():
+			stream.Close()
+			c := <-ch
+			return Result{Log: c.log, SessionID: sessionID}, ctx.Err()
+		}
+	}
 }
 
 // sessionTokens reads the session's token totals (input + output + reasoning),

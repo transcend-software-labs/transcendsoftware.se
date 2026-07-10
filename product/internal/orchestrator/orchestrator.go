@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
@@ -57,6 +58,8 @@ type Orchestrator struct {
 	templateKey   string          // object-storage key of the starter-app tarball ("" = greenfield)
 	implModel     string          // active build/intake/gate model, stamped on iterations for experiment analysis
 	plannerModel  string          // active planning model, stamped on iterations
+	activeMu      sync.Mutex      // guards active
+	active        map[string]bool // projects with an in-flight pipeline goroutine in THIS process
 }
 
 // SetTemplate points first builds at a starter-app tarball in object storage.
@@ -69,7 +72,7 @@ func (o *Orchestrator) SetModels(impl, planner string) { o.implModel, o.plannerM
 
 // New returns an orchestrator.
 func New(s store.Store, in llm.Intake, p llm.Planner, g llm.SafetyGate, b builder.Builder, m fly.Machines, as storage.Store, br *stream.Broker, v Verifier, log *slog.Logger) *Orchestrator {
-	return &Orchestrator{store: s, intake: in, planner: p, gate: g, builder: b, machines: m, storage: as, broker: br, verifier: v, log: log, notifier: notify.Noop{}}
+	return &Orchestrator{store: s, intake: in, planner: p, gate: g, builder: b, machines: m, storage: as, broker: br, verifier: v, log: log, notifier: notify.Noop{}, active: map[string]bool{}}
 }
 
 // SetNotifications wires transactional email. operatorEmail receives escalation
@@ -274,7 +277,15 @@ func reachable(addr string) bool {
 }
 
 func (o *Orchestrator) async(projectID string, fn func(context.Context) error) {
+	o.activeMu.Lock()
+	o.active[projectID] = true
+	o.activeMu.Unlock()
 	go func() {
+		defer func() {
+			o.activeMu.Lock()
+			delete(o.active, projectID)
+			o.activeMu.Unlock()
+		}()
 		ctx, cancel := context.WithTimeout(context.Background(), pipelineTimeout)
 		defer cancel()
 		if err := fn(ctx); err != nil {
@@ -282,6 +293,14 @@ func (o *Orchestrator) async(projectID string, fn func(context.Context) error) {
 			o.markFailed(ctx, projectID, err)
 		}
 	}()
+}
+
+// hasActive reports whether this process is currently driving a pipeline step
+// for the project — the reaper must not touch builds that are merely quiet.
+func (o *Orchestrator) hasActive(projectID string) bool {
+	o.activeMu.Lock()
+	defer o.activeMu.Unlock()
+	return o.active[projectID]
 }
 
 // StartIntake generates clarifying questions + design suggestions for a
@@ -346,6 +365,23 @@ func (o *Orchestrator) RetryBuild(projectID string) {
 		}
 		if !p.CanRetry() {
 			return nil // already recovered or not in a retryable state
+		}
+		// Defensive sweep: a crash race can leave a previous attempt 'building'
+		// with a live sandbox. Starting a new build then double-builds the same
+		// app and collides on the deterministic machine name (seen live as a
+		// 409 unique-name violation). Fail leftovers and free the name first.
+		if its, err := o.store.IterationsByProject(ctx, p.ID); err == nil {
+			for _, old := range its {
+				if old.Status != project.StatusBuilding {
+					continue
+				}
+				o.log.Warn("retry: reaping leftover building iteration", "project", p.ID, "machine", old.MachineID)
+				if old.MachineID != "" {
+					_ = o.machines.DestroySandbox(ctx, &fly.Sandbox{MachineID: old.MachineID})
+				}
+				old.Status = project.StatusFailed
+				_ = o.store.UpdateIteration(ctx, old)
+			}
 		}
 		p.RejectReason = ""
 		if err := o.save(ctx, p); err != nil {
