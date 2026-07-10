@@ -13,11 +13,18 @@
 // It writes the raw findings to /tmp/forge-audit-findings.json too (for tooling).
 
 const { execSync } = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
 const BASE = (process.argv[2] || 'http://localhost:8080').replace(/\/$/, '');
+
+// components.css is LOCKED — structure lives there so padding, footer insets,
+// nav visibility and button readability can't regress per project. Restyle via
+// tokens.css + app.css. (Maintainers: template-push refuses to ship if this
+// constant doesn't match the file — update both together, deliberately.)
+const COMPONENTS_SHA256 = 'bbda67dcfaf9b3f9e587bbcbfe8dfbb06c73fe3f9a4e234631564856535681b4';
 
 async function get(url) {
   try { const r = await fetch(url); return r.ok ? await r.text() : ''; } catch { return ''; }
@@ -40,6 +47,16 @@ async function inlineCss(html) {
 async function main() {
   const home = await get(BASE + '/');
   if (!home) { console.error('audit: site not reachable at ' + BASE + ' — is ./scripts/serve.sh running?'); process.exit(2); }
+
+  // Integrity gate: the locked structural stylesheet must ship unmodified.
+  const comp = await get(BASE + '/static/components.css');
+  const compSha = crypto.createHash('sha256').update(comp).digest('hex');
+  if (compSha !== COMPONENTS_SHA256) {
+    console.error('\n=== design audit: FAIL — components.css was modified (it is LOCKED) ===');
+    console.error('Revert components.css to the starter version. Restyle by setting');
+    console.error('variables in tokens.css and writing project CSS in app.css instead.');
+    process.exit(1);
+  }
 
   // Discover internal routes from the homepage's links (nav + body). Skip assets,
   // auth actions, and /admin (Forge-owned, styled separately).

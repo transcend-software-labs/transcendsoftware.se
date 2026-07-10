@@ -11,6 +11,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -44,6 +46,13 @@ func main() {
 		UseSSL:    cfg.StorageUseSSL,
 	})
 	if err != nil {
+		fatal(err)
+	}
+
+	// components.css is hash-locked by scripts/audit.js in the sandbox. Refuse
+	// to ship a template where the two drifted apart — otherwise every build's
+	// design audit would fail (or worse, silently verify the wrong baseline).
+	if err := verifyComponentsLock(*dir); err != nil {
 		fatal(err)
 	}
 
@@ -131,4 +140,25 @@ func tarDir(dir string) ([]byte, int, error) {
 func fatal(err error) {
 	fmt.Fprintln(os.Stderr, "templatepush:", err)
 	os.Exit(1)
+}
+
+// verifyComponentsLock checks that the COMPONENTS_SHA256 constant in
+// scripts/audit.js matches the actual hash of static/components.css. When you
+// change the locked stylesheet deliberately, update the constant in audit.js
+// in the same commit.
+func verifyComponentsLock(dir string) error {
+	css, err := os.ReadFile(filepath.Join(dir, "internal/web/static/components.css"))
+	if err != nil {
+		return fmt.Errorf("components lock: %w", err)
+	}
+	sum := sha256.Sum256(css)
+	got := hex.EncodeToString(sum[:])
+	audit, err := os.ReadFile(filepath.Join(dir, "scripts/audit.js"))
+	if err != nil {
+		return fmt.Errorf("components lock: %w", err)
+	}
+	if !strings.Contains(string(audit), "'"+got+"'") {
+		return fmt.Errorf("components lock: components.css hash %s is not the COMPONENTS_SHA256 in scripts/audit.js — update the constant together with the stylesheet", got)
+	}
+	return nil
 }

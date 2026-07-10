@@ -4,6 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{.Title}}</title>
+  <!-- Order matters: tokens (the design surface) → components (locked
+       structure) → app.css (this project's theme, always wins). -->
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/components.css">
   <link rel="stylesheet" href="/static/app.css">
   <!-- Vendored (no CDN) so the site stays self-contained. hx-boost turns
        full-page loads into fast partial swaps — no white flash, back button

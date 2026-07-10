@@ -34,7 +34,7 @@ that implements the plan.
     internal/web/server.go      routes, render, currentUser, requireUser, CSRF
     internal/web/handlers.go    page + form handlers
     internal/web/templates/     html/template pages ("head"/"foot" layout)
-    internal/web/static/        app.css
+    internal/web/static/        tokens.css (design vars) + components.css (locked) + app.css (theme)
 
 ## How to make common changes
 
@@ -46,7 +46,7 @@ that implements the plan.
 - **Any authenticated POST:** include the hidden `csrf_token` input (see the
   logout form) and call `s.checkCSRF(r)` first.
 - **Content/branding:** replace "Your Site" in `layout.html`, the landing page,
-  and `static/app.css` variables. Write real, complete copy in the customer's
+  and the `static/tokens.css` variables. Write real, complete copy in the customer's
   language (Swedish unless the brief says otherwise).
 
 ## Design — decided per project, not by this template
@@ -61,9 +61,24 @@ subject, picking a distinctive palette + type, spending your boldness in one
 signature element, and avoiding the templated defaults. The bullets below are
 Forge-specific rules layered on top of it.
 
-- Restyle `static/app.css` completely: palette, typography, spacing, layout.
-  Replace the CSS variables and go far beyond them if the direction calls for
-  it. Nothing about the starter's look should survive unless it happens to fit.
+- **The CSS is a three-file system — know which file does what:**
+  - `static/tokens.css` — the design surface. Set the plan's palette (as the
+    semantic color tokens, incl. `--accent-ink` = readable text ON the accent),
+    the display+body type pairing, radius, and the spacing/rhythm feel. Setting
+    tokens alone re-skins every component. Nothing of the starter's neutral
+    look should survive.
+  - `static/components.css` — **LOCKED, do not edit** (the design audit
+    verifies its hash and fails the build if it changed). It is structure only:
+    nav + hamburger, container/section rhythm, footer insets, forms, readable
+    buttons. It has no look of its own — everything visual comes from tokens.
+  - `static/app.css` — yours, freeform. Hero art direction, section bands,
+    cards, imagery treatment, the signature element. Compose with
+    `.section`/`.container` so insets stay consistent, and take every
+    padding/margin/gap from the `--space-*` scale.
+- Buttons: restyle variants via custom properties only —
+  `.btn-secondary { --btn-bg: …; --btn-ink: …; }`. Never raw `color:` rules on
+  buttons; the component pins button ink so section link-colors can't make
+  button text invisible (a bug that shipped once — never again).
 - Redesign the landing page structure freely (hero, sections, imagery).
 - **Do NOT touch the site admin's look**: `static/admin.css`, `admin_layout.html`,
   or the `admin*.html` templates are Forge-provided and intentionally styled
@@ -89,19 +104,19 @@ Forge-specific rules layered on top of it.
 - No bounce/elastic/overshoot easing; use calm, natural motion (or none).
 - No nested cards, side-tab accent borders, or dark drop-glows.
 - Never gray text on a colored background (contrast + it looks cheap).
-- Generous, CONSISTENT padding — draw spacing from one scale and apply it evenly.
-  Never let content sit flush against a container edge: every section AND the
-  footer needs the same horizontal inset as the page body (a shared container /
-  side padding — a footer with `padding: … 0` so its text touches the viewport
-  edge is a recurring, visible defect), plus balanced vertical padding (don't pair
-  a big top with a tiny bottom). Cramped or lopsided padding reads as unfinished.
+- Generous, CONSISTENT padding — every padding/margin/gap you write comes from
+  the `--space-*` scale in tokens.css, applied evenly. The locked components
+  already give sections and the footer the shared horizontal inset
+  (`--container-pad`) and symmetric vertical rhythm (`--section-pad-y`) — keep
+  any CSS you add on that same system; content must never sit flush against a
+  container or viewport edge.
 - Tap targets ≥ 44px; comfortable line length (~45–75 chars); never skip
   heading levels (h1 → h2 → h3).
 - **Mobile nav is a hamburger, always.** Any site with more than ~2 nav links
   MUST collapse them into an accessible expandable menu on phones (a row of
   cramped links, or links that wrap under the logo, reads as unfinished — the
   most common tell). The starter ships a working CSS-only pattern in
-  `layout.html` + `app.css` (`.nav` / `.nav-toggle` / `.nav-burger` / `.navlinks`,
+  `layout.html` + `components.css` (`.nav` / `.nav-toggle` / `.nav-burger` / `.navlinks`,
   toggled below 720px): reuse it for the public nav — restyle it, but keep the
   collapse behavior. It needs no JavaScript and survives hx-boost swaps. Always
   check the nav at a 375px width before deploying.

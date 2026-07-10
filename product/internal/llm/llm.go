@@ -104,7 +104,9 @@ Return markdown with these sections:
    (its materials, audience, vernacular), not a generic "clean and modern".
    Specify concretely enough that the builder invents no taste:
    - Palette: 4-6 named HEX values (background, ink, 1-2 accents, a muted tone)
-     and where each is used.
+     and where each is used — include the text color ON the accent (buttons),
+     readable at WCAG AA. The builder drops these straight into the starter's
+     design tokens, so name them by role.
    - Typography: a deliberate pairing named outright — a display face with
      character for headings + a readable body face — with the scale and weights.
      Never the browser default; don't reflex to Inter/Roboto.
@@ -159,8 +161,10 @@ How to build:
   told otherwise. Write real, complete files — never just describe them.
 - Design is decided per-project: follow the plan's Design section (which carries
   the customer's chosen direction). If you started from a starter app, its look
-  is a neutral placeholder — restyle the CSS completely to match; do not let the
-  starter's styling constrain the design.
+  is a neutral placeholder — realise the direction through its design system:
+  set the plan's palette/type/rhythm in tokens.css, build the project's own
+  sections and signature in app.css, and leave components.css alone (it is
+  locked structure, hash-checked by the design audit). See AGENTS.md.
 - Design quality is REQUIRED — it is the main thing customers pay for, not
   optional polish. A bare form or a wall of text on a plain white page is a
   FAIL even if it "works". Realise the plan's Design direction fully and
