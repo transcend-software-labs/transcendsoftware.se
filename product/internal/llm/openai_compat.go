@@ -48,10 +48,16 @@ type ocMessage struct {
 }
 
 type ocRequest struct {
-	Model       string      `json:"model"`
-	Messages    []ocMessage `json:"messages"`
-	MaxTokens   int         `json:"max_tokens"`
-	Temperature float64     `json:"temperature"`
+	Model    string      `json:"model"`
+	Messages []ocMessage `json:"messages"`
+	// Exactly one of the token caps is set. OpenAI's own API rejects max_tokens
+	// on GPT-5.x reasoning models (it requires max_completion_tokens) and only
+	// accepts the default temperature, so temperature is omitted there; every
+	// other OpenAI-compatible gateway we use (Zen, Moonshot) takes the classic
+	// max_tokens + temperature pair.
+	MaxTokens           int      `json:"max_tokens,omitempty"`
+	MaxCompletionTokens int      `json:"max_completion_tokens,omitempty"`
+	Temperature         *float64 `json:"temperature,omitempty"`
 }
 
 type ocResponse struct {
@@ -92,15 +98,20 @@ func (o *OpenAICompat) complete(ctx context.Context, system, user string, maxTok
 // completeOnce performs a single request. The bool reports whether the failure
 // is worth retrying.
 func (o *OpenAICompat) completeOnce(ctx context.Context, system, user string, maxTokens int) (string, bool, error) {
-	body, err := json.Marshal(ocRequest{
-		Model:       o.model,
-		MaxTokens:   maxTokens,
-		Temperature: o.temperature,
+	r := ocRequest{
+		Model: o.model,
 		Messages: []ocMessage{
 			{Role: "system", Content: system},
 			{Role: "user", Content: user},
 		},
-	})
+	}
+	if strings.Contains(o.baseURL, "api.openai.com") {
+		r.MaxCompletionTokens = maxTokens
+	} else {
+		r.MaxTokens = maxTokens
+		r.Temperature = &o.temperature
+	}
+	body, err := json.Marshal(r)
 	if err != nil {
 		return "", false, err
 	}

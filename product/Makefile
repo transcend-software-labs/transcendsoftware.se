@@ -50,28 +50,41 @@ template-test:
 	cd template/goapp && go vet ./... && go test ./...
 
 # --- Model experiments -------------------------------------------------------
-# Switch which models plan + build, env-only (no code change, app restarts
-# automatically). The OPENCODE_GO_API_KEY secret backs both Zen endpoints, so
-# no new keys are needed. Verify what's live: make model-status
-model-grok:
-	fly secrets set -a transcend-forge \
-	  LLM_BASE_URL=https://opencode.ai/zen/v1 \
-	  LLM_MODEL=grok-4.5 \
-	  PLANNER_LLM_BASE_URL=https://opencode.ai/zen/v1 \
-	  PLANNER_LLM_MODEL=grok-4.5
+# Three providers, switchable env-only (no code change; the app restarts itself
+# in seconds). Pick the models per role with IMPL= and PLANNER= (PLANNER
+# defaults to IMPL). Examples:
+#   make model-go     IMPL=kimi-k2.7-code PLANNER=glm-5.2   # OpenCode Zen Go tier
+#   make model-go     IMPL=minimax-m3                        #   (open-weight models)
+#   make model-zen    IMPL=grok-4.5                          # OpenCode Zen main (grok/gpt/claude/...)
+#   make model-openai IMPL=gpt-5.6-sol                       # OpenAI direct (uses OPENAI_API_KEY)
+#   make model-default                                       # standard: kimi + glm on Zen Go
+# Mixed-provider combos: set LLM_* / PLANNER_LLM_* fly secrets by hand.
+# Verify what is live: make model-status
+FORGE_APP = transcend-forge
+PLANNER ?= $(IMPL)
 
-# MiniMax M3 for plan + build, on the Zen Go tier (same gateway as the default).
-model-minimax:
-	fly secrets unset -a transcend-forge LLM_BASE_URL PLANNER_LLM_BASE_URL 2>/dev/null || true
-	fly secrets set -a transcend-forge \
-	  LLM_MODEL=minimax-m3 \
-	  PLANNER_LLM_MODEL=minimax-m3
+model-go:
+	@test -n "$(IMPL)" || { echo "usage: make model-go IMPL=<model> [PLANNER=<model>]"; exit 1; }
+	fly secrets unset -a $(FORGE_APP) LLM_BASE_URL PLANNER_LLM_BASE_URL 2>/dev/null || true
+	fly secrets set -a $(FORGE_APP) LLM_MODEL=$(IMPL) PLANNER_LLM_MODEL=$(PLANNER)
+
+model-zen:
+	@test -n "$(IMPL)" || { echo "usage: make model-zen IMPL=<model> [PLANNER=<model>]"; exit 1; }
+	fly secrets set -a $(FORGE_APP) \
+	  LLM_BASE_URL=https://opencode.ai/zen/v1 LLM_MODEL=$(IMPL) \
+	  PLANNER_LLM_BASE_URL=https://opencode.ai/zen/v1 PLANNER_LLM_MODEL=$(PLANNER)
+
+model-openai:
+	@test -n "$(IMPL)" || { echo "usage: make model-openai IMPL=<model> [PLANNER=<model>]"; exit 1; }
+	fly secrets set -a $(FORGE_APP) \
+	  LLM_BASE_URL=https://api.openai.com/v1 LLM_MODEL=$(IMPL) \
+	  PLANNER_LLM_BASE_URL=https://api.openai.com/v1 PLANNER_LLM_MODEL=$(PLANNER)
 
 # Back to the standard wiring: kimi-k2.7-code impl + glm-5.2 planning on zen/go/v1.
 model-default:
-	fly secrets unset -a transcend-forge \
+	fly secrets unset -a $(FORGE_APP) \
 	  LLM_BASE_URL LLM_MODEL PLANNER_LLM_BASE_URL PLANNER_LLM_MODEL
 
 # Show the live model wiring from the app's startup log.
 model-status:
-	fly logs -a transcend-forge --no-tail 2>/dev/null | grep "llm: model config" | tail -1
+	fly logs -a $(FORGE_APP) --no-tail 2>/dev/null | grep "llm: model config" | tail -1

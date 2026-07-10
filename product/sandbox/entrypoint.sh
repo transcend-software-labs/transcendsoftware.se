@@ -77,8 +77,24 @@ perm='"permission": { "edit": "allow", "bash": "allow", "webfetch": "allow", "ex
 if [ -n "${LLM_API_KEY:-}" ]; then
   base="${LLM_BASE_URL:-https://api.moonshot.ai/v1}"
   model="${LLM_MODEL:-kimi-k2.7-code}"
-  log "configuring opencode for ${base} model ${model} (auto-approve all tools)"
-  cat > /root/.config/opencode/opencode.json <<JSON
+  case "$base" in
+  *api.openai.com*)
+    # Direct OpenAI: use opencode's NATIVE openai provider, not the generic
+    # openai-compatible shim — GPT-5.x needs the params/API the native provider
+    # speaks (max_completion_tokens, Responses API). It reads OPENAI_API_KEY.
+    export OPENAI_API_KEY="${LLM_API_KEY}"
+    log "configuring opencode: native openai provider, model ${model} (auto-approve all tools)"
+    cat > /root/.config/opencode/opencode.json <<JSON
+{
+  "\$schema": "https://opencode.ai/config.json",
+  ${perm},
+  "model": "openai/${model}"
+}
+JSON
+    ;;
+  *)
+    log "configuring opencode for ${base} model ${model} (auto-approve all tools)"
+    cat > /root/.config/opencode/opencode.json <<JSON
 {
   "\$schema": "https://opencode.ai/config.json",
   ${perm},
@@ -93,6 +109,8 @@ if [ -n "${LLM_API_KEY:-}" ]; then
   "model": "moonshot/${model}"
 }
 JSON
+    ;;
+  esac
 else
   log "configuring opencode (default provider, auto-approve all tools)"
   cat > /root/.config/opencode/opencode.json <<JSON

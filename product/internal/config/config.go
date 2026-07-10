@@ -8,6 +8,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -187,9 +188,9 @@ func Load() Config {
 	// it is the DEFAULT wiring, not a lock: base URLs default to the Zen Go
 	// gateway and both clients use this key, but an explicitly set LLM_BASE_URL /
 	// PLANNER_LLM_BASE_URL / *_API_KEY env still wins. That makes model
-	// experiments env-only — e.g. `make model-grok` points both roles at
-	// https://opencode.ai/zen/v1 (grok-4.5 etc. — same key works there) and
-	// `make model-default` unsets everything back to kimi+glm on zen/go/v1.
+	// experiments env-only — `make model-go / model-zen / model-openai` pick the
+	// provider and models per role; `make model-default` unsets everything back
+	// to kimi+glm on zen/go/v1.
 	if zen := os.Getenv("OPENCODE_GO_API_KEY"); zen != "" {
 		const zenBase = "https://opencode.ai/zen/go/v1"
 		if os.Getenv("LLM_BASE_URL") == "" {
@@ -203,6 +204,16 @@ func Load() Config {
 		}
 		if os.Getenv("PLANNER_LLM_API_KEY") == "" {
 			c.PlannerLLMAPIKey = zen
+		}
+	}
+	// OPENAI_API_KEY backs any role whose base URL points at OpenAI directly
+	// (make model-openai). Runs after the Zen default so it wins for those roles.
+	if oa := os.Getenv("OPENAI_API_KEY"); oa != "" {
+		if strings.Contains(c.LLMBaseURL, "api.openai.com") && os.Getenv("LLM_API_KEY") == "" {
+			c.LLMAPIKey = oa
+		}
+		if strings.Contains(c.PlannerLLMBaseURL, "api.openai.com") && os.Getenv("PLANNER_LLM_API_KEY") == "" {
+			c.PlannerLLMAPIKey = oa
 		}
 	}
 	return c
