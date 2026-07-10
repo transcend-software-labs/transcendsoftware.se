@@ -1,38 +1,38 @@
 {{define "login"}}{{template "head" .}}
 <section class="form-narrow">
-  <h1>Log in</h1>
+  <h1>{{.T "login.h1"}}</h1>
 
   {{if .Providers}}
   <div class="oauth-buttons">
     {{range .Providers}}
-    <a class="btn btn-oauth" href="/auth/{{.Name}}">Continue with {{.Label}}</a>
+    <a class="btn btn-oauth" href="/auth/{{.Name}}">{{$.T "auth.continue_with"}} {{.Label}}</a>
     {{end}}
   </div>
-  <div class="or-divider"><span>or</span></div>
+  <div class="or-divider"><span>{{.T "auth.or"}}</span></div>
   {{end}}
 
   {{if .MagicLink}}
   <form method="post" action="/auth/magic" class="stack">
-    <label>Email me a login link<input type="email" name="email" required autofocus placeholder="you@example.com"></label>
-    <button class="btn" type="submit">Send me a link</button>
+    <label>{{.T "login.magic_label"}}<input type="email" name="email" required autofocus placeholder="you@example.com"></label>
+    <button class="btn" type="submit">{{.T "login.magic_btn"}}</button>
   </form>
 
   <details class="password-login">
-    <summary class="muted small">Use a password instead</summary>
+    <summary class="muted small">{{.T "login.pw_summary"}}</summary>
     <form method="post" action="/login" class="stack">
-      <label>Email<input type="email" name="email"></label>
-      <label>Password<input type="password" name="password"></label>
-      <button class="btn btn-sm" type="submit">Log in</button>
+      <label>{{.T "auth.email"}}<input type="email" name="email"></label>
+      <label>{{.T "auth.password"}}<input type="password" name="password"></label>
+      <button class="btn btn-sm" type="submit">{{.T "login.btn"}}</button>
     </form>
   </details>
   {{else}}
   <form method="post" action="/login" class="stack">
-    <label>Email<input type="email" name="email" required autofocus></label>
-    <label>Password<input type="password" name="password" required></label>
-    <button class="btn" type="submit">Log in</button>
+    <label>{{.T "auth.email"}}<input type="email" name="email" required autofocus></label>
+    <label>{{.T "auth.password"}}<input type="password" name="password" required></label>
+    <button class="btn" type="submit">{{.T "login.btn"}}</button>
   </form>
   {{end}}
 
-  <p class="muted">No account? <a href="/signup">Get started</a>.</p>
+  <p class="muted">{{.T "login.no_account"}} <a href="/signup">{{.T "login.get_started"}}</a>.</p>
 </section>
 {{template "foot" .}}{{end}}

@@ -1,5 +1,5 @@
 {{define "head"}}<!doctype html>
-<html lang="en">
+<html lang="{{if .Lang}}{{.Lang}}{{else}}en{{end}}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -20,20 +20,21 @@
   <label for="nav-toggle" class="nav-burger" aria-label="Toggle menu" aria-controls="site-nav"><span></span><span></span><span></span></label>
   <nav id="site-nav" class="navlinks" aria-label="Main navigation">
     {{if .User}}
-      <a href="/dashboard">Dashboard</a>
-      {{if .IsAdmin}}<a href="/admin">Admin</a>{{end}}
+      <a href="/dashboard">{{.T "nav.dashboard"}}</a>
+      {{if .IsAdmin}}<a href="/admin">{{.T "nav.admin"}}</a>{{end}}
       <span class="muted">{{.User.Email}}</span>
-      <form method="post" action="/logout" class="inline"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button class="linklike">Log out</button></form>
+      <form method="post" action="/logout" class="inline"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button class="linklike">{{.T "nav.logout"}}</button></form>
     {{else}}
-      <a href="/login">Log in</a>
-      <a href="/signup" class="btn btn-sm">Get started</a>
+      <a href="/login">{{.T "nav.login"}}</a>
+      <a href="/signup" class="btn btn-sm">{{.T "nav.get_started"}}</a>
     {{end}}
   </nav>
 </header>
 {{end}}
 
 {{define "foot"}}</main>
-<footer class="foot"><span class="muted">Transcend Forge · © Transcend Software · by
-<a href="https://transcendsoftware.se">Rasmus Kockum ↗</a></span></footer>
+<footer class="foot"><span class="muted">{{.T "foot.line"}}
+<a href="https://transcendsoftware.se">Rasmus Kockum ↗</a></span>
+<span class="lang-switch muted small">{{$cur := .Lang}}{{range .Languages}} <a href="?lang={{.Code}}"{{if eq .Code $cur}} class="lang-active"{{end}} lang="{{.Code}}" hreflang="{{.Code}}">{{.Label}}</a>{{end}}</span></footer>
 </body>
 </html>{{end}}

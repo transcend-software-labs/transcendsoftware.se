@@ -1,33 +1,29 @@
 {{define "landing"}}{{template "head" .}}
 <section class="hero">
-  <h1>Describe a website.<br>Get it built.</h1>
-  <p class="lead">Tell Transcend Forge what you need. It plans, builds, and deploys a
-  live preview you can click — and <strong>I personally review and guarantee
-  every result</strong> before it ships.</p>
-  <a class="btn btn-lg" href="/signup">Start a project</a>
-  <p class="muted small">Greenfield websites — small to large, databases and storage included.</p>
+  <h1>{{.T "landing.h1a"}}<br>{{.T "landing.h1b"}}</h1>
+  <p class="lead">{{.T "landing.lead1"}}<strong>{{.T "landing.lead_strong"}}</strong>{{.T "landing.lead2"}}</p>
+  <a class="btn btn-lg" href="/signup">{{.T "landing.cta"}}</a>
+  <p class="muted small">{{.T "landing.sub"}}</p>
 </section>
 
 <section class="about">
-  <h2>Behind Transcend Forge</h2>
-  <p>Your site is built by my AI agent and <strong>personally reviewed by me</strong>
-  before it ships. I'm Rasmus Kockum — a senior engineer and tech lead who's been
-  building and leading production software teams since 2016.</p>
+  <h2>{{.T "landing.about.h2"}}</h2>
+  <p>{{.T "landing.about.p1"}}<strong>{{.T "landing.about.strong"}}</strong>{{.T "landing.about.p2"}}</p>
   <ul class="proof">
-    <li><span class="proof-stat">20M+ users</span><span class="proof-label">served by systems I've built</span></li>
-    <li><span class="proof-stat">Since 2016</span><span class="proof-label">senior engineer &amp; tech lead</span></li>
-    <li><span class="proof-stat">Airlines &amp; banks</span><span class="proof-label">have trusted me with mission-critical systems</span></li>
+    <li><span class="proof-stat">{{.T "landing.proof1.stat"}}</span><span class="proof-label">{{.T "landing.proof1.label"}}</span></li>
+    <li><span class="proof-stat">{{.T "landing.proof2.stat"}}</span><span class="proof-label">{{.T "landing.proof2.label"}}</span></li>
+    <li><span class="proof-stat">{{.T "landing.proof3.stat"}}</span><span class="proof-label">{{.T "landing.proof3.label"}}</span></li>
   </ul>
-  <a class="about-link" href="https://transcendsoftware.se">See my full track record ↗</a>
+  <a class="about-link" href="https://transcendsoftware.se">{{.T "landing.track"}}</a>
 </section>
 
 <section class="how">
-  <h2>How it works</h2>
+  <h2>{{.T "landing.how.h2"}}</h2>
   <ol class="steps">
-    <li><strong>Describe it.</strong> A few sentences about the site you want.</li>
-    <li><strong>It plans &amp; builds.</strong> The agent scaffolds, builds, and deploys it.</li>
-    <li><strong>You review the preview.</strong> A live link, plus two rounds of changes.</li>
-    <li><strong>I guarantee it.</strong> Every result gets my personal review before it goes live.</li>
+    <li><strong>{{.T "landing.how1.strong"}}</strong>{{.T "landing.how1.text"}}</li>
+    <li><strong>{{.T "landing.how2.strong"}}</strong>{{.T "landing.how2.text"}}</li>
+    <li><strong>{{.T "landing.how3.strong"}}</strong>{{.T "landing.how3.text"}}</li>
+    <li><strong>{{.T "landing.how4.strong"}}</strong>{{.T "landing.how4.text"}}</li>
   </ol>
 </section>
 {{template "foot" .}}{{end}}

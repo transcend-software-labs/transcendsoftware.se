@@ -14,9 +14,7 @@ import (
 // It parses the real template set exactly as NewServer does, so a missing field
 // or bad pipeline would fail here (html/template errors on unknown struct fields).
 func TestAdminRendersFindings(t *testing.T) {
-	tmpl, err := template.New("").Funcs(template.FuncMap{
-		"statusLabel": statusLabel, "polling": polling, "pollEvery": pollEvery,
-	}).ParseFS(templatesFS, "templates/*.html")
+	tmpl, err := template.New("").Funcs(templateFuncs()).ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
 		t.Fatalf("parse templates: %v", err)
 	}

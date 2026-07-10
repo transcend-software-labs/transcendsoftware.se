@@ -2,12 +2,12 @@
 {{with .Data.Project}}
 <section class="page-head">
   <div>
-    <a class="muted small" href="/dashboard">← Dashboard</a>
+    <a class="muted small" href="/dashboard">{{$.T "prj.back"}}</a>
     <h1>{{.Name}}</h1>
   </div>
 </section>
 
-{{template "project_status" .}}
+{{template "project_status" (withLang $.Lang .)}}
 
 {{if or (eq .Status "planning") (eq .Status "screening") (eq .Status "building")}}
 {{/* The live build log lives OUTSIDE the polled #status box on purpose: the
@@ -22,19 +22,19 @@
 
 {{if eq .Status "needs_input"}}
 <section class="panel">
-  <h2>A few quick questions</h2>
-  <p class="muted small">Answering these helps the agent build the right thing the first time.</p>
+  <h2>{{$.T "prj.q.h2"}}</h2>
+  <p class="muted small">{{$.T "prj.q.intro"}}</p>
   <form method="post" action="/projects/{{.ID}}/answer" class="stack">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
     {{if .Questions}}
     <ol class="questions">
       {{range .Questions}}<li>{{.}}</li>{{end}}
     </ol>
-    <textarea name="answers" rows="6" required placeholder="Answer the questions above in your own words."></textarea>
+    <textarea name="answers" rows="6" required placeholder="{{$.T "prj.q.answers_ph"}}"></textarea>
     {{end}}
     {{if .DesignOptions}}
-    <h3>How should it look?</h3>
-    <p class="muted small">Pick a direction — or describe your own.</p>
+    <h3>{{$.T "prj.q.design_h3"}}</h3>
+    <p class="muted small">{{$.T "prj.q.design_intro"}}</p>
     <div class="design-options">
       {{range .DesignOptions}}
       <label class="design-option">
@@ -44,27 +44,27 @@
       {{end}}
       <label class="design-option">
         <input type="radio" name="design_choice" value="__custom">
-        <span><strong>My own preference:</strong></span>
+        <span><strong>{{$.T "prj.q.own"}}</strong></span>
       </label>
       <input type="text" name="design_custom" maxlength="500"
-        placeholder="e.g. dark and dramatic, gold accents, elegant serif headings">
+        placeholder="{{$.T "prj.q.own_ph"}}">
     </div>
     {{end}}
-    <button class="btn" type="submit">Submit &amp; build</button>
+    <button class="btn" type="submit">{{$.T "prj.q.submit"}}</button>
   </form>
 </section>
 {{end}}
 
 <section class="panel">
-  <h2>Your brief</h2>
+  <h2>{{$.T "prj.brief.h2"}}</h2>
   <p class="brief">{{.Brief}}</p>
-  {{if .Answers}}<h3 class="muted small" style="margin-top:1rem">Your answers</h3><p class="brief">{{.Answers}}</p>{{end}}
-  {{if .DesignBrief}}<h3 class="muted small" style="margin-top:1rem">Design direction</h3><p class="brief">{{.DesignBrief}}</p>{{end}}
+  {{if .Answers}}<h3 class="muted small" style="margin-top:1rem">{{$.T "prj.brief.answers"}}</h3><p class="brief">{{.Answers}}</p>{{end}}
+  {{if .DesignBrief}}<h3 class="muted small" style="margin-top:1rem">{{$.T "prj.brief.design"}}</h3><p class="brief">{{.DesignBrief}}</p>{{end}}
 </section>
 
 <section class="panel">
-  <h2>Photos &amp; files</h2>
-  <p class="muted small">Upload your real photos, logo, or content (PNG, JPG, GIF, WEBP, PDF — up to 10&nbsp;MB). The agent uses these when building your site.</p>
+  <h2>{{$.T "prj.assets.h2"}}</h2>
+  <p class="muted small">{{$.T "prj.assets.intro"}}</p>
   {{if $.Data.Assets}}
   <ul class="asset-list">
     {{range $.Data.Assets}}
@@ -75,48 +75,48 @@
   <form method="post" action="/projects/{{.ID}}/assets" enctype="multipart/form-data" class="upload-form">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
     <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" required>
-    <button class="btn btn-sm" type="submit">Upload</button>
+    <button class="btn btn-sm" type="submit">{{$.T "prj.assets.upload"}}</button>
   </form>
 </section>
 
 {{if .Plan}}
 <section class="panel">
-  <h2>The plan</h2>
+  <h2>{{$.T "prj.plan.h2"}}</h2>
   <pre class="plan">{{.Plan}}</pre>
 </section>
 {{end}}
 
 {{if .CanRetry}}
 <section class="panel">
-  <h2>Build didn't finish</h2>
-  <p class="muted small">Nothing was lost. Run it again — a retry doesn't use up one of your changes.</p>
+  <h2>{{$.T "prj.retry.h2"}}</h2>
+  <p class="muted small">{{$.T "prj.retry.intro"}}</p>
   <form method="post" action="/projects/{{.ID}}/retry">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-    <button class="btn" type="submit">Retry build</button>
+    <button class="btn" type="submit">{{$.T "prj.retry.btn"}}</button>
   </form>
 </section>
 {{end}}
 
 {{if .CanAccept}}
 <section class="panel accept-panel">
-  <h2>Happy with your site?</h2>
-  <p class="muted small">Accept it and Rasmus will personally review and guarantee it before it's delivered.</p>
+  <h2>{{$.T "prj.accept.h2"}}</h2>
+  <p class="muted small">{{$.T "prj.accept.intro"}}</p>
   <form method="post" action="/projects/{{.ID}}/accept">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-    <button class="btn" type="submit">Accept this site</button>
+    <button class="btn" type="submit">{{$.T "prj.accept.btn"}}</button>
   </form>
 </section>
 {{end}}
 
 {{if .CanReiterate}}
 <section class="panel">
-  <h2>Request a change</h2>
-  <p class="muted small">{{.IterationsLeft}} change{{if ne .IterationsLeft 1}}s{{end}} left.</p>
+  <h2>{{$.T "prj.change.h2"}}</h2>
+  <p class="muted small">{{if eq .IterationsLeft 1}}{{$.T "prj.change.left_one"}}{{else}}{{printf ($.T "prj.change.left_many") .IterationsLeft}}{{end}}</p>
   <form method="post" action="/projects/{{.ID}}/reiterate" class="stack">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
     <textarea name="prompt" rows="4" required
-      placeholder="Make the hero photo bigger and add an opening-hours section."></textarea>
-    <button class="btn" type="submit">Apply change</button>
+      placeholder="{{$.T "prj.change.ph"}}"></textarea>
+    <button class="btn" type="submit">{{$.T "prj.change.btn"}}</button>
   </form>
 </section>
 {{end}}
@@ -124,14 +124,14 @@
 
 {{if .Data.Iterations}}
 <section class="panel">
-  <h2>History</h2>
+  <h2>{{.T "prj.hist.h2"}}</h2>
   <ol class="iterations">
     {{range .Data.Iterations}}
     <li>
-      <span class="badge badge-{{.Status}}">#{{.Number}} · {{statusLabel .Status}}</span>
+      <span class="badge badge-{{.Status}}">#{{.Number}} · {{trStatus $.Lang .Status}}</span>
       {{if .Prompt}}<p class="muted small">“{{.Prompt}}”</p>{{end}}
-      {{if .PreviewURL}}<a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">preview ↗</a>{{end}}
-      {{if .Log}}<details><summary class="muted small">build log</summary><pre class="log">{{.Log}}</pre></details>{{end}}
+      {{if .PreviewURL}}<a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{$.T "prj.hist.preview"}}</a>{{end}}
+      {{if .Log}}<details><summary class="muted small">{{$.T "prj.hist.log"}}</summary><pre class="log">{{.Log}}</pre></details>{{end}}
     </li>
     {{end}}
   </ol>

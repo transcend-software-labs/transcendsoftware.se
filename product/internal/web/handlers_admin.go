@@ -183,10 +183,12 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 		})
 	}
 
-	s.render(w, http.StatusOK, "admin", s.view(r, "Operator review", adminView{
+	v := s.view(r, "Operator review", adminView{
 		Escalated: escalated, Accepted: accepted, Active: active, Previews: previews,
 		Stats: computeStats(recent, rate), Recent: builds,
-	}))
+	})
+	v.Lang = "en" // operator pages are English regardless of the customer-facing selector
+	s.render(w, http.StatusOK, "admin", v)
 }
 
 // handleAdminDestroyPreview tears down a project's preview app immediately.

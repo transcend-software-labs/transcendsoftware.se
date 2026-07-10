@@ -12,6 +12,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/auth"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/notify"
+	"github.com/transcend-software-labs/rasmus-ai/internal/web/i18n"
 	"github.com/transcend-software-labs/rasmus-ai/internal/oauth"
 	"github.com/transcend-software-labs/rasmus-ai/internal/orchestrator"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
@@ -43,11 +44,7 @@ type Server struct {
 
 // NewServer wires the HTTP server.
 func NewServer(cfg config.Config, st store.Store, sessions *auth.Sessions, orch *orchestrator.Orchestrator, broker *stream.Broker, assets storage.Store, log *slog.Logger) (*Server, error) {
-	tmpl, err := template.New("").Funcs(template.FuncMap{
-		"statusLabel": statusLabel,
-		"polling":     polling,
-		"pollEvery":   pollEvery,
-	}).ParseFS(templatesFS, "templates/*.html")
+	tmpl, err := template.New("").Funcs(templateFuncs()).ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +116,41 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /admin/projects/{id}/deliver", s.requireAdmin(s.handleAdminDeliver))
 	mux.HandleFunc("POST /admin/projects/{id}/return", s.requireAdmin(s.handleAdminReturn))
 
-	return logRequests(s.log, mux)
+	return logRequests(s.log, langSelector(mux))
+}
+
+// langSelector turns ?lang=xx on any GET into a persistent cookie choice and
+// redirects back to the same URL without the parameter, so the footer switcher
+// works on every page with zero per-handler code.
+func langSelector(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if l := r.URL.Query().Get("lang"); l != "" && r.Method == http.MethodGet {
+			if i18n.Supported(l) {
+				http.SetCookie(w, &http.Cookie{Name: langCookie, Value: l, Path: "/",
+					MaxAge: 365 * 24 * 3600, SameSite: http.SameSiteLaxMode})
+			}
+			q := r.URL.Query()
+			q.Del("lang")
+			u := *r.URL
+			u.RawQuery = q.Encode()
+			http.Redirect(w, r, u.RequestURI(), http.StatusSeeOther)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// templateFuncs is the single FuncMap for the template set (NewServer and the
+// template-render tests parse with the same one).
+func templateFuncs() template.FuncMap {
+	return template.FuncMap{
+		"statusLabel": statusLabel, // admin pages: always English
+		"trStatus":    trStatus,    // customer pages: localized status
+		"tr":          i18n.T,      // for fragments rendered without a View
+		"withLang":    func(lang string, p *project.Project) statusView { return statusView{p, lang} },
+		"polling":     polling,
+		"pollEvery":   pollEvery,
+	}
 }
 
 // View is the data passed to every page template.
@@ -129,14 +160,54 @@ type View struct {
 	IsAdmin   bool
 	CSRF      string
 	Flash     string
+	Lang      string // resolved UI language ("en", "sv", "ru")
 	Data      any
 	Providers []oauth.Provider // social-login buttons on auth pages
 	MagicLink bool             // advertise passwordless email login
 }
 
+// T translates a catalog key into the view's language (templates: {{.T "nav.login"}}).
+func (v View) T(key string) string { return i18n.T(v.Lang, key) }
+
+// Languages lists the selectable UI languages for the footer switcher.
+func (v View) Languages() []i18n.Lang { return i18n.Langs }
+
+// statusView carries a project plus the UI language into the "project_status"
+// fragment, which is also rendered standalone by the htmx status poll and so
+// can't rely on a surrounding View.
+type statusView struct {
+	*project.Project
+	Lang string
+}
+
+// trStatus is statusLabel's localized sibling; unknown statuses fall back to
+// the English label rather than leaking a raw catalog key.
+func trStatus(lang string, s project.Status) string {
+	key := "status." + string(s)
+	if v := i18n.T(lang, key); v != key {
+		return v
+	}
+	return statusLabel(s)
+}
+
+const langCookie = "forge_lang"
+
+// lang resolves the UI language: explicit choice (cookie) wins, then the
+// browser's Accept-Language, then English.
+func (s *Server) lang(r *http.Request) string {
+	if c, err := r.Cookie(langCookie); err == nil && i18n.Supported(c.Value) {
+		return c.Value
+	}
+	return i18n.FromAcceptLanguage(r.Header.Get("Accept-Language"))
+}
+
+// t translates a catalog key into the request's language — for strings built
+// in handlers (flashes, titles) rather than templates.
+func (s *Server) t(r *http.Request, key string) string { return i18n.T(s.lang(r), key) }
+
 func (s *Server) view(r *http.Request, title string, data any) View {
 	u := s.currentUser(r)
-	return View{Title: title, User: u, IsAdmin: s.isAdmin(u), CSRF: s.csrfToken(r),
+	return View{Title: title, User: u, IsAdmin: s.isAdmin(u), CSRF: s.csrfToken(r), Lang: s.lang(r),
 		Data: data, Providers: s.oauth.Enabled(), MagicLink: s.cfg.MagicLinkEnabled}
 }
 

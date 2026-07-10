@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -72,18 +73,18 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie(oauthStateCookie)
 	state := r.URL.Query().Get("state")
 	if err != nil || state == "" || c.Value != state {
-		s.render(w, http.StatusBadRequest, "login", s.authView(r, "Log in", "Login failed, please try again."))
+		s.render(w, http.StatusBadRequest, "login", s.authView(r, s.t(r, "login.h1"), s.t(r, "flash.login_failed")))
 		return
 	}
 	code := r.URL.Query().Get("code")
 	if code == "" {
-		s.render(w, http.StatusBadRequest, "login", s.authView(r, "Log in", "Login was cancelled."))
+		s.render(w, http.StatusBadRequest, "login", s.authView(r, s.t(r, "login.h1"), s.t(r, "flash.login_cancelled")))
 		return
 	}
 	email, err := s.oauth.Email(r.Context(), p, code, s.redirectURI(r, p.Name))
 	if err != nil {
 		s.log.Error("oauth email", "provider", p.Name, "err", err)
-		s.render(w, http.StatusBadGateway, "login", s.authView(r, "Log in", "Could not sign you in with "+p.Label+"."))
+		s.render(w, http.StatusBadGateway, "login", s.authView(r, s.t(r, "login.h1"), fmt.Sprintf(s.t(r, "flash.oauth_failed"), p.Label)))
 		return
 	}
 	u, err := s.findOrCreateUser(r, email)
@@ -104,7 +105,7 @@ const magicTTL = 20 * time.Minute
 func (s *Server) handleMagicRequest(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
 	if !strings.Contains(email, "@") || len(email) > 200 {
-		s.render(w, http.StatusBadRequest, "login", s.authView(r, "Log in", "Enter a valid email address."))
+		s.render(w, http.StatusBadRequest, "login", s.authView(r, s.t(r, "login.h1"), s.t(r, "flash.email_invalid")))
 		return
 	}
 	token := randToken()
@@ -121,8 +122,7 @@ func (s *Server) handleMagicRequest(w http.ResponseWriter, r *http.Request) {
 		s.log.Error("magic link email", "err", err)
 	}
 	// Always show the same confirmation, whether or not the address exists.
-	s.render(w, http.StatusOK, "login", s.authView(r, "Log in",
-		"Check your email — we sent you a login link."))
+	s.render(w, http.StatusOK, "login", s.authView(r, s.t(r, "login.h1"), s.t(r, "flash.magic_sent")))
 }
 
 func (s *Server) handleMagicConsume(w http.ResponseWriter, r *http.Request) {
@@ -133,8 +133,7 @@ func (s *Server) handleMagicConsume(w http.ResponseWriter, r *http.Request) {
 	}
 	lt, err := s.store.LoginTokenByHash(r.Context(), hashToken(token))
 	if err != nil || time.Now().After(lt.ExpiresAt) {
-		s.render(w, http.StatusUnauthorized, "login", s.authView(r, "Log in",
-			"That login link is invalid or has expired — request a new one."))
+		s.render(w, http.StatusUnauthorized, "login", s.authView(r, s.t(r, "login.h1"), s.t(r, "flash.magic_invalid")))
 		return
 	}
 	_ = s.store.DeleteLoginToken(r.Context(), lt.TokenHash) // single-use

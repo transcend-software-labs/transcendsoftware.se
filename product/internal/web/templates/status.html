@@ -1,18 +1,18 @@
-{{define "project_status"}}<div id="status" class="statusbox status-{{.Status}}"{{if polling .}} hx-get="/projects/{{.ID}}/status" hx-trigger="every {{pollEvery .}}" hx-swap="outerHTML"{{end}}>
-  <p class="status-line">{{statusLabel .Status}}{{if polling .}} <span class="spinner"></span>{{end}}</p>
+{{define "project_status"}}<div id="status" class="statusbox status-{{.Status}}"{{if polling .Project}} hx-get="/projects/{{.ID}}/status" hx-trigger="every {{pollEvery .Project}}" hx-swap="outerHTML"{{end}}>
+  <p class="status-line">{{trStatus .Lang .Status}}{{if polling .Project}} <span class="spinner"></span>{{end}}</p>
   {{if eq .Status "preview_ready"}}
-    <p><a class="btn" href="{{.PreviewURL}}" target="_blank" rel="noopener">Open preview ↗</a></p>
+    <p><a class="btn" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{tr .Lang "st.open_preview"}}</a></p>
   {{end}}
   {{if eq .Status "accepted"}}
-    <p><a class="btn" href="{{.PreviewURL}}" target="_blank" rel="noopener">Open preview ↗</a></p>
-    <p class="reason">Rasmus is giving it a final review — you'll hear as soon as it's guaranteed and delivered.</p>
+    <p><a class="btn" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{tr .Lang "st.open_preview"}}</a></p>
+    <p class="reason">{{tr .Lang "st.accepted_note"}}</p>
   {{end}}
   {{if eq .Status "delivered"}}
-    <p><a class="btn" href="{{.PreviewURL}}" target="_blank" rel="noopener">Open your site ↗</a></p>
-    <p class="reason">Reviewed and guaranteed by Rasmus. 🎉</p>
+    <p><a class="btn" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{tr .Lang "st.open_site"}}</a></p>
+    <p class="reason">{{tr .Lang "st.delivered_note"}}</p>
   {{end}}
-  {{if eq .Status "rejected"}}<p class="reason">Declined: {{.RejectReason}}</p>{{end}}
-  {{if eq .Status "failed"}}<p class="reason">Something went wrong: {{.RejectReason}}</p>{{end}}
+  {{if eq .Status "rejected"}}<p class="reason">{{tr .Lang "st.declined"}} {{.RejectReason}}</p>{{end}}
+  {{if eq .Status "failed"}}<p class="reason">{{tr .Lang "st.failed"}} {{.RejectReason}}</p>{{end}}
   {{if eq .Status "expired"}}<p class="reason">{{.RejectReason}}</p>{{end}}
-  {{if eq .Status "escalated"}}<p class="reason">Held for a quick human review by Rasmus — this page updates on its own.</p>{{end}}
+  {{if eq .Status "escalated"}}<p class="reason">{{tr .Lang "st.escalated_note"}}</p>{{end}}
 </div>{{end}}

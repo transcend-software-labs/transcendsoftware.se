@@ -17,11 +17,11 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		return
 	}
-	s.render(w, http.StatusOK, "landing", s.view(r, "Websites, built & guaranteed", nil))
+	s.render(w, http.StatusOK, "landing", s.view(r, s.t(r, "title.landing"), nil))
 }
 
 func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
-	s.render(w, http.StatusOK, "login", s.view(r, "Log in", nil))
+	s.render(w, http.StatusOK, "login", s.view(r, s.t(r, "login.h1"), nil))
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -30,7 +30,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	u, err := s.store.UserByEmail(r.Context(), email)
 	if err != nil || !auth.CheckPassword(u.PasswordHash, password) {
-		s.render(w, http.StatusUnauthorized, "login", s.authView(r, "Log in", "Wrong email or password."))
+		s.render(w, http.StatusUnauthorized, "login", s.authView(r, s.t(r, "login.h1"), s.t(r, "flash.wrong_login")))
 		return
 	}
 	if !s.startSession(w, r, u.ID) {
@@ -40,7 +40,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSignupForm(w http.ResponseWriter, r *http.Request) {
-	s.render(w, http.StatusOK, "signup", s.view(r, "Get started", nil))
+	s.render(w, http.StatusOK, "signup", s.view(r, s.t(r, "signup.h1"), nil))
 }
 
 func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
@@ -48,8 +48,7 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 
 	if !strings.Contains(email, "@") || len(password) < 8 {
-		s.render(w, http.StatusBadRequest, "signup", s.authView(r, "Get started",
-			"Enter a valid email and a password of at least 8 characters."))
+		s.render(w, http.StatusBadRequest, "signup", s.authView(r, s.t(r, "signup.h1"), s.t(r, "flash.signup_invalid")))
 		return
 	}
 
@@ -61,8 +60,7 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	u := &user.User{ID: id.New(), Email: email, PasswordHash: hash, CreatedAt: time.Now().UTC()}
 	if err := s.store.CreateUser(r.Context(), u); err != nil {
 		if errors.Is(err, store.ErrEmailTaken) {
-			s.render(w, http.StatusConflict, "signup", s.authView(r, "Get started",
-				"That email is already registered."))
+			s.render(w, http.StatusConflict, "signup", s.authView(r, s.t(r, "signup.h1"), s.t(r, "flash.email_taken")))
 			return
 		}
 		http.Error(w, "internal error", http.StatusInternalServerError)

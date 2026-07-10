@@ -1,41 +1,41 @@
 {{define "signup"}}{{template "head" .}}
 <section class="form-narrow">
-  <h1>Get started</h1>
+  <h1>{{.T "signup.h1"}}</h1>
 
   {{if .Providers}}
   <div class="oauth-buttons">
     {{range .Providers}}
-    <a class="btn btn-oauth" href="/auth/{{.Name}}">Continue with {{.Label}}</a>
+    <a class="btn btn-oauth" href="/auth/{{.Name}}">{{$.T "auth.continue_with"}} {{.Label}}</a>
     {{end}}
   </div>
-  <div class="or-divider"><span>or</span></div>
+  <div class="or-divider"><span>{{.T "auth.or"}}</span></div>
   {{end}}
 
   {{if .MagicLink}}
   <form method="post" action="/auth/magic" class="stack">
-    <label>Sign up with your email<input type="email" name="email" required autofocus placeholder="you@example.com"></label>
-    <button class="btn" type="submit">Email me a link</button>
-    <span class="hint">We'll email you a link — no password to remember.</span>
+    <label>{{.T "signup.magic_label"}}<input type="email" name="email" required autofocus placeholder="you@example.com"></label>
+    <button class="btn" type="submit">{{.T "signup.magic_btn"}}</button>
+    <span class="hint">{{.T "signup.magic_hint"}}</span>
   </form>
 
   <details class="password-login">
-    <summary class="muted small">Prefer a password?</summary>
+    <summary class="muted small">{{.T "signup.pw_summary"}}</summary>
     <form method="post" action="/signup" class="stack">
-      <label>Email<input type="email" name="email"></label>
-      <label>Password<input type="password" name="password" minlength="8">
-        <span class="hint">At least 8 characters.</span></label>
-      <button class="btn btn-sm" type="submit">Create account</button>
+      <label>{{.T "auth.email"}}<input type="email" name="email"></label>
+      <label>{{.T "auth.password"}}<input type="password" name="password" minlength="8">
+        <span class="hint">{{.T "signup.pw_hint"}}</span></label>
+      <button class="btn btn-sm" type="submit">{{.T "signup.btn"}}</button>
     </form>
   </details>
   {{else}}
   <form method="post" action="/signup" class="stack">
-    <label>Email<input type="email" name="email" required autofocus></label>
-    <label>Password<input type="password" name="password" minlength="8" required>
-      <span class="hint">At least 8 characters.</span></label>
-    <button class="btn" type="submit">Create account</button>
+    <label>{{.T "auth.email"}}<input type="email" name="email" required autofocus></label>
+    <label>{{.T "auth.password"}}<input type="password" name="password" minlength="8" required>
+      <span class="hint">{{.T "signup.pw_hint"}}</span></label>
+    <button class="btn" type="submit">{{.T "signup.btn"}}</button>
   </form>
   {{end}}
 
-  <p class="muted">Already have an account? <a href="/login">Log in</a>.</p>
+  <p class="muted">{{.T "signup.have_account"}} <a href="/login">{{.T "signup.login"}}</a>.</p>
 </section>
 {{template "foot" .}}{{end}}

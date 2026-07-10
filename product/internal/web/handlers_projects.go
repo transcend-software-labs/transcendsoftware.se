@@ -22,11 +22,11 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request, u *user
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	s.render(w, http.StatusOK, "dashboard", s.view(r, "Dashboard", projects))
+	s.render(w, http.StatusOK, "dashboard", s.view(r, s.t(r, "nav.dashboard"), projects))
 }
 
 func (s *Server) handleNewProjectForm(w http.ResponseWriter, r *http.Request, _ *user.User) {
-	s.render(w, http.StatusOK, "new_project", s.view(r, "Start a project", nil))
+	s.render(w, http.StatusOK, "new_project", s.view(r, s.t(r, "new.h1"), nil))
 }
 
 // maxBriefLen caps customer-provided text fed into the pipeline (each build
@@ -37,18 +37,21 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request, u *
 	brief := strings.TrimSpace(r.FormValue("brief"))
 	name := strings.TrimSpace(r.FormValue("name"))
 	if len(brief) < 10 {
-		s.render(w, http.StatusBadRequest, "new_project", View{Title: "Start a project", User: u,
-			Flash: "Tell me a bit more about the site you want (at least a sentence)."})
+		v := s.view(r, s.t(r, "new.h1"), nil)
+		v.Flash = s.t(r, "flash.brief_short")
+		s.render(w, http.StatusBadRequest, "new_project", v)
 		return
 	}
 	if len(brief) > maxBriefLen {
-		s.render(w, http.StatusBadRequest, "new_project", View{Title: "Start a project", User: u,
-			Flash: "That description is too long — please keep it under 4000 characters."})
+		v := s.view(r, s.t(r, "new.h1"), nil)
+		v.Flash = s.t(r, "flash.brief_long")
+		s.render(w, http.StatusBadRequest, "new_project", v)
 		return
 	}
 	if flash := s.quotaBlock(r, u); flash != "" {
-		s.render(w, http.StatusTooManyRequests, "new_project", View{Title: "Start a project", User: u,
-			Flash: flash})
+		v := s.view(r, s.t(r, "new.h1"), nil)
+		v.Flash = flash
+		s.render(w, http.StatusTooManyRequests, "new_project", v)
 		return
 	}
 	if name == "" {
@@ -129,7 +132,7 @@ func (s *Server) quotaBlock(r *http.Request, u *user.User) string {
 
 	projects, err := s.store.ProjectsByUser(ctx, u.ID)
 	if err != nil {
-		return "Something went wrong — please try again."
+		return s.t(r, "flash.error")
 	}
 	recent := 0
 	for _, p := range projects {
@@ -139,16 +142,16 @@ func (s *Server) quotaBlock(r *http.Request, u *user.User) string {
 		switch p.Status {
 		case project.StatusClarifying, project.StatusPlanning,
 			project.StatusScreening, project.StatusBuilding:
-			return "One project at a time — wait for your current build to finish."
+			return s.t(r, "flash.one_at_a_time")
 		}
 	}
 	// A cap of 0 means "not configured" (e.g. tests) — no limit.
 	if s.cfg.MaxProjectsPerDay > 0 && recent >= s.cfg.MaxProjectsPerDay {
-		return fmt.Sprintf("Daily limit reached (%d projects per day) — come back tomorrow.", s.cfg.MaxProjectsPerDay)
+		return fmt.Sprintf(s.t(r, "flash.daily_limit"), s.cfg.MaxProjectsPerDay)
 	}
 	if s.cfg.MaxConcurrentBuilds > 0 {
 		if active, err := s.store.ActiveIterations(ctx); err == nil && len(active) >= s.cfg.MaxConcurrentBuilds {
-			return "We're at full build capacity right now — please try again in a few minutes."
+			return s.t(r, "flash.capacity")
 		}
 	}
 	return ""
@@ -254,7 +257,7 @@ func (s *Server) handleProjectStatus(w http.ResponseWriter, r *http.Request, u *
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "project_status", p); err != nil {
+	if err := s.tmpl.ExecuteTemplate(w, "project_status", statusView{p, s.lang(r)}); err != nil {
 		s.log.Error("render status", "err", err)
 	}
 }
