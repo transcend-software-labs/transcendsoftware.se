@@ -232,12 +232,12 @@ func (p *Postgres) CreateProject(ctx context.Context, pr *project.Project) error
 		`INSERT INTO projects
 		   (id, user_id, name, brief, status, questions, design_options, design_brief,
 		    answers, plan, verdict, reject_reason, preview_url, repo_url, snapshot_key,
-		    screenshots, findings, iterations_used, created_at, updated_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+		    screenshots, findings, critique, iterations_used, created_at, updated_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
 		pr.ID, pr.UserID, pr.Name, pr.Brief, pr.Status, marshalQuestions(pr.Questions),
 		marshalJSON(pr.DesignOptions), pr.DesignBrief,
 		pr.Answers, pr.Plan, pr.Verdict, pr.RejectReason, pr.PreviewURL, pr.RepoURL,
-		pr.SnapshotKey, marshalJSON(pr.Screenshots), marshalJSON(pr.Findings), pr.IterationsUsed, pr.CreatedAt, pr.UpdatedAt)
+		pr.SnapshotKey, marshalJSON(pr.Screenshots), marshalJSON(pr.Findings), pr.Critique, pr.IterationsUsed, pr.CreatedAt, pr.UpdatedAt)
 	return err
 }
 
@@ -246,12 +246,12 @@ func (p *Postgres) UpdateProject(ctx context.Context, pr *project.Project) error
 		`UPDATE projects SET
 		   name=$2, brief=$3, status=$4, questions=$5, design_options=$6, design_brief=$7,
 		   answers=$8, plan=$9, verdict=$10, reject_reason=$11, preview_url=$12,
-		   repo_url=$13, snapshot_key=$14, screenshots=$15, findings=$16, iterations_used=$17, updated_at=$18
+		   repo_url=$13, snapshot_key=$14, screenshots=$15, findings=$16, critique=$17, iterations_used=$18, updated_at=$19
 		 WHERE id=$1`,
 		pr.ID, pr.Name, pr.Brief, pr.Status, marshalQuestions(pr.Questions),
 		marshalJSON(pr.DesignOptions), pr.DesignBrief, pr.Answers,
 		pr.Plan, pr.Verdict, pr.RejectReason, pr.PreviewURL, pr.RepoURL,
-		pr.SnapshotKey, marshalJSON(pr.Screenshots), marshalJSON(pr.Findings), pr.IterationsUsed, pr.UpdatedAt)
+		pr.SnapshotKey, marshalJSON(pr.Screenshots), marshalJSON(pr.Findings), pr.Critique, pr.IterationsUsed, pr.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -334,7 +334,7 @@ func (p *Postgres) EscalatedProjects(ctx context.Context) ([]*project.Project, e
 
 const projectColumns = `SELECT id, user_id, name, brief, status, questions, design_options, design_brief,
 	answers, plan, verdict, reject_reason, preview_url, repo_url, snapshot_key,
-	screenshots, findings, iterations_used, created_at, updated_at
+	screenshots, findings, critique, iterations_used, created_at, updated_at
 	FROM projects`
 
 // rowScanner is satisfied by both pgx.Row and pgx.Rows.
@@ -348,7 +348,7 @@ func scanProject(row rowScanner) (*project.Project, error) {
 	err := row.Scan(&pr.ID, &pr.UserID, &pr.Name, &pr.Brief, &pr.Status, &questionsJSON,
 		&designJSON, &pr.DesignBrief,
 		&pr.Answers, &pr.Plan, &pr.Verdict, &pr.RejectReason, &pr.PreviewURL, &pr.RepoURL,
-		&pr.SnapshotKey, &screenshotsJSON, &findingsJSON, &pr.IterationsUsed, &pr.CreatedAt, &pr.UpdatedAt)
+		&pr.SnapshotKey, &screenshotsJSON, &findingsJSON, &pr.Critique, &pr.IterationsUsed, &pr.CreatedAt, &pr.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}

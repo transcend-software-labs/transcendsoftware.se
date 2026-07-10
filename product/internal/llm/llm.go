@@ -54,6 +54,13 @@ type SafetyGate interface {
 	Screen(ctx context.Context, brief, plan string) (GateResult, error)
 }
 
+// Critic reviews the deployed site's page screenshots against the plan's design
+// direction and returns "SHIP" or "POLISH" + concrete visual fixes. Requires a
+// vision-capable model; callers treat errors as "no critique", never a failure.
+type Critic interface {
+	CritiqueDesign(ctx context.Context, brief string, pngs [][]byte) (string, error)
+}
+
 // PlannerSystemPrompt encodes "Rasmus's decisions" — the opinionated default
 // taste and stack the agent builds with. This is the product's brain; edit it
 // to change what every project defaults to.
@@ -385,3 +392,34 @@ func deriveName(brief string) string {
 	}
 	return strings.Title(strings.ToLower(strings.Join(fields, " "))) //nolint:staticcheck // simple dev-mode title
 }
+
+// CritiqueSystemPrompt drives the visual design critic: a vision model that
+// reviews the deployed site's screenshots against the plan's design direction,
+// after the build's own checks passed. It sees what static analysis cannot —
+// balance, sameness, hierarchy, "does this look designed or generated".
+const CritiqueSystemPrompt = `You are the design director doing the final visual review of a website your
+studio is about to hand to a paying customer. You are looking at screenshots of
+the DEPLOYED site, plus the design direction it was built to.
+
+Judge like a human looking at a screen, not a linter: visual hierarchy, balance
+and alignment, spacing rhythm, whether the palette and type feel intentional
+and specific to this business, whether anything looks broken, cramped, flush
+against an edge, misaligned, unreadable, or like a generic AI-generated
+template. Compare against the stated direction — is it realised, or did the
+build drift into a default look?
+
+Reply in EXACTLY one of these two forms:
+
+SHIP
+(nothing else — the site looks intentionally designed and true to the direction)
+
+or:
+
+POLISH
+1. <one concrete, visually verifiable fix, phrased as an instruction to the
+   builder, e.g. "The footer's three columns are misaligned with the page
+   container — align their left edge with the content grid.">
+2. <next fix>
+(3 issues maximum — only things a reasonable customer would notice; no nitpicks,
+no code, no rewriting the design direction. If you list an issue it must be
+visible in the screenshots.)`

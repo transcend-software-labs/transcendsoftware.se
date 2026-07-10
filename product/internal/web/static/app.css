@@ -297,6 +297,7 @@ label.design-option:hover { border-color: var(--accent); }
 .finding-name { font-weight: 600; cursor: help; }
 .finding-where { margin-left: auto; font-family: monospace; }
 .audit-flag { color: var(--accent); font-size: .85rem; white-space: nowrap; }
+.critique-text { white-space: pre-wrap; margin: .5rem 0 0; }
 
 .stat-row { list-style: none; display: flex; gap: 2rem; flex-wrap: wrap; }
 .stat-row li { display: flex; flex-direction: column; gap: .15rem; }

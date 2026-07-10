@@ -80,6 +80,10 @@ func main() {
 		"impl_model", cfg.LLMModel, "impl_base", cfg.LLMBaseURL,
 		"planner_model", cfg.PlannerLLMModel, "planner_base", cfg.PlannerLLMBaseURL)
 	orch.SetModels(cfg.LLMModel, cfg.PlannerLLMModel)
+	if cfg.CriticEnabled && cfg.CriticLLMAPIKey != "" {
+		orch.SetCritic(llm.NewOpenAICompat(cfg.CriticLLMBaseURL, cfg.CriticLLMAPIKey, cfg.CriticLLMModel), cfg.CriticAutoPolish)
+		log.Info("llm: design critic", "model", cfg.CriticLLMModel, "base", cfg.CriticLLMBaseURL, "autopolish", cfg.CriticAutoPolish)
+	}
 	orch.RecoverInterrupted(context.Background()) // reap builds left running by a prior run
 	// Reap zombie infrastructure hourly: preview apps of failed projects,
 	// previews idle past PREVIEW_TTL_DAYS, and leaked sandbox machines.

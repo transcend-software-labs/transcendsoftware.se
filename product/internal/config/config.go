@@ -75,6 +75,15 @@ type Config struct {
 	PlannerLLMAPIKey  string
 	PlannerLLMModel   string
 
+	// Design critic: a vision-capable model that reviews the deployed site's
+	// screenshots after preview_ready and can trigger one internal polish pass.
+	// Defaults to the impl LLM wiring; disable with DESIGN_CRITIC=off.
+	CriticLLMBaseURL string
+	CriticLLMAPIKey  string
+	CriticLLMModel   string
+	CriticEnabled    bool
+	CriticAutoPolish bool
+
 	// Execution plane (empty → fake driver/machines):
 	OpencodeURL     string // fixed opencode server base URL (overrides per-machine)
 	OpencodePort    int    // port opencode listens on inside each sandbox machine
@@ -156,6 +165,12 @@ func Load() Config {
 		PlannerLLMBaseURL: envOr("PLANNER_LLM_BASE_URL", "https://opencode.ai/zen/go/v1"),
 		PlannerLLMAPIKey:  os.Getenv("PLANNER_LLM_API_KEY"),
 		PlannerLLMModel:   envOr("PLANNER_LLM_MODEL", "glm-5.2"),
+
+		CriticLLMBaseURL: os.Getenv("CRITIC_LLM_BASE_URL"),
+		CriticLLMAPIKey:  os.Getenv("CRITIC_LLM_API_KEY"),
+		CriticLLMModel:   os.Getenv("CRITIC_LLM_MODEL"),
+		CriticEnabled:    os.Getenv("DESIGN_CRITIC") != "off",
+		CriticAutoPolish: os.Getenv("CRITIC_AUTOPOLISH") != "off",
 		OpencodeURL:     os.Getenv("OPENCODE_URL"),
 		OpencodePort:    4096,
 		FlyAPIToken:     os.Getenv("FLY_API_TOKEN"),
@@ -206,6 +221,25 @@ func Load() Config {
 			c.PlannerLLMAPIKey = zen
 		}
 	}
+	// Critic defaults: whatever the impl model is wired to. Runs after the Zen
+	// default so the fallback picks up the resolved base/key.
+	defer func() {
+		if c.CriticLLMBaseURL == "" {
+			c.CriticLLMBaseURL = c.LLMBaseURL
+		}
+		if c.CriticLLMAPIKey == "" {
+			c.CriticLLMAPIKey = c.LLMAPIKey
+		}
+		if c.CriticLLMModel == "" {
+			c.CriticLLMModel = c.LLMModel
+		}
+		if strings.Contains(c.CriticLLMBaseURL, "api.openai.com") && os.Getenv("CRITIC_LLM_API_KEY") == "" {
+			if oa := os.Getenv("OPENAI_API_KEY"); oa != "" {
+				c.CriticLLMAPIKey = oa
+			}
+		}
+	}()
+
 	// OPENAI_API_KEY backs any role whose base URL points at OpenAI directly
 	// (make model-openai). Runs after the Zen default so it wins for those roles.
 	if oa := os.Getenv("OPENAI_API_KEY"); oa != "" {

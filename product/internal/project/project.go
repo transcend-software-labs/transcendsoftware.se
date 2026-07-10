@@ -91,6 +91,7 @@ type Project struct {
 	SnapshotKey    string         // object-storage key of the workspace snapshot from the last successful build
 	Screenshots    []Screenshot   // one per page of the deployed site (for /admin review)
 	Findings       []Finding      // impeccable design-audit findings from the last build (for /admin review)
+	Critique       string         // design critic's verdict on the preview screenshots ("SHIP" or "POLISH" + issues)
 	IterationsUsed int            // number of build passes consumed (1..MaxIterations)
 	CreatedAt      time.Time
 	UpdatedAt      time.Time

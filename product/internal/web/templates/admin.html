@@ -78,6 +78,12 @@
         <p class="design-clean muted small">Design audit: clean ✓</p>
         {{end}}
       </div>
+      {{if .Critique}}
+      <details class="findings critique">
+        <summary>Visual critique {{if eq .Critique "SHIP"}}— SHIP ✓{{else}}— polish suggested{{end}}</summary>
+        <p class="small critique-text">{{.Critique}}</p>
+      </details>
+      {{end}}
       <p class="brief muted small">{{.Brief}}</p>
       <div class="admin-actions">
         <form method="post" action="/admin/projects/{{.ID}}/deliver" class="inline">

@@ -60,6 +60,9 @@ type Orchestrator struct {
 	plannerModel  string          // active planning model, stamped on iterations
 	activeMu      sync.Mutex      // guards active
 	active        map[string]bool // projects with an in-flight pipeline goroutine in THIS process
+
+	critic     llm.Critic // vision design review of preview screenshots (nil = off)
+	autoPolish bool       // let a POLISH critique trigger one internal refinement pass
 }
 
 // SetTemplate points first builds at a starter-app tarball in object storage.
@@ -69,6 +72,13 @@ func (o *Orchestrator) SetTemplate(key string) { o.templateKey = key }
 // SetModels records the active model wiring so every iteration is stamped with
 // the models that produced it — the data model experiments are analyzed on.
 func (o *Orchestrator) SetModels(impl, planner string) { o.implModel, o.plannerModel = impl, planner }
+
+// SetCritic wires the vision design critic that reviews preview screenshots.
+// autoPolish lets a POLISH verdict trigger one internal refinement build that
+// consumes none of the customer's change credits.
+func (o *Orchestrator) SetCritic(c llm.Critic, autoPolish bool) {
+	o.critic, o.autoPolish = c, autoPolish
+}
 
 // New returns an orchestrator.
 func New(s store.Store, in llm.Intake, p llm.Planner, g llm.SafetyGate, b builder.Builder, m fly.Machines, as storage.Store, br *stream.Broker, v Verifier, log *slog.Logger) *Orchestrator {
@@ -349,7 +359,7 @@ func (o *Orchestrator) SubmitAnswers(projectID, answers, design string) {
 // Reiterate runs another build pass against a customer change request.
 func (o *Orchestrator) Reiterate(projectID, prompt string) {
 	o.async(projectID, func(ctx context.Context) error {
-		return o.runBuild(ctx, projectID, prompt)
+		return o.runBuild(ctx, projectID, prompt, false)
 	})
 }
 
@@ -392,7 +402,7 @@ func (o *Orchestrator) RetryBuild(projectID string) {
 		if p.Plan == "" {
 			return o.runPlanGateBuild(ctx, projectID)
 		}
-		return o.runBuild(ctx, projectID, "")
+		return o.runBuild(ctx, projectID, "", false)
 	})
 }
 
@@ -479,7 +489,7 @@ func (o *Orchestrator) ApproveEscalated(projectID string) {
 		if err := o.save(ctx, p); err != nil {
 			return err
 		}
-		return o.runBuild(ctx, projectID, "")
+		return o.runBuild(ctx, projectID, "", false)
 	})
 }
 
@@ -554,19 +564,25 @@ func (o *Orchestrator) runPlanGateBuild(ctx context.Context, projectID string) e
 	}
 
 	// 3) Build the first iteration.
-	return o.runBuild(ctx, projectID, "")
+	return o.runBuild(ctx, projectID, "", false)
 }
 
-func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) error {
+// runBuild executes one sandboxed build pass. internal marks an
+// orchestrator-initiated refinement (the design critic's polish pass): it is
+// numbered 0, bypasses the customer reiteration quota and never consumes it.
+func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string, internal bool) error {
 	p, err := o.store.ProjectByID(ctx, projectID)
 	if err != nil {
 		return err
 	}
-	if prompt != "" && !p.CanReiterate() {
+	if prompt != "" && !internal && !p.CanReiterate() {
 		return errors.New("no reiterations remaining")
 	}
 
 	number := p.IterationsUsed + 1
+	if internal {
+		number = 0
+	}
 	it := &project.Iteration{
 		ID:           id.New(),
 		ProjectID:    p.ID,
@@ -733,7 +749,9 @@ func (o *Orchestrator) finishBuild(ctx context.Context, p *project.Project, it *
 		return err
 	}
 
-	p.IterationsUsed = it.Number
+	if it.Number > 0 { // internal polish passes (number 0) consume no credit
+		p.IterationsUsed = it.Number
+	}
 	p.PreviewURL = res.PreviewURL
 	if res.SnapshotSaved {
 		p.SnapshotKey = snapshotKey
@@ -766,7 +784,75 @@ func (o *Orchestrator) finishBuild(ctx context.Context, p *project.Project, it *
 	o.notifyCustomer(ctx, p.UserID, "Your website preview is ready",
 		"Your preview for \""+p.Name+"\" is ready to view:\n\n"+res.PreviewURL+"\n\n"+
 			"Open your project to review it or request a change: "+o.projectLink(p.ID))
+
+	// Visual design review — a vision model looks at the deployed pages the way
+	// a customer would. Internal polish passes (number 0) are not re-reviewed,
+	// which also caps the loop at exactly one refinement per build.
+	if o.critic != nil && it.Number > 0 && len(p.Screenshots) > 0 {
+		o.async(p.ID, func(cctx context.Context) error {
+			o.critiquePreview(cctx, p.ID)
+			return nil
+		})
+	}
 	return nil
+}
+
+// critiquePreview downloads the preview's screenshots, asks the critic for a
+// verdict, stores it for /admin, and (when enabled) turns a POLISH verdict into
+// one internal refinement build. Best-effort throughout: any failure just means
+// no critique.
+func (o *Orchestrator) critiquePreview(ctx context.Context, projectID string) {
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil || p.Status != project.StatusPreviewReady {
+		return
+	}
+	var pngs [][]byte
+	for _, sc := range p.Screenshots {
+		if b, err := o.storage.Get(ctx, sc.Key); err == nil {
+			pngs = append(pngs, b)
+		}
+	}
+	if len(pngs) == 0 {
+		return
+	}
+	brief := "The design direction this site was built to:\n\n" + designSection(p.Plan) +
+		"\n\nReview the attached screenshots of the deployed pages."
+	verdict, err := o.critic.CritiqueDesign(ctx, brief, pngs)
+	if err != nil {
+		o.log.Warn("design critic failed (skipped)", "project", p.ID, "err", err)
+		return
+	}
+	p.Critique = strings.TrimSpace(verdict)
+	if err := o.save(ctx, p); err != nil {
+		return
+	}
+	polish := strings.HasPrefix(strings.ToUpper(p.Critique), "POLISH")
+	o.log.Info("design critique", "project", p.ID, "polish", polish)
+	if polish && o.autoPolish {
+		o.broker.Publish(p.ID, stream.Event{Type: "log",
+			Data: "Design review found polish items — running one refinement pass…"})
+		if err := o.runBuild(ctx, p.ID, "DESIGN POLISH — the deployed site passed all functional checks. A design "+
+			"director reviewed screenshots of the LIVE pages and found these visual issues. "+
+			"Fix exactly these (CSS/template work), verify, and redeploy. Change nothing else.\n\n"+p.Critique, true); err != nil {
+			o.log.Warn("polish pass failed", "project", p.ID, "err", err)
+		}
+	}
+}
+
+// designSection extracts the plan's "## Design" section for the critic; falls
+// back to a truncated plan when the marker is missing.
+func designSection(plan string) string {
+	if i := strings.Index(plan, "## Design"); i >= 0 {
+		rest := plan[i:]
+		if j := strings.Index(rest[3:], "\n## "); j >= 0 {
+			return rest[:j+3]
+		}
+		return rest
+	}
+	if len(plan) > 4000 {
+		return plan[:4000]
+	}
+	return plan
 }
 
 // presignScreenshots pre-mints presigned PUT URLs for up to maxScreenshots

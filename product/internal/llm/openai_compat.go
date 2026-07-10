@@ -3,6 +3,7 @@ package llm
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -219,4 +220,87 @@ func (o *OpenAICompat) Screen(ctx context.Context, brief, plan string) (GateResu
 		return GateResult{}, err
 	}
 	return parseVerdict(out)
+}
+
+// --- Vision: design critique -------------------------------------------------
+
+// mmPart is one element of a multimodal message ("text" or "image_url").
+type mmPart struct {
+	Type     string      `json:"type"`
+	Text     string      `json:"text,omitempty"`
+	ImageURL *mmImageURL `json:"image_url,omitempty"`
+}
+
+type mmImageURL struct {
+	URL string `json:"url"`
+}
+
+type mmMessage struct {
+	Role    string `json:"role"`
+	Content any    `json:"content"` // string (system) or []mmPart (user)
+}
+
+type mmRequest struct {
+	Model               string      `json:"model"`
+	Messages            []mmMessage `json:"messages"`
+	MaxTokens           int         `json:"max_tokens,omitempty"`
+	MaxCompletionTokens int         `json:"max_completion_tokens,omitempty"`
+	Temperature         *float64    `json:"temperature,omitempty"`
+}
+
+// CritiqueDesign shows the model the deployed site's page screenshots (PNG)
+// alongside the plan's design brief and returns its review. Best-effort by
+// contract: callers must treat an error as "no critique", never as a build
+// failure — not every gateway/model accepts images.
+func (o *OpenAICompat) CritiqueDesign(ctx context.Context, brief string, pngs [][]byte) (string, error) {
+	parts := []mmPart{{Type: "text", Text: brief}}
+	for i, png := range pngs {
+		if i == 4 {
+			break // enough signal; keeps the request under gateway body limits
+		}
+		parts = append(parts, mmPart{Type: "image_url", ImageURL: &mmImageURL{
+			URL: "data:image/png;base64," + base64.StdEncoding.EncodeToString(png),
+		}})
+	}
+	r := mmRequest{
+		Model: o.model,
+		Messages: []mmMessage{
+			{Role: "system", Content: CritiqueSystemPrompt},
+			{Role: "user", Content: parts},
+		},
+	}
+	const maxTokens = 2000
+	if strings.Contains(o.baseURL, "api.openai.com") {
+		r.MaxCompletionTokens = maxTokens * 4
+	} else {
+		r.MaxTokens = maxTokens
+		r.Temperature = &o.temperature
+	}
+	body, err := json.Marshal(r)
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.baseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("authorization", "Bearer "+o.apiKey)
+	resp, err := o.http.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("critic: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	var parsed ocResponse
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return "", fmt.Errorf("critic: decode (status %d): %w", resp.StatusCode, err)
+	}
+	if parsed.Error != nil {
+		return "", fmt.Errorf("critic: %s: %s", parsed.Error.Type, parsed.Error.Message)
+	}
+	if len(parsed.Choices) == 0 || parsed.Choices[0].Message.Content == "" {
+		return "", fmt.Errorf("critic: empty response (status %d)", resp.StatusCode)
+	}
+	return parsed.Choices[0].Message.Content, nil
 }
