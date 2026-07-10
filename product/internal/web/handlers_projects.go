@@ -230,9 +230,16 @@ func (s *Server) handleUploadAsset(w http.ResponseWriter, r *http.Request, u *us
 		return
 	}
 
+	// The customer's one-liner about what the file is — it steers where the
+	// build agent uses it, so it matters more than the filename.
+	desc := strings.TrimSpace(r.FormValue("description"))
+	if len(desc) > 300 {
+		desc = desc[:300]
+	}
+
 	a := &project.Asset{
 		ID: id.New(), ProjectID: p.ID, Key: key, Filename: filename,
-		ContentType: ct, Size: hdr.Size, CreatedAt: time.Now().UTC(),
+		ContentType: ct, Description: desc, Size: hdr.Size, CreatedAt: time.Now().UTC(),
 	}
 	if err := s.store.CreateAsset(r.Context(), a); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)

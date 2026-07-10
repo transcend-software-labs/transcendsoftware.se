@@ -68,13 +68,17 @@
   {{if $.Data.Assets}}
   <ul class="asset-list">
     {{range $.Data.Assets}}
-    <li><span class="asset-name">{{.Filename}}</span> <span class="muted small">{{.ContentType}}</span></li>
+    <li><span class="asset-name">{{.Filename}}</span>
+      {{if .Description}}<span class="muted small">— {{.Description}}</span>{{end}}
+      <span class="muted small">{{.ContentType}}</span></li>
     {{end}}
   </ul>
   {{end}}
-  <form method="post" action="/projects/{{.ID}}/assets" enctype="multipart/form-data" class="upload-form">
+  <form method="post" action="/projects/{{.ID}}/assets" enctype="multipart/form-data" class="upload-form stack">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
     <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" required>
+    <input type="text" name="description" maxlength="300" required
+      placeholder="{{$.T "prj.assets.desc_ph"}}">
     <button class="btn btn-sm" type="submit">{{$.T "prj.assets.upload"}}</button>
   </form>
 </section>

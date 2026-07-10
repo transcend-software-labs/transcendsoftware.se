@@ -378,15 +378,15 @@ func marshalJSON(v any) string {
 
 func (p *Postgres) CreateAsset(ctx context.Context, a *project.Asset) error {
 	_, err := p.pool.Exec(ctx,
-		`INSERT INTO assets (id, project_id, object_key, filename, content_type, size, created_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-		a.ID, a.ProjectID, a.Key, a.Filename, a.ContentType, a.Size, a.CreatedAt)
+		`INSERT INTO assets (id, project_id, object_key, filename, content_type, description, size, created_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		a.ID, a.ProjectID, a.Key, a.Filename, a.ContentType, a.Description, a.Size, a.CreatedAt)
 	return err
 }
 
 func (p *Postgres) AssetsByProject(ctx context.Context, projectID string) ([]*project.Asset, error) {
 	rows, err := p.pool.Query(ctx,
-		`SELECT id, project_id, object_key, filename, content_type, size, created_at
+		`SELECT id, project_id, object_key, filename, content_type, description, size, created_at
 		 FROM assets WHERE project_id = $1 ORDER BY created_at ASC`, projectID)
 	if err != nil {
 		return nil, err
@@ -396,7 +396,7 @@ func (p *Postgres) AssetsByProject(ctx context.Context, projectID string) ([]*pr
 	for rows.Next() {
 		var a project.Asset
 		if err := rows.Scan(&a.ID, &a.ProjectID, &a.Key, &a.Filename,
-			&a.ContentType, &a.Size, &a.CreatedAt); err != nil {
+			&a.ContentType, &a.Description, &a.Size, &a.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, &a)

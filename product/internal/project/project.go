@@ -176,6 +176,7 @@ type Asset struct {
 	Key         string // object-storage key, e.g. projects/<id>/assets/<file>
 	Filename    string
 	ContentType string
+	Description string // customer's one-liner: what this is / where it belongs ("our logo")
 	Size        int64
 	CreatedAt   time.Time
 }

@@ -196,8 +196,11 @@ How to build:
   It must look intentionally designed by a person, not scaffolded. (This is
   correctness, not the gold-plating warned about later — that is about extra
   features, never about design quality on the pages the plan calls for.)
-- Use the customer's uploaded files in /workspace/assets/ if present; copy the
-  ones you use into the site. Only use placeholders if assets/ is empty.
+- Use the customer's uploaded files in /workspace/assets/ if present; the build
+  instruction lists what each file is in the customer's own words — place each
+  file where that description says it belongs (a logo in the header, a hero
+  photo in the hero). Copy the ones you use into the site. Only use
+  placeholders if assets/ is empty.
 
 Verify EVERY user path in a real browser ON THIS BUILD MACHINE before you deploy
 — this local browser check is a hard gate: do NOT run the fly deploy command

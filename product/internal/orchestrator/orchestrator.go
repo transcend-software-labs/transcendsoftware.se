@@ -131,6 +131,26 @@ func (o *Orchestrator) baseURLOr(path string) string {
 	return o.baseURL + path
 }
 
+// assetContext renders the customer's uploaded files for the plan/gate/build
+// prompts: the filename plus their own words on what each file is. "" when
+// nothing is uploaded.
+func (o *Orchestrator) assetContext(ctx context.Context, projectID string) string {
+	assets, err := o.store.AssetsByProject(ctx, projectID)
+	if err != nil || len(assets) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("Files uploaded by the customer (available in /workspace/assets/ during the build), with their description of what each one is:")
+	for _, a := range assets {
+		b.WriteString("\n- " + a.Filename)
+		if a.Description != "" {
+			b.WriteString(" — " + a.Description)
+		}
+	}
+	b.WriteString("\nUse them where the customer's description says they belong.")
+	return b.String()
+}
+
 // assetManifest builds filename → presigned GET URL for a project's uploaded
 // assets, so the sandbox can fetch them without holding storage credentials.
 func (o *Orchestrator) assetManifest(ctx context.Context, projectID string) map[string]string {
@@ -522,7 +542,11 @@ func (o *Orchestrator) runPlanGateBuild(ctx context.Context, projectID string) e
 	if err := o.setStatus(ctx, p, project.StatusPlanning); err != nil {
 		return err
 	}
-	planRes, err := o.planner.Plan(ctx, p.EffectiveBrief())
+	brief := p.EffectiveBrief()
+	if a := o.assetContext(ctx, p.ID); a != "" {
+		brief += "\n\n" + a
+	}
+	planRes, err := o.planner.Plan(ctx, brief)
 	if err != nil {
 		return err
 	}
@@ -536,7 +560,7 @@ func (o *Orchestrator) runPlanGateBuild(ctx context.Context, projectID string) e
 	}
 
 	// 2) Safety gate (tool-less).
-	gateRes, err := o.gate.Screen(ctx, p.EffectiveBrief(), p.Plan)
+	gateRes, err := o.gate.Screen(ctx, brief, p.Plan)
 	if err != nil {
 		return err
 	}
@@ -675,6 +699,7 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string, i
 		ScreenshotPutURLs: screenshotPuts,
 		TemplateGetURL:    templateGet,
 		AssetManifest:     o.assetManifest(ctx, p.ID),
+		AssetNotes:        o.assetContext(ctx, p.ID),
 		OwnerEmail:        ownerEmail,
 		SiteName:          p.Name,
 	}, builder.Hooks{

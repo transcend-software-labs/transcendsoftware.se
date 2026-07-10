@@ -63,6 +63,10 @@ type Request struct {
 	ScreenshotPutURLs []string
 
 	AssetManifest map[string]string // filename → short-lived presigned GET URL
+	// AssetNotes is the customer's own words on what each uploaded file is
+	// ("our logo", "photo of the shop front") — appended to the instruction so
+	// the agent places files deliberately instead of guessing from filenames.
+	AssetNotes string
 
 	// OwnerEmail is the Forge customer's email. Injected as the app's
 	// OWNER_EMAIL secret so the generated site reserves its first — owner —
@@ -294,6 +298,9 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 		instruction = resumePreamble + "\n\n" + req.Plan
 	case req.TemplateGetURL != "":
 		instruction = templatePreamble + "\n\n" + req.Plan
+	}
+	if req.AssetNotes != "" {
+		instruction += "\n\n" + req.AssetNotes
 	}
 	if b.cfg.Impeccable {
 		instruction += "\n\n" + impeccableStep
