@@ -79,6 +79,7 @@ func main() {
 	log.Info("llm: model config",
 		"impl_model", cfg.LLMModel, "impl_base", cfg.LLMBaseURL,
 		"planner_model", cfg.PlannerLLMModel, "planner_base", cfg.PlannerLLMBaseURL)
+	orch.SetModels(cfg.LLMModel, cfg.PlannerLLMModel)
 	orch.RecoverInterrupted(context.Background()) // reap builds left running by a prior run
 	// Reap zombie infrastructure hourly: preview apps of failed projects,
 	// previews idle past PREVIEW_TTL_DAYS, and leaked sandbox machines.

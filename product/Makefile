@@ -60,6 +60,13 @@ model-grok:
 	  PLANNER_LLM_BASE_URL=https://opencode.ai/zen/v1 \
 	  PLANNER_LLM_MODEL=grok-4.5
 
+# MiniMax M3 for plan + build, on the Zen Go tier (same gateway as the default).
+model-minimax:
+	fly secrets unset -a transcend-forge LLM_BASE_URL PLANNER_LLM_BASE_URL 2>/dev/null || true
+	fly secrets set -a transcend-forge \
+	  LLM_MODEL=minimax-m3 \
+	  PLANNER_LLM_MODEL=minimax-m3
+
 # Back to the standard wiring: kimi-k2.7-code impl + glm-5.2 planning on zen/go/v1.
 model-default:
 	fly secrets unset -a transcend-forge \

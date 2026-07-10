@@ -152,7 +152,11 @@ type Iteration struct {
 	SandboxAddr string    // sandbox opencode address (http://[ip]:port) — the re-attach target
 	HeartbeatAt time.Time // last time the build reported progress
 	Tokens      int       // model tokens the build agent consumed (cost visibility)
-	CreatedAt   time.Time
+	// Which models produced this build — recorded at build start so model
+	// experiments (make model-*) can be compared per build afterwards.
+	ImplModel    string // the build/intake/gate model (LLM_MODEL)
+	PlannerModel string // the planning model (PLANNER_LLM_MODEL)
+	CreatedAt    time.Time
 }
 
 // Duration is how long the build ran, approximated by the last heartbeat.

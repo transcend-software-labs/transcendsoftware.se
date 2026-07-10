@@ -55,11 +55,17 @@ type Orchestrator struct {
 	operatorEmail string          // Rasmus — escalation/failure notices
 	baseURL       string          // for links in emails
 	templateKey   string          // object-storage key of the starter-app tarball ("" = greenfield)
+	implModel     string          // active build/intake/gate model, stamped on iterations for experiment analysis
+	plannerModel  string          // active planning model, stamped on iterations
 }
 
 // SetTemplate points first builds at a starter-app tarball in object storage.
 // Empty means greenfield (the pre-template behavior).
 func (o *Orchestrator) SetTemplate(key string) { o.templateKey = key }
+
+// SetModels records the active model wiring so every iteration is stamped with
+// the models that produced it — the data model experiments are analyzed on.
+func (o *Orchestrator) SetModels(impl, planner string) { o.implModel, o.plannerModel = impl, planner }
 
 // New returns an orchestrator.
 func New(s store.Store, in llm.Intake, p llm.Planner, g llm.SafetyGate, b builder.Builder, m fly.Machines, as storage.Store, br *stream.Broker, v Verifier, log *slog.Logger) *Orchestrator {
@@ -526,12 +532,14 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string) e
 
 	number := p.IterationsUsed + 1
 	it := &project.Iteration{
-		ID:        id.New(),
-		ProjectID: p.ID,
-		Number:    number,
-		Prompt:    prompt,
-		Status:    project.StatusBuilding,
-		CreatedAt: time.Now().UTC(),
+		ID:           id.New(),
+		ProjectID:    p.ID,
+		Number:       number,
+		Prompt:       prompt,
+		Status:       project.StatusBuilding,
+		ImplModel:    o.implModel,
+		PlannerModel: o.plannerModel,
+		CreatedAt:    time.Now().UTC(),
 	}
 	if err := o.store.CreateIteration(ctx, it); err != nil {
 		return err

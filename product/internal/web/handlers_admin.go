@@ -28,6 +28,7 @@ type recentBuild struct {
 	Duration string // "4m12s"
 	Tokens   int
 	CostStr  string // rough "$0.007"
+	Model    string // impl model that ran the build (model experiments)
 	Status   project.Status
 }
 
@@ -178,7 +179,7 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 		}
 		builds = append(builds, recentBuild{
 			Project: name, When: it.CreatedAt, Duration: it.Duration().Round(time.Second).String(),
-			Tokens: it.Tokens, CostStr: estCost(it.Duration(), rate), Status: it.Status,
+			Tokens: it.Tokens, CostStr: estCost(it.Duration(), rate), Model: it.ImplModel, Status: it.Status,
 		})
 	}
 
