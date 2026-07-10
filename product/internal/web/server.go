@@ -10,10 +10,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/transcend-software-labs/rasmus-ai/internal/activity"
 	"github.com/transcend-software-labs/rasmus-ai/internal/auth"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/notify"
-	"github.com/transcend-software-labs/rasmus-ai/internal/web/i18n"
 	"github.com/transcend-software-labs/rasmus-ai/internal/oauth"
 	"github.com/transcend-software-labs/rasmus-ai/internal/orchestrator"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
@@ -21,6 +21,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
 	"github.com/transcend-software-labs/rasmus-ai/internal/stream"
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
+	"github.com/transcend-software-labs/rasmus-ai/internal/web/i18n"
 )
 
 //go:embed templates/*.html
@@ -104,6 +105,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /projects/{id}/status", s.requireUser(s.handleProjectStatus))
 	mux.HandleFunc("GET /projects/{id}/stream", s.requireUser(s.handleProjectStream))
 	mux.HandleFunc("POST /projects/{id}/answer", s.requireUser(s.handleAnswer))
+	mux.HandleFunc("POST /projects/{id}/approve-plan", s.requireUser(s.handleApprovePlan))
 	mux.HandleFunc("POST /projects/{id}/assets", limitBody(maxUpload+(1<<20), s.requireUser(s.handleUploadAsset)))
 	mux.HandleFunc("POST /projects/{id}/reiterate", s.requireUser(s.handleReiterate))
 	mux.HandleFunc("POST /projects/{id}/retry", s.requireUser(s.handleRetry))
@@ -146,13 +148,13 @@ func langSelector(next http.Handler) http.Handler {
 // template-render tests parse with the same one).
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
-		"statusLabel": statusLabel, // admin pages: always English
-		"trStatus":    trStatus,    // customer pages: localized status
-		"tr":          i18n.T,      // for fragments rendered without a View
-		"withLang":    func(lang, act string, p *project.Project) statusView { return statusView{p, lang, act} },
-		"polling":     polling,
-		"pollEvery":   pollEvery,
-		"dur":         func(d time.Duration) string { return d.Round(time.Second).String() },
+		"statusLabel":   statusLabel, // admin pages: always English
+		"trStatus":      trStatus,    // customer pages: localized status
+		"tr":            i18n.T,      // for fragments rendered without a View
+		"timelineSteps": func() []string { return project.TimelineSteps },
+		"polling":       polling,
+		"pollEvery":     pollEvery,
+		"dur":           func(d time.Duration) string { return d.Round(time.Second).String() },
 	}
 }
 
@@ -181,7 +183,21 @@ func (v View) Languages() []i18n.Lang { return i18n.Langs }
 type statusView struct {
 	*project.Project
 	Lang     string
-	Activity string // language-neutral activity code of a running build ("" = none)
+	Activity string                // language-neutral activity code of a running build ("" = none)
+	Building string                // localized name of the page being built now ("" = none)
+	Pages    []activity.PageStatus // live per-page build checklist (nil = not building)
+}
+
+// statusOf assembles the live status box for a project: resolved language, the
+// running build's activity code, and the page checklist. Shared by the full
+// project page and the htmx status poll so both render identically.
+func (s *Server) statusOf(r *http.Request, p *project.Project) statusView {
+	lang := s.lang(r)
+	sv := statusView{Project: p, Lang: lang, Activity: s.orch.Activity(p.ID), Pages: s.orch.Pages(p.ID)}
+	if pg, ok := s.orch.BuildingPage(p.ID); ok {
+		sv.Building = pg.Name(lang)
+	}
+	return sv
 }
 
 // trStatus is statusLabel's localized sibling; unknown statuses fall back to
@@ -334,6 +350,8 @@ func statusLabel(s project.Status) string {
 		return "Planning your site…"
 	case project.StatusScreening:
 		return "Reviewing the request…"
+	case project.StatusAwaitingApproval:
+		return "Waiting for your approval"
 	case project.StatusEscalated:
 		return "Held for review by Rasmus"
 	case project.StatusBuilding:
@@ -362,8 +380,8 @@ func statusLabel(s project.Status) string {
 // operator approves or declines — see pollEvery.
 func polling(p *project.Project) bool {
 	switch p.Status {
-	case project.StatusNeedsInput, project.StatusPreviewReady, project.StatusDelivered,
-		project.StatusRejected, project.StatusFailed, project.StatusExpired:
+	case project.StatusNeedsInput, project.StatusAwaitingApproval, project.StatusPreviewReady,
+		project.StatusDelivered, project.StatusRejected, project.StatusFailed, project.StatusExpired:
 		return false
 	default:
 		return true

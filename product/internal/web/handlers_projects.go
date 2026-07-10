@@ -65,6 +65,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request, u *
 		Name:      name,
 		Brief:     brief,
 		Status:    project.StatusCreated,
+		Locale:    s.lang(r), // the language their emails go out in
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -158,11 +159,12 @@ func (s *Server) quotaBlock(r *http.Request, u *user.User) string {
 }
 
 type projectView struct {
-	Project    *project.Project
-	Iterations []*project.Iteration
-	Assets     []*project.Asset
-	Shots      []reviewShot // presigned page screenshots of the current build
-	Activity   string       // live build activity code for the status line
+	Project     *project.Project
+	Iterations  []*project.Iteration
+	Assets      []*project.Asset
+	Shots       []reviewShot    // presigned page screenshots of the current build
+	Status      statusView      // the live status box (also re-rendered by the poll)
+	FilledSlots map[string]bool // content-slot slug → an asset fills it
 }
 
 func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.User) {
@@ -180,8 +182,16 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	s.render(w, http.StatusOK, "project", s.view(r, p.Name, projectView{Project: p, Iterations: its, Assets: assets,
-		Shots: s.withScreenshots(r.Context(), p).Shots, Activity: s.orch.Activity(p.ID)}))
+	filled := map[string]bool{}
+	for _, a := range assets {
+		if a.Slot != "" {
+			filled[a.Slot] = true
+		}
+	}
+	s.render(w, http.StatusOK, "project", s.view(r, p.Name, projectView{
+		Project: p, Iterations: its, Assets: assets,
+		Shots: s.withScreenshots(r.Context(), p).Shots, Status: s.statusOf(r, p), FilledSlots: filled,
+	}))
 }
 
 var allowedAssetTypes = map[string]bool{
@@ -239,10 +249,16 @@ func (s *Server) handleUploadAsset(w http.ResponseWriter, r *http.Request, u *us
 	if len(desc) > 300 {
 		desc = desc[:300]
 	}
+	// Optional content-slot this upload fills (from the plan's "we need"
+	// checklist). When a slot is chosen, its label doubles as the description.
+	slot := slotID(r.FormValue("slot"))
+	if slot != "" && desc == "" {
+		desc = slotLabel(p, slot)
+	}
 
 	a := &project.Asset{
 		ID: id.New(), ProjectID: p.ID, Key: key, Filename: filename,
-		ContentType: ct, Description: desc, Size: hdr.Size, CreatedAt: time.Now().UTC(),
+		ContentType: ct, Description: desc, Slot: slot, Size: hdr.Size, CreatedAt: time.Now().UTC(),
 	}
 	if err := s.store.CreateAsset(r.Context(), a); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -267,7 +283,7 @@ func (s *Server) handleProjectStatus(w http.ResponseWriter, r *http.Request, u *
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, "project_status", statusView{p, s.lang(r), s.orch.Activity(p.ID)}); err != nil {
+	if err := s.tmpl.ExecuteTemplate(w, "project_status", s.statusOf(r, p)); err != nil {
 		s.log.Error("render status", "err", err)
 	}
 }
@@ -362,6 +378,42 @@ func (s *Server) handleRetry(w http.ResponseWriter, r *http.Request, u *user.Use
 	}
 	s.orch.RetryBuild(p.ID)
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+}
+
+// handleApprovePlan is the customer approving the scope card, which starts the
+// build. Only valid at the awaiting_approval gate.
+func (s *Server) handleApprovePlan(w http.ResponseWriter, r *http.Request, u *user.User) {
+	p, ok := s.ownedProject(w, r, u)
+	if !ok {
+		return
+	}
+	if p.CanApprovePlan() {
+		s.orch.ApprovePlan(p.ID)
+	}
+	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+}
+
+// slotSanitize keeps a slot id to a safe slug.
+var slotSanitize = regexp.MustCompile(`[^a-z0-9_-]+`)
+
+// slotID normalizes a submitted content-slot id.
+func slotID(s string) string {
+	s = slotSanitize.ReplaceAllString(strings.ToLower(strings.TrimSpace(s)), "")
+	if len(s) > 40 {
+		s = s[:40]
+	}
+	return s
+}
+
+// slotLabel returns the plan's English label for a content slot (a stable
+// description for the build agent), or the slug.
+func slotLabel(p *project.Project, slot string) string {
+	for _, c := range p.Spec.ContentNeeded {
+		if c.Slug == slot {
+			return c.Name("en")
+		}
+	}
+	return slot
 }
 
 // handleAccept records the customer accepting the preview, sending it to

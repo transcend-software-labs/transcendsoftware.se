@@ -67,6 +67,10 @@ type Request struct {
 	// ("our logo", "photo of the shop front") — appended to the instruction so
 	// the agent places files deliberately instead of guessing from filenames.
 	AssetNotes string
+	// ProgressNote asks the agent to emit "FORGE_PAGE_DONE: <slug>" as it
+	// finishes each planned page, so the customer's live checklist ticks off
+	// authoritatively (heuristics only tell us what's in progress).
+	ProgressNote string
 
 	// OwnerEmail is the Forge customer's email. Injected as the app's
 	// OWNER_EMAIL secret so the generated site reserves its first — owner —
@@ -99,11 +103,11 @@ type Result struct {
 type Finding struct {
 	Antipattern string `json:"antipattern"` // rule id, e.g. "ai-color-palette"
 	Name        string `json:"name"`        // human title
-	Description string `json:"description"`  // why it's a problem + how to fix
-	Severity    string `json:"severity"`     // "warning", "error", …
-	File        string `json:"file"`         // repo-relative file (sandbox prefix stripped)
-	Line        int    `json:"line"`         // 0 when file-level
-	Snippet     string `json:"snippet"`      // the offending context
+	Description string `json:"description"` // why it's a problem + how to fix
+	Severity    string `json:"severity"`    // "warning", "error", …
+	File        string `json:"file"`        // repo-relative file (sandbox prefix stripped)
+	Line        int    `json:"line"`        // 0 when file-level
+	Snippet     string `json:"snippet"`     // the offending context
 }
 
 // Hooks observe a build pass.
@@ -301,6 +305,9 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 	}
 	if req.AssetNotes != "" {
 		instruction += "\n\n" + req.AssetNotes
+	}
+	if req.ProgressNote != "" {
+		instruction += "\n\n" + req.ProgressNote
 	}
 	if b.cfg.Impeccable {
 		instruction += "\n\n" + impeccableStep

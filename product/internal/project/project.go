@@ -18,19 +18,20 @@ import (
 type Status string
 
 const (
-	StatusCreated      Status = "created"       // just created, nothing run yet
-	StatusClarifying   Status = "clarifying"    // intake agent is generating clarifying questions
-	StatusNeedsInput   Status = "needs_input"   // waiting for the customer to answer questions
-	StatusPlanning     Status = "planning"      // LLM is turning the brief into a plan
-	StatusScreening    Status = "screening"     // safety gate is evaluating the request
-	StatusEscalated    Status = "escalated"     // safety gate escalated; waiting on operator review
-	StatusRejected     Status = "rejected"      // safety gate rejected the request (terminal)
-	StatusBuilding     Status = "building"      // a sandboxed build is running
-	StatusPreviewReady Status = "preview_ready" // a build finished, preview link attached
-	StatusAccepted     Status = "accepted"      // customer accepted the preview; awaiting Rasmus's final review
-	StatusDelivered    Status = "delivered"     // Rasmus reviewed + guaranteed it (terminal, the handover)
-	StatusFailed       Status = "failed"        // a build or pipeline step errored (terminal)
-	StatusExpired      Status = "expired"       // preview reaped after the retention window (terminal)
+	StatusCreated          Status = "created"           // just created, nothing run yet
+	StatusClarifying       Status = "clarifying"        // intake agent is generating clarifying questions
+	StatusNeedsInput       Status = "needs_input"       // waiting for the customer to answer questions
+	StatusPlanning         Status = "planning"          // LLM is turning the brief into a plan
+	StatusScreening        Status = "screening"         // safety gate is evaluating the request
+	StatusAwaitingApproval Status = "awaiting_approval" // plan ready; waiting for the customer to approve the scope
+	StatusEscalated        Status = "escalated"         // safety gate escalated; waiting on operator review
+	StatusRejected         Status = "rejected"          // safety gate rejected the request (terminal)
+	StatusBuilding         Status = "building"          // a sandboxed build is running
+	StatusPreviewReady     Status = "preview_ready"     // a build finished, preview link attached
+	StatusAccepted         Status = "accepted"          // customer accepted the preview; awaiting Rasmus's final review
+	StatusDelivered        Status = "delivered"         // Rasmus reviewed + guaranteed it (terminal, the handover)
+	StatusFailed           Status = "failed"            // a build or pipeline step errored (terminal)
+	StatusExpired          Status = "expired"           // preview reaped after the retention window (terminal)
 )
 
 // MaxIterations is the total number of build passes a project gets:
@@ -60,6 +61,53 @@ type Screenshot struct {
 	Key  string `json:"key"`  // object-storage key of the PNG
 }
 
+// PlanSpec is the machine-readable companion to the markdown plan: the planner
+// emits it so the customer UI (scope card, page checklist, content slots) and
+// the build-progress classifier can be driven by structured data instead of
+// parsing prose. Empty (no pages) means the planner didn't produce one — the UI
+// degrades to not showing these sections rather than breaking.
+type PlanSpec struct {
+	Pages         []PlanPage    `json:"pages"`
+	NotIncluded   []string      `json:"not_included"`   // plain-language things NOT built, for "Ingår inte"
+	ContentNeeded []ContentItem `json:"content_needed"` // what we need from the customer
+}
+
+// PlanPage is one page/route in the plan. Names is per-locale so a page name
+// can slot into a translated sentence ("Building the home page"); Paths are
+// lowercase substrings expected in the files/routes the builder creates, used
+// to attribute build activity to a page.
+type PlanPage struct {
+	Slug     string            `json:"slug"`
+	Paths    []string          `json:"paths"`
+	Names    map[string]string `json:"names"`
+	Included string            `json:"included"` // one plain-language phrase, customer's language
+}
+
+// ContentItem is one thing the customer must provide (logo, product list, …),
+// shown as a named upload slot. Names is per-locale for the label.
+type ContentItem struct {
+	Slug     string            `json:"slug"`
+	Names    map[string]string `json:"names"`
+	Required bool              `json:"required"`
+}
+
+// Name returns the page's display name in lang, falling back to English then
+// the slug — so it is always safe to interpolate into UI copy.
+func (p PlanPage) Name(lang string) string { return localName(p.Names, lang, p.Slug) }
+
+// Name returns the content item's label in lang, with the same fallbacks.
+func (c ContentItem) Name(lang string) string { return localName(c.Names, lang, c.Slug) }
+
+func localName(names map[string]string, lang, fallback string) string {
+	if v := names[lang]; v != "" {
+		return v
+	}
+	if v := names["en"]; v != "" {
+		return v
+	}
+	return fallback
+}
+
 // Finding is one impeccable design-audit issue on a built site, shown as a
 // review checklist in /admin. Stored inline (plain JSON — no object storage).
 type Finding struct {
@@ -83,7 +131,8 @@ type Project struct {
 	DesignOptions  []DesignOption // suggested design directions from intake
 	DesignBrief    string         // the customer's chosen/stated design direction
 	Answers        string         // the customer's answers to those questions
-	Plan           string         // generated build plan (markdown)
+	Plan           string         // generated build plan (markdown; operator-facing)
+	Spec           PlanSpec       // machine-readable plan: pages, scope, content needs (customer UI)
 	Verdict        Verdict        // safety-gate outcome
 	RejectReason   string         // populated when Status == rejected
 	PreviewURL     string         // latest deployed preview link
@@ -92,6 +141,7 @@ type Project struct {
 	Screenshots    []Screenshot   // one per page of the deployed site (for /admin review)
 	Findings       []Finding      // impeccable design-audit findings from the last build (for /admin review)
 	Critique       string         // design critic's verdict on the preview screenshots ("SHIP" or "POLISH" + issues)
+	Locale         string         // customer's UI language at creation ("en"/"sv"/"ru"), for their emails
 	IterationsUsed int            // number of build passes consumed (1..MaxIterations)
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
@@ -115,6 +165,38 @@ func (p *Project) EffectiveBrief() string {
 func (p *Project) CanReiterate() bool {
 	return p.Status == StatusPreviewReady && p.IterationsUsed < MaxIterations
 }
+
+// CanApprovePlan reports whether the customer is at the plan-approval gate: the
+// plan is ready and the build hasn't started, waiting on their go-ahead.
+func (p *Project) CanApprovePlan() bool {
+	return p.Status == StatusAwaitingApproval
+}
+
+// TimelineStep is the furthest customer-facing milestone the project has
+// reached, indexing TimelineSteps. Steps before it are done, this one is
+// current. Terminal-bad states report the step they stopped at.
+func (p *Project) TimelineStep() int {
+	switch p.Status {
+	case StatusCreated:
+		return 0
+	case StatusClarifying, StatusNeedsInput:
+		return 1
+	case StatusPlanning, StatusScreening, StatusAwaitingApproval, StatusEscalated, StatusRejected:
+		return 2
+	case StatusBuilding, StatusFailed:
+		return 3
+	case StatusPreviewReady, StatusAccepted, StatusExpired:
+		return 4
+	case StatusDelivered:
+		return 5
+	default:
+		return 0
+	}
+}
+
+// TimelineSteps are the six customer-facing milestones, by i18n key suffix
+// (rendered as "timeline.<key>"). "review" is the deliberate human checkpoint.
+var TimelineSteps = []string{"brief", "questions", "plan", "building", "review", "live"}
 
 // CanAccept reports whether the customer may accept the current preview and
 // send it to Rasmus for final review.
@@ -177,6 +259,7 @@ type Asset struct {
 	Filename    string
 	ContentType string
 	Description string // customer's one-liner: what this is / where it belongs ("our logo")
+	Slot        string // content-slot slug this fills (from PlanSpec.ContentNeeded), "" = general upload
 	Size        int64
 	CreatedAt   time.Time
 }

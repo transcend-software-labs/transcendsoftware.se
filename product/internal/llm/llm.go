@@ -138,6 +138,29 @@ Return markdown with these sections:
    sensible, on-brand placeholder copy to ship meanwhile (never lorem ipsum).
 ## Out of scope — a short list of things NOT to build, to keep the build tight.
 
+After all the markdown above, emit a fenced code block tagged json containing a
+machine-readable summary of the SAME plan — no more, no less than the markdown
+describes. It drives the customer's plain-language scope card, page checklist
+and content-upload slots, so write its text for a non-technical customer, in the
+customer's language. Exact shape:
+
+` + "```json" + `
+{"pages":[{"slug":"start","paths":["index","home","landing"],"names":{"sv":"Startsidan","en":"the home page"},"included":"Hero, om oss, utvalda produkter och kontakt"}],
+ "not_included":["Onlinebetalning","Kundinloggning"],
+ "content_needed":[{"slug":"logo","names":{"sv":"Logotyp","en":"Logo"},"required":true}]}
+` + "```" + `
+- slug: short lowercase ascii id, stable.
+- paths: 2-4 lowercase substrings that will appear in the file names or routes
+  the builder creates for this page (e.g. "maskiner","machines","catalog") —
+  used only to track build progress, so guess the likely names.
+- names: the page's display name, at minimum the customer's language AND "en",
+  each phrased to drop into a sentence like "Building the home page".
+- included: one short phrase, customer's language, of what that page contains.
+- not_included: plain-language things you are deliberately NOT building.
+- content_needed: real things the customer must give us (logo, product list,
+  opening hours, org.nr). names per-locale; required=false for nice-to-haves.
+Emit valid JSON only inside that block. It must agree with the markdown.
+
 Begin the response with a single line: "NAME: <a short 2-4 word project name>".`
 
 // IntakeSystemPrompt drives the clarifying-questions step. The questions are
@@ -363,7 +386,14 @@ func (Fake) Plan(_ context.Context, brief string) (PlanResult, error) {
 		"## Stack\nStatic site, deployed to Fly, EU region.\n\n" +
 		"## Data & assets\n- Real photos\n- Copy / wording\n- Logo (optional)\n\n" +
 		"## Open questions\n- Brochure only, or online ordering?\n\n" +
-		"_(dev-mode plan — set ANTHROPIC_API_KEY for real planning)_"
+		"_(dev-mode plan — set ANTHROPIC_API_KEY for real planning)_\n\n" +
+		"```json\n" + `{"pages":[` +
+		`{"slug":"start","paths":["index","home","landing"],"names":{"sv":"Startsidan","en":"the home page"},"included":"Hero, kort presentation och kontaktknapp"},` +
+		`{"slug":"om","paths":["om","about"],"names":{"sv":"Om oss","en":"the about page"},"included":"Er berättelse och bilder"},` +
+		`{"slug":"kontakt","paths":["kontakt","contact"],"names":{"sv":"Kontakt","en":"the contact page"},"included":"Kontaktformulär och karta"}],` +
+		`"not_included":["Onlinebetalning","Kundinloggning"],` +
+		`"content_needed":[{"slug":"logo","names":{"sv":"Logotyp","en":"Logo"},"required":true},{"slug":"photos","names":{"sv":"Bilder","en":"Photos"},"required":false}]}` +
+		"\n```"
 	return PlanResult{Name: name, Plan: plan}, nil
 }
 

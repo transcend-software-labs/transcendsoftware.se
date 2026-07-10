@@ -1,10 +1,10 @@
 package web
 
 import (
-	"fmt"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"

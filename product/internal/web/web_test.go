@@ -210,10 +210,32 @@ func TestFullFlow_IntakeToPreview(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	// Poll the status endpoint. While building it returns the status fragment;
-	// once the build leaves the polling state it asks HTMX to reload the page
-	// (HX-Refresh), which is our signal the flow finished.
+	// Planning now stops at the approval gate: the customer must approve the
+	// scope card before the build spends money. Wait for it, then approve.
 	deadline := time.Now().Add(8 * time.Second)
+	var approved bool
+	for time.Now().Before(deadline) {
+		r, _ := c.Get(srv.URL + "/projects/" + pid)
+		pg, _ := io.ReadAll(r.Body)
+		r.Body.Close()
+		if strings.Contains(string(pg), "/approve-plan") {
+			pr, err := c.PostForm(srv.URL+"/projects/"+pid+"/approve-plan", url.Values{"csrf_token": {tok}})
+			if err != nil {
+				t.Fatalf("approve-plan: %v", err)
+			}
+			pr.Body.Close()
+			approved = true
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !approved {
+		t.Fatal("project never reached the plan-approval gate")
+	}
+
+	// Now poll the status endpoint. Once the build leaves the polling state it
+	// asks HTMX to reload the page (HX-Refresh) — our signal the flow finished.
+	deadline = time.Now().Add(8 * time.Second)
 	var done bool
 	for time.Now().Before(deadline) {
 		r, _ := c.Get(srv.URL + "/projects/" + pid + "/status")

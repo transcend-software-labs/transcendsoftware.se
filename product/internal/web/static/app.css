@@ -376,4 +376,119 @@ label.design-option:hover { border-color: var(--accent); }
   .inline-actions button, .inline-actions .btn { width: 100%; min-height: 44px; }
   .table-scroll { -webkit-overflow-scrolling: touch; }
   .review-shot, .review-thumb { max-width: 100%; height: auto; }
+  .timeline { gap: 0; }
+  .tl-label { font-size: .62rem; }
+}
+
+/* ── Redesign: timeline, live checklist, scope card, content slots ─────── */
+
+/* Persistent progress timeline. Steps connect with a hairline; the current
+   step glows gold, done steps are green ticks, "Rasmus reviews" is a star. */
+.timeline {
+  list-style: none;
+  display: flex;
+  gap: .25rem;
+  margin: 1.75rem 0 .5rem;
+  padding: 0;
+}
+.tl-step {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: .45rem;
+  position: relative;
+  color: var(--dim);
+}
+/* Connector line between dots. */
+.tl-step::before {
+  content: "";
+  position: absolute;
+  top: 13px;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: var(--border-2);
+  z-index: 0;
+}
+.tl-step:first-child::before { display: none; }
+.tl-dot {
+  position: relative;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  border: 2px solid var(--border-2);
+  font-size: .8rem;
+  color: var(--dim);
+}
+.tl-label { font-size: .72rem; letter-spacing: .02em; }
+.tl-done { color: var(--muted); }
+.tl-done .tl-dot { border-color: var(--green); color: var(--green); }
+.tl-done::before { background: var(--green); }
+.tl-current { color: var(--text); }
+.tl-current .tl-dot {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(224,169,60,.15);
+}
+.tl-current .tl-label { font-weight: 600; }
+/* The deliberate human checkpoint reads as special even before it's reached. */
+.tl-human .tl-dot { border-style: solid; }
+.tl-human.tl-current .tl-dot, .tl-human.tl-done .tl-dot { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
+/* Live per-page build checklist inside the status box. */
+.page-checklist { list-style: none; margin: .75rem 0 0; padding: 0; display: grid; gap: .35rem; }
+.page-checklist li { display: flex; align-items: center; gap: .6rem; font-size: .9rem; }
+.page-mark { width: 1.1rem; text-align: center; color: var(--dim); }
+.page-done { color: var(--text); }
+.page-done .page-mark { color: var(--green); }
+.page-building { color: var(--text); }
+.page-building .page-mark { color: var(--accent); }
+.page-pending { color: var(--dim); }
+
+/* Scope card — the plain-language plan that replaces the raw markdown. */
+.scope-card .scope-list { list-style: none; margin: .5rem 0 0; padding: 0; display: grid; gap: .5rem; }
+.scope-list li { padding-left: 1.1rem; position: relative; }
+.scope-list li::before { content: "—"; position: absolute; left: 0; color: var(--accent); }
+.scope-not li::before { content: "×"; color: var(--dim); }
+.scope-page { font-weight: 600; }
+.scope-approve {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+/* Content checklist — what we still need from the customer. */
+.content-checklist { list-style: none; margin: 0 0 1.25rem; padding: 0; display: grid; gap: .5rem; }
+.content-checklist li { display: flex; align-items: center; gap: .6rem; }
+.content-mark { width: 1.1rem; text-align: center; }
+.content-have { color: var(--text); }
+.content-have .content-mark { color: var(--green); }
+.content-need .content-mark { color: var(--dim); }
+.content-name { font-weight: 500; }
+.upload-slot { display: flex; flex-direction: column; gap: .3rem; font-size: .85rem; color: var(--muted); }
+.upload-slot select {
+  padding: .5rem .6rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  font-family: inherit;
+}
+
+/* Human-language history. */
+.history { list-style: none; margin: 0; padding: 0; display: grid; gap: .75rem; }
+.history li { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; }
+.hist-label {
+  font-weight: 600;
+  color: var(--accent);
+  border: 1px solid var(--border-2);
+  border-radius: 999px;
+  padding: .1rem .7rem;
+  font-size: .8rem;
 }

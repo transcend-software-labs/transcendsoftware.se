@@ -7,7 +7,9 @@
   </div>
 </section>
 
-{{template "project_status" (withLang $.Lang $.Data.Activity .)}}
+{{template "timeline" $.Data.Status}}
+
+{{template "project_status" $.Data.Status}}
 
 {{if $.Data.Shots}}
 <section class="panel">
@@ -57,6 +59,30 @@
 </section>
 {{end}}
 
+{{if .Spec.Pages}}
+<section class="panel scope-card">
+  <h2>{{$.T "prj.scope.h2"}}</h2>
+  <ul class="scope-list">
+    {{range .Spec.Pages}}
+    <li><span class="scope-page">{{.Name $.Lang}}</span>{{if .Included}}<span class="muted small"> — {{.Included}}</span>{{end}}</li>
+    {{end}}
+  </ul>
+  {{if .Spec.NotIncluded}}
+  <h3 class="muted small" style="margin-top:1rem">{{$.T "prj.scope.not"}}</h3>
+  <ul class="scope-list scope-not">
+    {{range .Spec.NotIncluded}}<li class="muted small">{{.}}</li>{{end}}
+  </ul>
+  {{end}}
+  {{if .CanApprovePlan}}
+  <form method="post" action="/projects/{{.ID}}/approve-plan" class="scope-approve">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <p class="muted small">{{$.T "prj.scope.approve_intro"}}</p>
+    <button class="btn" type="submit">{{$.T "prj.scope.approve_btn"}}</button>
+  </form>
+  {{end}}
+</section>
+{{end}}
+
 <section class="panel">
   <h2>{{$.T "prj.brief.h2"}}</h2>
   <p class="brief">{{.Brief}}</p>
@@ -67,19 +93,37 @@
 <section class="panel">
   <h2>{{$.T "prj.assets.h2"}}</h2>
   <p class="muted small">{{$.T "prj.assets.intro"}}</p>
+  {{if .Spec.ContentNeeded}}
+  <ul class="content-checklist">
+    {{range .Spec.ContentNeeded}}
+    <li class="content-{{if index $.Data.FilledSlots .Slug}}have{{else}}need{{end}}">
+      <span class="content-mark">{{if index $.Data.FilledSlots .Slug}}✓{{else}}○{{end}}</span>
+      <span class="content-name">{{.Name $.Lang}}</span>
+      {{if not .Required}}<span class="muted small">({{$.T "prj.content.optional"}})</span>{{end}}
+    </li>
+    {{end}}
+  </ul>
+  {{end}}
   {{if $.Data.Assets}}
   <ul class="asset-list">
     {{range $.Data.Assets}}
     <li><span class="asset-name">{{.Filename}}</span>
-      {{if .Description}}<span class="muted small">— {{.Description}}</span>{{end}}
-      <span class="muted small">{{.ContentType}}</span></li>
+      {{if .Description}}<span class="muted small">— {{.Description}}</span>{{end}}</li>
     {{end}}
   </ul>
   {{end}}
   <form method="post" action="/projects/{{.ID}}/assets" enctype="multipart/form-data" class="upload-form stack">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
     <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" required>
-    <input type="text" name="description" maxlength="300" required
+    {{if .Spec.ContentNeeded}}
+    <label class="upload-slot">{{$.T "prj.content.which"}}
+      <select name="slot">
+        {{range .Spec.ContentNeeded}}<option value="{{.Slug}}">{{.Name $.Lang}}</option>{{end}}
+        <option value="">{{$.T "prj.content.other"}}</option>
+      </select>
+    </label>
+    {{end}}
+    <input type="text" name="description" maxlength="300"
       placeholder="{{$.T "prj.assets.desc_ph"}}">
     <button class="btn btn-sm" type="submit">{{$.T "prj.assets.upload"}}</button>
   </form>
@@ -124,15 +168,29 @@
 {{if .Data.Iterations}}
 <section class="panel">
   <h2>{{.T "prj.hist.h2"}}</h2>
-  <ol class="iterations">
+  <ol class="history">
     {{range .Data.Iterations}}
+    {{if gt .Number 0}}
     <li>
-      <span class="badge badge-{{.Status}}">#{{.Number}} · {{trStatus $.Lang .Status}}</span>
-      {{if .Prompt}}<p class="muted small">“{{.Prompt}}”</p>{{end}}
+      <span class="hist-label">{{if eq .Number 1}}{{$.T "prj.hist.first"}}{{else}}{{$.T "prj.hist.change"}}{{end}}</span>
+      {{if .Prompt}}<span class="muted small">“{{.Prompt}}”</span>{{end}}
       {{if .PreviewURL}}<a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{$.T "prj.hist.preview"}}</a>{{end}}
     </li>
+    {{end}}
     {{end}}
   </ol>
 </section>
 {{end}}
 {{template "foot" .}}{{end}}
+
+{{define "timeline"}}
+<ol class="timeline" aria-label="Progress">
+  {{$cur := .TimelineStep}}{{$lang := .Lang}}
+  {{range $i, $key := timelineSteps}}
+  <li class="tl-step {{if lt $i $cur}}tl-done{{else if eq $i $cur}}tl-current{{end}}{{if eq $key "review"}} tl-human{{end}}">
+    <span class="tl-dot">{{if lt $i $cur}}✓{{else if eq $key "review"}}★{{else if eq $i $cur}}●{{else}}○{{end}}</span>
+    <span class="tl-label">{{tr $lang (printf "timeline.%s" $key)}}</span>
+  </li>
+  {{end}}
+</ol>
+{{end}}

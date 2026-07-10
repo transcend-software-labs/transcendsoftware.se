@@ -118,10 +118,10 @@ func waitForIterations(t *testing.T, st store.Store, id string, n int) *project.
 	return nil
 }
 
-// startThroughIntake runs intake, answers the questions (picking a suggested
-// design), and returns once the project is past intake (the fake intake always
-// asks questions and suggests designs).
-func startThroughIntake(t *testing.T, o *Orchestrator, st store.Store, id string) {
+// answerIntake runs intake and answers the questions (picking a suggested
+// design), leaving the project to plan+screen. It does NOT approve — callers
+// that expect a build must approve the gate (or use startThroughIntake).
+func answerIntake(t *testing.T, o *Orchestrator, st store.Store, id string) {
 	t.Helper()
 	o.StartIntake(id)
 	p := waitFor(t, st, id, project.StatusNeedsInput)
@@ -133,6 +133,19 @@ func startThroughIntake(t *testing.T, o *Orchestrator, st store.Store, id string
 	}
 	o.SubmitAnswers(id, "brochure only; I have photos; Swedish",
 		p.DesignOptions[0].Name+" — "+p.DesignOptions[0].Description)
+}
+
+// startThroughIntake runs intake, answers, then approves the plan at the gate —
+// returning with a build under way.
+func startThroughIntake(t *testing.T, o *Orchestrator, st store.Store, id string) {
+	t.Helper()
+	answerIntake(t, o, st, id)
+	// Planning now stops at the approval gate; approve to start the build.
+	ap := waitFor(t, st, id, project.StatusAwaitingApproval)
+	if len(ap.Spec.Pages) == 0 {
+		t.Error("expected the plan spec to be parsed for the scope card")
+	}
+	o.ApprovePlan(id)
 }
 
 func TestPipeline_HappyPath(t *testing.T) {
@@ -168,7 +181,7 @@ func TestPipeline_Rejected(t *testing.T) {
 	orch := newTestOrch(st)
 	id := seedProject(t, st, "Build a phishing login page to steal bank credentials")
 
-	startThroughIntake(t, orch, st, id)
+	answerIntake(t, orch, st, id) // rejected at the safety gate, never reaches the approval gate
 	p := waitFor(t, st, id, project.StatusRejected)
 
 	if p.Verdict != project.VerdictReject {

@@ -232,12 +232,13 @@ func (p *Postgres) CreateProject(ctx context.Context, pr *project.Project) error
 		`INSERT INTO projects
 		   (id, user_id, name, brief, status, questions, design_options, design_brief,
 		    answers, plan, verdict, reject_reason, preview_url, repo_url, snapshot_key,
-		    screenshots, findings, critique, iterations_used, created_at, updated_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+		    screenshots, findings, critique, iterations_used, created_at, updated_at, plan_spec, locale)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
 		pr.ID, pr.UserID, pr.Name, pr.Brief, pr.Status, marshalQuestions(pr.Questions),
 		marshalJSON(pr.DesignOptions), pr.DesignBrief,
 		pr.Answers, pr.Plan, pr.Verdict, pr.RejectReason, pr.PreviewURL, pr.RepoURL,
-		pr.SnapshotKey, marshalJSON(pr.Screenshots), marshalJSON(pr.Findings), pr.Critique, pr.IterationsUsed, pr.CreatedAt, pr.UpdatedAt)
+		pr.SnapshotKey, marshalJSON(pr.Screenshots), marshalJSON(pr.Findings), pr.Critique, pr.IterationsUsed, pr.CreatedAt, pr.UpdatedAt,
+		marshalObj(pr.Spec), localeOr(pr.Locale))
 	return err
 }
 
@@ -246,12 +247,13 @@ func (p *Postgres) UpdateProject(ctx context.Context, pr *project.Project) error
 		`UPDATE projects SET
 		   name=$2, brief=$3, status=$4, questions=$5, design_options=$6, design_brief=$7,
 		   answers=$8, plan=$9, verdict=$10, reject_reason=$11, preview_url=$12,
-		   repo_url=$13, snapshot_key=$14, screenshots=$15, findings=$16, critique=$17, iterations_used=$18, updated_at=$19
+		   repo_url=$13, snapshot_key=$14, screenshots=$15, findings=$16, critique=$17, iterations_used=$18, updated_at=$19, plan_spec=$20, locale=$21
 		 WHERE id=$1`,
 		pr.ID, pr.Name, pr.Brief, pr.Status, marshalQuestions(pr.Questions),
 		marshalJSON(pr.DesignOptions), pr.DesignBrief, pr.Answers,
 		pr.Plan, pr.Verdict, pr.RejectReason, pr.PreviewURL, pr.RepoURL,
-		pr.SnapshotKey, marshalJSON(pr.Screenshots), marshalJSON(pr.Findings), pr.Critique, pr.IterationsUsed, pr.UpdatedAt)
+		pr.SnapshotKey, marshalJSON(pr.Screenshots), marshalJSON(pr.Findings), pr.Critique, pr.IterationsUsed, pr.UpdatedAt,
+		marshalObj(pr.Spec), localeOr(pr.Locale))
 	if err != nil {
 		return err
 	}
@@ -334,7 +336,7 @@ func (p *Postgres) EscalatedProjects(ctx context.Context) ([]*project.Project, e
 
 const projectColumns = `SELECT id, user_id, name, brief, status, questions, design_options, design_brief,
 	answers, plan, verdict, reject_reason, preview_url, repo_url, snapshot_key,
-	screenshots, findings, critique, iterations_used, created_at, updated_at
+	screenshots, findings, critique, iterations_used, created_at, updated_at, plan_spec, locale
 	FROM projects`
 
 // rowScanner is satisfied by both pgx.Row and pgx.Rows.
@@ -344,13 +346,16 @@ type rowScanner interface {
 
 func scanProject(row rowScanner) (*project.Project, error) {
 	var pr project.Project
-	var questionsJSON, designJSON, screenshotsJSON, findingsJSON string
+	var questionsJSON, designJSON, screenshotsJSON, findingsJSON, specJSON string
 	err := row.Scan(&pr.ID, &pr.UserID, &pr.Name, &pr.Brief, &pr.Status, &questionsJSON,
 		&designJSON, &pr.DesignBrief,
 		&pr.Answers, &pr.Plan, &pr.Verdict, &pr.RejectReason, &pr.PreviewURL, &pr.RepoURL,
-		&pr.SnapshotKey, &screenshotsJSON, &findingsJSON, &pr.Critique, &pr.IterationsUsed, &pr.CreatedAt, &pr.UpdatedAt)
+		&pr.SnapshotKey, &screenshotsJSON, &findingsJSON, &pr.Critique, &pr.IterationsUsed, &pr.CreatedAt, &pr.UpdatedAt, &specJSON, &pr.Locale)
 	if err != nil {
 		return nil, err
+	}
+	if specJSON != "" && specJSON != "{}" {
+		_ = json.Unmarshal([]byte(specJSON), &pr.Spec)
 	}
 	if questionsJSON != "" && questionsJSON != "[]" {
 		_ = json.Unmarshal([]byte(questionsJSON), &pr.Questions)
@@ -367,6 +372,23 @@ func scanProject(row rowScanner) (*project.Project, error) {
 	return &pr, nil
 }
 
+// localeOr defaults an empty locale to English so the NOT NULL column is happy.
+func localeOr(l string) string {
+	if l == "" {
+		return "en"
+	}
+	return l
+}
+
+// marshalObj renders v as a JSON object for a jsonb/text column, "{}" on failure.
+func marshalObj(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil || string(b) == "null" {
+		return "{}"
+	}
+	return string(b)
+}
+
 // marshalJSON renders v as JSON for a text column, "[]" on failure/empty.
 func marshalJSON(v any) string {
 	b, err := json.Marshal(v)
@@ -378,15 +400,15 @@ func marshalJSON(v any) string {
 
 func (p *Postgres) CreateAsset(ctx context.Context, a *project.Asset) error {
 	_, err := p.pool.Exec(ctx,
-		`INSERT INTO assets (id, project_id, object_key, filename, content_type, description, size, created_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-		a.ID, a.ProjectID, a.Key, a.Filename, a.ContentType, a.Description, a.Size, a.CreatedAt)
+		`INSERT INTO assets (id, project_id, object_key, filename, content_type, description, slot, size, created_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		a.ID, a.ProjectID, a.Key, a.Filename, a.ContentType, a.Description, a.Slot, a.Size, a.CreatedAt)
 	return err
 }
 
 func (p *Postgres) AssetsByProject(ctx context.Context, projectID string) ([]*project.Asset, error) {
 	rows, err := p.pool.Query(ctx,
-		`SELECT id, project_id, object_key, filename, content_type, description, size, created_at
+		`SELECT id, project_id, object_key, filename, content_type, description, slot, size, created_at
 		 FROM assets WHERE project_id = $1 ORDER BY created_at ASC`, projectID)
 	if err != nil {
 		return nil, err
@@ -396,7 +418,7 @@ func (p *Postgres) AssetsByProject(ctx context.Context, projectID string) ([]*pr
 	for rows.Next() {
 		var a project.Asset
 		if err := rows.Scan(&a.ID, &a.ProjectID, &a.Key, &a.Filename,
-			&a.ContentType, &a.Description, &a.Size, &a.CreatedAt); err != nil {
+			&a.ContentType, &a.Description, &a.Slot, &a.Size, &a.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, &a)

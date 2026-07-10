@@ -75,6 +75,17 @@ func (o *Orchestrator) Activity(projectID string) string {
 	return string(o.activity.Current(projectID))
 }
 
+// Pages returns the live page checklist for a running build, or nil.
+func (o *Orchestrator) Pages(projectID string) []activity.PageStatus {
+	return o.activity.Pages(projectID)
+}
+
+// BuildingPage returns the page currently being built, for a "Building X…"
+// status line, if one is tracked.
+func (o *Orchestrator) BuildingPage(projectID string) (activity.PageStatus, bool) {
+	return o.activity.Building(projectID)
+}
+
 // SetTemplate points first builds at a starter-app tarball in object storage.
 // Empty means greenfield (the pre-template behavior).
 func (o *Orchestrator) SetTemplate(key string) { o.templateKey = key }
@@ -139,6 +150,25 @@ func (o *Orchestrator) projectLink(id string) string {
 // baseURLOr returns baseURL+path, or just path if no base URL is configured.
 func (o *Orchestrator) baseURLOr(path string) string {
 	return o.baseURL + path
+}
+
+// progressNote asks the build agent to report page completion so the customer's
+// live checklist ticks off authoritatively. "" when the plan has no page list.
+func progressNote(pages []project.PlanPage) string {
+	if len(pages) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("PROGRESS REPORTING — the customer watches a live checklist of these pages. ")
+	b.WriteString("As soon as you finish each one, print a line EXACTLY like `FORGE_PAGE_DONE: <slug>` ")
+	b.WriteString("(one per line, nothing else on it), using these slugs:")
+	for _, pg := range pages {
+		b.WriteString("\n- " + pg.Slug)
+		if n := pg.Names["en"]; n != "" {
+			b.WriteString(" (" + n + ")")
+		}
+	}
+	return b.String()
 }
 
 // assetContext renders the customer's uploaded files for the plan/gate/build
@@ -561,7 +591,11 @@ func (o *Orchestrator) runPlanGateBuild(ctx context.Context, projectID string) e
 	if err != nil {
 		return err
 	}
-	p.Plan = planRes.Plan
+	// Split the planner's markdown (operator-facing) from its machine-readable
+	// sidecar (drives the customer scope card, checklist and content slots).
+	spec, prose := llm.ExtractSpec(planRes.Plan)
+	p.Plan = prose
+	p.Spec = spec
 	if planRes.Name != "" {
 		p.Name = planRes.Name
 	}
@@ -593,13 +627,34 @@ func (o *Orchestrator) runPlanGateBuild(ctx context.Context, projectID string) e
 				"Review it: "+o.baseURLOr("/admin"))
 		return nil
 	case project.VerdictAllow:
+		// 3) Plan-approval gate: the customer approves the plain-language scope
+		// before we spend a build on it. Nothing builds until ApprovePlan.
+		p.Status = project.StatusAwaitingApproval
 		if err := o.save(ctx, p); err != nil {
 			return err
 		}
+		e := custEmail(p.Locale, "plan_ready")
+		o.notifyCustomer(ctx, p.UserID, e.Subject,
+			fmt.Sprintf(e.Body, p.Name)+"\n\n"+o.projectLink(p.ID))
+		return nil
 	}
+	return nil
+}
 
-	// 3) Build the first iteration.
-	return o.runBuild(ctx, projectID, "", false)
+// ApprovePlan is the customer accepting the scope card. It starts the first
+// build — the only path out of awaiting_approval into building. Async because a
+// build takes minutes; a re-approval while already building is a no-op.
+func (o *Orchestrator) ApprovePlan(projectID string) {
+	o.async(projectID, func(ctx context.Context) error {
+		p, err := o.store.ProjectByID(ctx, projectID)
+		if err != nil {
+			return err
+		}
+		if p.Status != project.StatusAwaitingApproval {
+			return nil // idempotent: double-click or already building
+		}
+		return o.runBuild(ctx, projectID, "", false)
+	})
 }
 
 // runBuild executes one sandboxed build pass. internal marks an
@@ -613,6 +668,8 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string, i
 	if prompt != "" && !internal && !p.CanReiterate() {
 		return errors.New("no reiterations remaining")
 	}
+	// Prime the per-page build checklist (customer hero) from the plan.
+	o.activity.SetPages(p.ID, p.Spec.Pages)
 
 	number := p.IterationsUsed + 1
 	if internal {
@@ -712,6 +769,7 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string, i
 		TemplateGetURL:    templateGet,
 		AssetManifest:     o.assetManifest(ctx, p.ID),
 		AssetNotes:        o.assetContext(ctx, p.ID),
+		ProgressNote:      progressNote(p.Spec.Pages),
 		OwnerEmail:        ownerEmail,
 		SiteName:          p.Name,
 	}, builder.Hooks{
@@ -819,9 +877,9 @@ func (o *Orchestrator) finishBuild(ctx context.Context, p *project.Project, it *
 	if err := o.save(ctx, p); err != nil {
 		return err
 	}
-	o.notifyCustomer(ctx, p.UserID, "Your website preview is ready",
-		"Your preview for \""+p.Name+"\" is ready to view:\n\n"+res.PreviewURL+"\n\n"+
-			"Open your project to review it or request a change: "+o.projectLink(p.ID))
+	pe := custEmail(p.Locale, "preview_ready")
+	o.notifyCustomer(ctx, p.UserID, pe.Subject,
+		fmt.Sprintf(pe.Body, p.Name)+"\n\n"+res.PreviewURL+"\n\n"+o.projectLink(p.ID))
 
 	// Visual design review — a vision model looks at the deployed pages the way
 	// a customer would. Internal polish passes (number 0) are not re-reviewed,

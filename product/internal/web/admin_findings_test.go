@@ -36,12 +36,12 @@ func TestAdminRendersFindings(t *testing.T) {
 	out := buf.String()
 
 	for _, want := range []string{
-		"Design audit",                          // section label on the flagged card
-		"AI color palette",                      // the finding name
-		"Purple/violet accent colors detected",  // the snippet
-		"internal/web/static/app.css:3",         // file:line
-		"Design audit: clean ✓",                 // the clean card
-		"⚑ 1",                                   // the preview flag
+		"Design audit",                         // section label on the flagged card
+		"AI color palette",                     // the finding name
+		"Purple/violet accent colors detected", // the snippet
+		"internal/web/static/app.css:3",        // file:line
+		"Design audit: clean ✓",                // the clean card
+		"⚑ 1",                                  // the preview flag
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("admin render missing %q", want)

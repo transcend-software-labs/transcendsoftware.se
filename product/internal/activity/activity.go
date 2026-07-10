@@ -15,6 +15,8 @@ import (
 	"regexp"
 	"sync"
 	"time"
+
+	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 )
 
 // Code is a language-neutral build activity, rendered via i18n key "act.<code>".
@@ -67,10 +69,48 @@ const minHold = 12 * time.Second
 // honest state when a build has gone quiet.
 const stallAfter = 4 * time.Minute
 
+// pageMarkerRe is how the build agent authoritatively reports a finished page:
+// it writes a line "FORGE_PAGE_DONE: <slug>" (see the build prompt). Heuristics
+// mark "building"; only the agent knows "done".
+var pageMarkerRe = regexp.MustCompile(`FORGE_PAGE_DONE:\s*([a-z0-9_-]+)`)
+
+const (
+	pagePending  = "pending"
+	pageBuilding = "building"
+	pageDone     = "done"
+)
+
+// PageStatus is one page's checklist row for the customer hero.
+type PageStatus struct {
+	Slug   string
+	Names  map[string]string
+	Status string // pending | building | done
+}
+
+// Name resolves the page's display label in lang (en fallback, then slug).
+func (p PageStatus) Name(lang string) string {
+	if v := p.Names[lang]; v != "" {
+		return v
+	}
+	if v := p.Names["en"]; v != "" {
+		return v
+	}
+	return p.Slug
+}
+
+type pageState struct {
+	slug   string
+	names  map[string]string
+	re     *regexp.Regexp // matches this page's path hints in a log line
+	status string
+}
+
 type state struct {
 	code      Code
 	promoted  time.Time // when code was last changed
 	lastEvent time.Time // any event, matched or not
+	pages     []*pageState
+	building  string // slug of the page most recently seen building
 }
 
 // Tracker keeps the debounced current activity per project. In-memory only:
@@ -85,6 +125,58 @@ func NewTracker() *Tracker {
 	return &Tracker{cur: map[string]*state{}, now: time.Now}
 }
 
+// SetPages primes per-page progress from the plan for a project's build. Path
+// hints compile into one matcher per page; a line touching those paths marks
+// the page "building". Called at build start; safe to call with no pages.
+func (t *Tracker) SetPages(projectID string, pages []project.PlanPage) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	s := t.cur[projectID]
+	if s == nil {
+		s = &state{code: Working, promoted: t.now(), lastEvent: t.now()}
+		t.cur[projectID] = s
+	}
+	s.pages = nil
+	s.building = ""
+	for _, pg := range pages {
+		ps := &pageState{slug: pg.Slug, names: pg.Names, status: pagePending}
+		if re := pathRegex(pg.Paths); re != nil {
+			ps.re = re
+		}
+		s.pages = append(s.pages, ps)
+	}
+}
+
+// pathRegex builds a case-insensitive alternation of the (regex-quoted) path
+// hints, or nil when there are none.
+func pathRegex(paths []string) *regexp.Regexp {
+	var quoted []string
+	for _, p := range paths {
+		if p = regexp.QuoteMeta(p); p != "" {
+			quoted = append(quoted, p)
+		}
+	}
+	if len(quoted) == 0 {
+		return nil
+	}
+	re, err := regexp.Compile(`(?i)(` + join(quoted, "|") + `)`)
+	if err != nil {
+		return nil
+	}
+	return re
+}
+
+func join(parts []string, sep string) string {
+	out := ""
+	for i, p := range parts {
+		if i > 0 {
+			out += sep
+		}
+		out += p
+	}
+	return out
+}
+
 // Observe feeds one log line. Unmatched lines only bump liveness.
 func (t *Tracker) Observe(projectID, line string) {
 	t.mu.Lock()
@@ -96,6 +188,28 @@ func (t *Tracker) Observe(projectID, line string) {
 		t.cur[projectID] = s
 	}
 	s.lastEvent = now
+
+	// Authoritative page completion from the agent's own marker.
+	if m := pageMarkerRe.FindStringSubmatch(line); m != nil {
+		for _, pg := range s.pages {
+			if pg.slug == m[1] {
+				pg.status = pageDone
+				if s.building == pg.slug {
+					s.building = ""
+				}
+			}
+		}
+	} else {
+		// Heuristic: a line touching a page's paths means it's being built.
+		for _, pg := range s.pages {
+			if pg.status != pageDone && pg.re != nil && pg.re.MatchString(line) {
+				pg.status = pageBuilding
+				s.building = pg.slug
+				break
+			}
+		}
+	}
+
 	code, ok := classify(line)
 	if !ok || code == s.code {
 		return
@@ -103,6 +217,38 @@ func (t *Tracker) Observe(projectID, line string) {
 	if now.Sub(s.promoted) >= minHold || s.code == Working {
 		s.code, s.promoted = code, now
 	}
+}
+
+// Pages returns a snapshot of the page checklist, or nil when none is tracked.
+func (t *Tracker) Pages(projectID string) []PageStatus {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	s := t.cur[projectID]
+	if s == nil || len(s.pages) == 0 {
+		return nil
+	}
+	out := make([]PageStatus, len(s.pages))
+	for i, pg := range s.pages {
+		out[i] = PageStatus{Slug: pg.slug, Names: pg.names, Status: pg.status}
+	}
+	return out
+}
+
+// Building returns the page currently being built (for a "Building X…" status
+// line), if any is tracked and actively building.
+func (t *Tracker) Building(projectID string) (PageStatus, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	s := t.cur[projectID]
+	if s == nil || s.building == "" {
+		return PageStatus{}, false
+	}
+	for _, pg := range s.pages {
+		if pg.slug == s.building && pg.status == pageBuilding {
+			return PageStatus{Slug: pg.slug, Names: pg.names, Status: pg.status}, true
+		}
+	}
+	return PageStatus{}, false
 }
 
 // Current returns the activity code to show for a project, or "" when no
