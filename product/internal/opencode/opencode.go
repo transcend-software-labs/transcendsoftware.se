@@ -218,8 +218,9 @@ func (h *HTTP) createSession(ctx context.Context) (string, error) {
 type ocEvent struct {
 	Type       string `json:"type"`
 	Properties struct {
-		SessionID string      `json:"sessionID"`
-		Part      ocEventPart `json:"part"`
+		SessionID string          `json:"sessionID"`
+		Part      ocEventPart     `json:"part"`
+		Error     json.RawMessage `json:"error"` // session.error payload — surfaced for diagnosability
 	} `json:"properties"`
 }
 
@@ -302,7 +303,16 @@ func (h *HTTP) consume(sessionID string, stream io.Reader, onLog func(string)) (
 			}
 			return lastText, nil
 		case "session.error":
-			return lastText, fmt.Errorf("opencode: agent reported an error")
+			// Surface the actual error payload — "agent reported an error" alone
+			// made model/provider failures (401s, unknown models) undiagnosable.
+			detail := strings.TrimSpace(string(ev.Properties.Error))
+			if len(detail) > 500 {
+				detail = detail[:500] + "…"
+			}
+			if detail == "" || detail == "null" {
+				return lastText, fmt.Errorf("opencode: agent reported an error")
+			}
+			return lastText, fmt.Errorf("opencode: agent reported an error: %s", detail)
 		}
 	}
 	if err := sc.Err(); err != nil {

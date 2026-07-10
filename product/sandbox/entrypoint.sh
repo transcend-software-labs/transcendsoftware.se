@@ -82,12 +82,21 @@ if [ -n "${LLM_API_KEY:-}" ]; then
     # Direct OpenAI: use opencode's NATIVE openai provider, not the generic
     # openai-compatible shim — GPT-5.x needs the params/API the native provider
     # speaks (max_completion_tokens, Responses API). It reads OPENAI_API_KEY.
+    # Declare the model EXPLICITLY on the provider: opencode otherwise resolves
+    # it against its bundled models.dev snapshot, and a model newer than the
+    # installed opencode (e.g. gpt-5.6-* the day after release) hard-fails the
+    # session with unknown-model. The explicit entry passes any id through.
     export OPENAI_API_KEY="${LLM_API_KEY}"
     log "configuring opencode: native openai provider, model ${model} (auto-approve all tools)"
     cat > /root/.config/opencode/opencode.json <<JSON
 {
   "\$schema": "https://opencode.ai/config.json",
   ${perm},
+  "provider": {
+    "openai": {
+      "models": { "${model}": {} }
+    }
+  },
   "model": "openai/${model}"
 }
 JSON
