@@ -175,7 +175,7 @@ func (o *Orchestrator) assetContext(ctx context.Context, projectID string) strin
 				b.WriteString(" — " + a.Description)
 			}
 		}
-		b.WriteString("\nUse them where the customer's description says they belong.")
+		b.WriteString("\nMatch each file to the item its description names — a photo described with a recipe/product belongs on that recipe/product. Place it exactly there; don't reuse one file for several items or invent a pairing the description doesn't state. Files with no description are general imagery you may place by judgement.")
 	}
 	// Text the customer typed for text-kind content slots (contact email, copy,
 	// hours) — real values to put on the site, not placeholders.

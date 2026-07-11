@@ -462,6 +462,11 @@ func (p *Postgres) CreateAsset(ctx context.Context, a *project.Asset) error {
 	return err
 }
 
+func (p *Postgres) SetAssetDescription(ctx context.Context, assetID, description string) error {
+	_, err := p.pool.Exec(ctx, `UPDATE assets SET description = $2 WHERE id = $1`, assetID, description)
+	return err
+}
+
 func (p *Postgres) AssetsByProject(ctx context.Context, projectID string) ([]*project.Asset, error) {
 	rows, err := p.pool.Query(ctx,
 		`SELECT id, project_id, object_key, filename, content_type, description, slot, generated, size, created_at

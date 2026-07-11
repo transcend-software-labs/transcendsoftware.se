@@ -59,6 +59,9 @@ type Store interface {
 	// Assets (metadata; bytes live in object storage)
 	CreateAsset(ctx context.Context, a *project.Asset) error
 	AssetsByProject(ctx context.Context, projectID string) ([]*project.Asset, error)
+	// SetAssetDescription updates one asset's caption (which recipe/item a photo
+	// is for), so the build can pair it correctly.
+	SetAssetDescription(ctx context.Context, assetID, description string) error
 
 	// Close releases resources (no-op for the in-memory store).
 	Close() error

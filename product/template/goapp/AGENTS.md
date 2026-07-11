@@ -239,6 +239,19 @@ Forge-specific rules layered on top of it.
   polish passes, then stop. If it prints that it's skipping (no vision model),
   just rely on audit.js. Do NOT edit `design-review.js`.
 
+- **Live review after deploy — required.** The pre-deploy review looks at
+  localhost; the deployed site can differ — real uploaded/AI-generated images
+  resolve from storage, the production DB fills the pages, and it's the real
+  domain, so a broken/missing/misplaced image or a prod-only defect only shows
+  once it's live. This is the pass that used to be a separate build; do it here.
+  After `fly deploy` succeeds, review the deployed site itself:
+
+      node scripts/design-review.js "https://$FLY_APP.fly.dev"
+
+  If it flags something real (a wrong/missing image, low contrast, a `POLISH`
+  note), fix it and `fly deploy` again — at most twice. You're done when the LIVE
+  site is clean, not when it merely built locally.
+
 ## Build, test, deploy
 
     make run        # local dev on :8080

@@ -203,9 +203,11 @@ type rosterMember struct {
 
 // slotAssetView is one uploaded file shown under its content slot.
 type slotAssetView struct {
+	ID        string
 	Filename  string
 	URL       string // presigned
 	Generated bool
+	Caption   string // customer's label for pairing (which recipe/item), editable
 }
 
 // candidateImage is one pending AI-generated image awaiting the customer's pick.
@@ -255,7 +257,8 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		if a.Generated {
 			genSlots[a.Slot] = true
 		}
-		slotAssets[a.Slot] = append(slotAssets[a.Slot], slotAssetView{Filename: a.Filename, URL: presign(a.Key), Generated: a.Generated})
+		slotAssets[a.Slot] = append(slotAssets[a.Slot], slotAssetView{
+			ID: a.ID, Filename: a.Filename, URL: presign(a.Key), Generated: a.Generated, Caption: a.Description})
 	}
 	// Text answers and roster people also fill their slots.
 	for slug, v := range p.ContentAnswers {
@@ -377,6 +380,47 @@ func (s *Server) handleUploadAsset(w http.ResponseWriter, r *http.Request, u *us
 			http.Error(w, "upload failed", http.StatusInternalServerError)
 			return
 		}
+	}
+	if markContentPending(p); p.ContentPending {
+		if err := s.store.UpdateProject(r.Context(), p); err != nil {
+			s.log.Error("flag content pending", "project", p.ID, "err", err)
+		}
+	}
+	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+}
+
+// handleCaptionAsset labels one uploaded photo ("which recipe / what it shows")
+// so the build pairs it to the right place. Editing a label after a build offers
+// a rebuild, like any content change.
+func (s *Server) handleCaptionAsset(w http.ResponseWriter, r *http.Request, u *user.User) {
+	p, ok := s.ownedProject(w, r, u)
+	if !ok {
+		return
+	}
+	assetID := r.PathValue("assetID")
+	assets, err := s.store.AssetsByProject(r.Context(), p.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	owned := false
+	for _, a := range assets {
+		if a.ID == assetID {
+			owned = true
+			break
+		}
+	}
+	if !owned { // the asset must belong to this customer's project
+		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+		return
+	}
+	caption := strings.TrimSpace(r.FormValue("caption"))
+	if len(caption) > 300 {
+		caption = caption[:300]
+	}
+	if err := s.store.SetAssetDescription(r.Context(), assetID, caption); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
 	}
 	if markContentPending(p); p.ContentPending {
 		if err := s.store.UpdateProject(r.Context(), p); err != nil {

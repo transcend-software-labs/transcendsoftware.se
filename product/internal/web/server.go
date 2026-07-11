@@ -114,6 +114,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /projects/{id}/answer", s.requireUser(s.handleAnswer))
 	mux.HandleFunc("POST /projects/{id}/approve-plan", s.requireUser(s.handleApprovePlan))
 	mux.HandleFunc("POST /projects/{id}/assets", limitBody(maxUpload+(1<<20), s.requireUser(s.handleUploadAsset)))
+	mux.HandleFunc("POST /projects/{id}/assets/{assetID}/caption", s.requireUser(s.handleCaptionAsset))
 	mux.HandleFunc("POST /projects/{id}/content", s.requireUser(s.handleContentAnswer))
 	mux.HandleFunc("POST /projects/{id}/roster", s.requireUser(s.handleRoster))
 	mux.HandleFunc("POST /projects/{id}/content/generate", s.requireUser(s.handleGenerateImage))

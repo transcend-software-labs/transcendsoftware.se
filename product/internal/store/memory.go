@@ -267,6 +267,15 @@ func (m *Memory) CreateAsset(_ context.Context, a *project.Asset) error {
 	return nil
 }
 
+func (m *Memory) SetAssetDescription(_ context.Context, assetID, description string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if a, ok := m.assets[assetID]; ok {
+		a.Description = description
+	}
+	return nil
+}
+
 func (m *Memory) AssetsByProject(_ context.Context, projectID string) ([]*project.Asset, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

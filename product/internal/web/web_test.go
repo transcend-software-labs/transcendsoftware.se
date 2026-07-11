@@ -810,3 +810,49 @@ func TestApplyContent_ButtonAppearsAndRebuilds(t *testing.T) {
 		t.Error("ContentPending should be cleared by the rebuild")
 	}
 }
+
+// TestCaptionAsset_LabelsPhotoForPairing covers the recipe-photo pairing fix: a
+// files-slot upload gets a per-photo caption field, and labelling it stores the
+// caption (so the build pairs it) and flags a rebuild.
+func TestCaptionAsset_LabelsPhotoForPairing(t *testing.T) {
+	srv, st, _ := newTestServerAuth(t, config.Config{AdminEmail: "admin@example.com"}, nil)
+	defer srv.Close()
+	c := signedInClient(t, srv.URL)
+	ctx := context.Background()
+	u, _ := st.UserByEmail(ctx, "neighbour@example.com")
+	p := &project.Project{
+		ID: "proj-cap", UserID: u.ID, Name: "Tiny Hands", Status: project.StatusPreviewReady, IterationsUsed: 1,
+		Spec: project.PlanSpec{ContentNeeded: []project.ContentItem{
+			{Slug: "photos", Names: map[string]string{"en": "Recipe photos"}, Kind: "files"},
+		}},
+	}
+	if err := st.CreateProject(ctx, p); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	a := &project.Asset{ID: "asset-1", ProjectID: p.ID, Key: "projects/proj-cap/assets/cake.jpg",
+		Filename: "cake.jpg", ContentType: "image/jpeg", Slot: "photos", CreatedAt: time.Now().UTC()}
+	if err := st.CreateAsset(ctx, a); err != nil {
+		t.Fatalf("seed asset: %v", err)
+	}
+	tok := csrfToken(t, c, srv.URL)
+
+	// The project page offers a per-photo caption form.
+	r, _ := c.Get(srv.URL + "/projects/" + p.ID)
+	body, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	if !strings.Contains(string(body), "/projects/proj-cap/assets/asset-1/caption") {
+		t.Error("expected a per-photo caption form for the uploaded file")
+	}
+
+	// Labelling stores the caption (so the build can pair it) and flags a rebuild.
+	r, _ = c.PostForm(srv.URL+"/projects/"+p.ID+"/assets/asset-1/caption",
+		url.Values{"caption": {"Chocolate cake"}, "csrf_token": {tok}})
+	r.Body.Close()
+	assets, _ := st.AssetsByProject(ctx, p.ID)
+	if len(assets) != 1 || assets[0].Description != "Chocolate cake" {
+		t.Fatalf("caption not saved: %+v", assets)
+	}
+	if got, _ := st.ProjectByID(ctx, p.ID); !got.ContentPending {
+		t.Error("captioning after a build should flag ContentPending for a rebuild")
+	}
+}

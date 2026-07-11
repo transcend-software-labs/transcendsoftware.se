@@ -592,6 +592,14 @@ label.design-option:hover { border-color: var(--accent); }
 .apply-content p { margin: 0 0 .6rem; }
 .apply-content .apply-note { margin: .5rem 0 0; }
 
+/* Per-photo caption rows (pair a photo to the right recipe/item) */
+.slot-files { list-style: none; padding: 0; margin: 0 0 .5rem; }
+.slot-file { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: .4rem; }
+.slot-file-name { min-width: 8rem; }
+.caption-form { display: flex; gap: .4rem; align-items: center; flex: 1 1 16rem; }
+.caption-form input[type=text] { flex: 1; }
+.files-hint { margin: .1rem 0 .5rem; }
+
 .gen-spark { font-weight: 700; }
 .gen-exhausted { margin-top: .5rem; font-style: italic; }
 .gen-notice {

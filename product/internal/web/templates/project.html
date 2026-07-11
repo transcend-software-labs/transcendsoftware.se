@@ -147,9 +147,21 @@
       {{else}}
       {{with index $.Data.SlotAssets $slug}}
       <ul class="slot-files">
-        {{range .}}<li>{{if .URL}}<a href="{{.URL}}" target="_blank" rel="noopener">{{.Filename}}</a>{{else}}{{.Filename}}{{end}}{{if .Generated}} <span class="muted small">(AI)</span>{{end}}</li>{{end}}
+        {{range .}}
+        <li class="slot-file">
+          <span class="slot-file-name">{{if .URL}}<a href="{{.URL}}" target="_blank" rel="noopener">{{.Filename}}</a>{{else}}{{.Filename}}{{end}}{{if .Generated}} <span class="muted small">(AI)</span>{{end}}</span>
+          {{if and .ID (not .Generated)}}
+          <form method="post" action="/projects/{{$pid}}/assets/{{.ID}}/caption" class="caption-form">
+            <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+            <input type="text" name="caption" maxlength="300" value="{{.Caption}}" placeholder="{{$.T "prj.caption.ph"}}">
+            <button class="btn btn-sm" type="submit">{{$.T "prj.caption.save"}}</button>
+          </form>
+          {{end}}
+        </li>
+        {{end}}
       </ul>
       {{end}}
+      {{if .IsFiles}}<p class="muted small files-hint">{{$.T "prj.files.label_hint"}}</p>{{end}}
       <form method="post" action="/projects/{{$pid}}/assets" enctype="multipart/form-data" class="content-upload">
         <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
         <input type="hidden" name="slot" value="{{$slug}}">
