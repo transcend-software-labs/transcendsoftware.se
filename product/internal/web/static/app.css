@@ -518,3 +518,14 @@ label.design-option:hover { border-color: var(--accent); }
   padding: .1rem .7rem;
   font-size: .8rem;
 }
+
+/* Operator destructive actions. */
+.linklike.danger { color: var(--red); }
+.linklike.danger:hover { color: #ff8078; text-decoration: underline; }
+.btn.danger {
+  background: transparent; color: var(--red);
+  border: 1px solid var(--red); box-shadow: none;
+}
+.btn.danger:hover { background: var(--red); color: var(--bg); filter: none; }
+.danger-zone { border-top: 1px solid var(--red); }
+.danger-zone h2 { color: var(--red); }

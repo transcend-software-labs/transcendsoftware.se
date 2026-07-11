@@ -124,6 +124,26 @@
 </section>
 
 <section class="panel">
+  <h2>Waiting on the customer</h2>
+  <p class="muted small">The customer's turn — answering questions or approving their plan. You can't act, but a nudge may unstick a quiet one.</p>
+  {{if .Data.Waiting}}
+  <ul class="project-list">
+    {{range .Data.Waiting}}
+    <li class="project-row">
+      <a href="/admin/projects/{{.ID}}">
+        <span class="project-name">{{.Name}}</span>
+        <span class="badge badge-{{.Status}}">{{statusLabel .Status}}</span>
+      </a>
+      <span class="muted small">{{.OwnerEmail}} · since {{.Since.Format "Jan 2 15:04"}}</span>
+    </li>
+    {{end}}
+  </ul>
+  {{else}}
+  <p class="muted small">No one waiting.</p>
+  {{end}}
+</section>
+
+<section class="panel">
   <h2>Live previews</h2>
   <p class="muted small">Each preview is a running Fly app. Idle ones are reaped automatically after the retention window; destroy sooner here.</p>
   {{if .Data.Previews}}
@@ -140,6 +160,11 @@
         onsubmit="return confirm('Destroy this preview app? The customer’s link dies immediately.')">
         <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
         <button class="linklike" type="submit">Destroy</button>
+      </form>
+      <form method="post" action="/admin/projects/{{.ID}}/delete" class="inline"
+        onsubmit="return confirm('Delete this project entirely — its Fly app AND its record? This cannot be undone.')">
+        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+        <button class="linklike danger" type="submit">Delete</button>
       </form>
     </li>
     {{end}}
@@ -177,5 +202,15 @@
   {{else}}
   <p class="muted small">Nothing waiting for review.</p>
   {{end}}
+</section>
+
+<section class="panel danger-zone">
+  <h2>Danger zone</h2>
+  <p class="muted small">Delete <strong>every</strong> project and tear down all their preview Fly apps — a clean slate for testing. Core apps (transcend-forge, its sandbox) are never touched. This cannot be undone.</p>
+  <form method="post" action="/admin/purge-all"
+    onsubmit="return confirm('Delete ALL projects and destroy every preview app? This cannot be undone.')">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <button class="btn danger" type="submit">Delete all projects &amp; previews</button>
+  </form>
 </section>
 {{template "foot" .}}{{end}}

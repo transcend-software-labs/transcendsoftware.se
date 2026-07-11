@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
+	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 )
 
@@ -98,6 +99,51 @@ func (o *Orchestrator) DestroyPreview(ctx context.Context, projectID string) err
 	}
 	o.destroyPreviewApp(ctx, p, project.StatusExpired, "Preview taken down by the operator.")
 	return nil
+}
+
+// PurgeProject fully removes a project: destroys its preview/customer Fly app
+// (forge-<id> — never a core app, since the name is derived from the project
+// id), frees any leftover sandbox machine, and deletes the project row plus its
+// iterations and assets. Operator cleanup from /admin. Best-effort on the Fly
+// side: a destroy error is logged but the row is still deleted (a leaked app is
+// reaped later), so cleanup never wedges on one bad app.
+func (o *Orchestrator) PurgeProject(ctx context.Context, projectID string) error {
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if err := o.machines.DestroyApp(ctx, builder.DeployAppName(p.ID)); err != nil {
+		o.log.Error("purge: destroy app", "project", p.ID, "err", err)
+	}
+	if its, err := o.store.IterationsByProject(ctx, projectID); err == nil {
+		for _, it := range its {
+			if it.MachineID != "" {
+				_ = o.machines.DestroySandbox(ctx, &fly.Sandbox{MachineID: it.MachineID})
+			}
+		}
+	}
+	o.activity.Clear(projectID)
+	return o.store.DeleteProject(ctx, projectID)
+}
+
+// PurgeAllProjects removes every project and its preview env — the operator's
+// "clean the slate" action. Returns how many were purged. Individual failures
+// are logged and skipped so one bad project can't block the rest.
+func (o *Orchestrator) PurgeAllProjects(ctx context.Context) (int, error) {
+	all, err := o.store.Projects(ctx)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, p := range all {
+		if err := o.PurgeProject(ctx, p.ID); err != nil {
+			o.log.Error("purge all: project", "project", p.ID, "err", err)
+			continue
+		}
+		n++
+	}
+	o.log.Info("purge all: complete", "purged", n, "of", len(all))
+	return n, nil
 }
 
 // destroyPreviewApp deletes the project's Fly app and records the new status.

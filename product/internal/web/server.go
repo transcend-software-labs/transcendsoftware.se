@@ -118,6 +118,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /admin/projects/{id}/approve", s.requireAdmin(s.handleAdminApprove))
 	mux.HandleFunc("POST /admin/projects/{id}/reject", s.requireAdmin(s.handleAdminReject))
 	mux.HandleFunc("POST /admin/projects/{id}/destroy-preview", s.requireAdmin(s.handleAdminDestroyPreview))
+	mux.HandleFunc("POST /admin/projects/{id}/delete", s.requireAdmin(s.handleAdminDeleteProject))
+	mux.HandleFunc("POST /admin/purge-all", s.requireAdmin(s.handleAdminPurgeAll))
 	mux.HandleFunc("POST /admin/projects/{id}/deliver", s.requireAdmin(s.handleAdminDeliver))
 	mux.HandleFunc("POST /admin/projects/{id}/return", s.requireAdmin(s.handleAdminReturn))
 

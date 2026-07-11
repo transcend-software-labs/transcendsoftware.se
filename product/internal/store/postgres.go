@@ -274,6 +274,31 @@ func marshalQuestions(qs []string) string {
 	return string(b)
 }
 
+// DeleteProject removes a project and everything hanging off it (its
+// iterations and asset rows) in one transaction. Object-storage blobs
+// (snapshots, screenshots, assets) are left to lifecycle/reaper cleanup.
+func (p *Postgres) DeleteProject(ctx context.Context, id string) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `DELETE FROM assets WHERE project_id = $1`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM iterations WHERE project_id = $1`, id); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM projects WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return project.ErrNotFound
+	}
+	return tx.Commit(ctx)
+}
+
 func (p *Postgres) ProjectByID(ctx context.Context, id string) (*project.Project, error) {
 	pr, err := scanProject(p.pool.QueryRow(ctx, projectColumns+` WHERE id = $1`, id))
 	if errors.Is(err, pgx.ErrNoRows) {

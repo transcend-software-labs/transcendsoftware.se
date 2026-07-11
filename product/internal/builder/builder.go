@@ -19,6 +19,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"path"
 	"strings"
 	"time"
 
@@ -404,7 +405,7 @@ func (b *Sandbox) finalize(ctx context.Context, sb *fly.Sandbox, req Request, re
 	// Independent design audit for Rasmus's review — the deterministic detector
 	// on the deployed UI, recorded for the /admin checklist. Best-effort like
 	// screenshots; a nil result (audit didn't run) leaves prior findings intact.
-	findings, err := b.auditDesign(ctx, sb.MachineID)
+	findings, err := b.auditDesign(ctx, sb.MachineID, preview)
 	if err != nil {
 		emit(hooks.OnLog, "Warning: could not run the design audit.")
 	} else if len(findings) == 0 {
@@ -488,34 +489,70 @@ func (b *Sandbox) captureScreenshots(ctx context.Context, machineID, siteURL str
 	return pages, nil
 }
 
-// auditDesign runs the deterministic impeccable detector on the built UI and
-// returns what it flags, for Rasmus's design review in /admin. impeccable is
-// baked into the sandbox image (no LLM, no key) and exits 0 when clean ([]) and
-// 2 when it has findings, so a non-zero exit is expected — the JSON is always on
-// stdout. Best-effort: a miss (non-goapp site, missing dirs) just means no
-// checklist. A successful run returns a non-nil slice (empty when clean) so the
-// caller can tell "audited, clean" from "audit didn't run".
-func (b *Sandbox) auditDesign(ctx context.Context, machineID string) ([]Finding, error) {
+// auditDesign records the design-quality findings for Rasmus's /admin review.
+//
+// It prefers the RENDERED audit: scripts/audit.js crawls the DEPLOYED site,
+// inlines each page's CSS and runs the impeccable detector on the real composed
+// HTML — catching defects that exist only once a page is assembled (a section
+// rule overriding a button's text colour so it's invisible, faded low-contrast
+// footer text). A source-file scan cannot see those, so showing its result in
+// /admin let a site read "clean ✓" while a customer saw a broken button. When
+// the rendered audit can't run (deploy not reachable yet, non-template build),
+// it falls back to the source scan so the operator still gets something.
+//
+// impeccable is baked into the sandbox image (no LLM, no key). A non-nil slice
+// (empty when clean) means "audited"; nil means "audit didn't run".
+func (b *Sandbox) auditDesign(ctx context.Context, machineID, previewURL string) ([]Finding, error) {
+	if previewURL != "" {
+		// Fresh run against the deployed site — rm first so we never read a
+		// stale file the build agent left from its own pre-deploy audit.
+		script := `if [ -f /workspace/scripts/audit.js ]; then ` +
+			`rm -f /tmp/forge-audit-findings.json; ` +
+			`node /workspace/scripts/audit.js "` + previewURL + `" >/dev/null 2>&1 || true; ` +
+			`cat /tmp/forge-audit-findings.json 2>/dev/null || true; fi`
+		if res, err := b.machines.Exec(ctx, machineID, []string{"/bin/sh", "-c", script}, 150); err == nil {
+			if f, ok := parseFindings(res.Stdout); ok {
+				return f, nil
+			}
+		}
+	}
+	// Fallback: static source scan (older/non-template builds, or deploy not up).
 	script := "cd /workspace && impeccable detect --json internal/web/static internal/web/templates"
 	res, err := b.machines.Exec(ctx, machineID, []string{"/bin/sh", "-c", script}, 60)
 	if err != nil {
 		return nil, fmt.Errorf("design audit: %w", err)
 	}
-	out := strings.TrimSpace(res.Stdout)
+	f, ok := parseFindings(res.Stdout)
+	if !ok {
+		return nil, fmt.Errorf("design audit: no/invalid output (exit %d): %s", res.ExitCode, res.Stderr)
+	}
+	return f, nil
+}
+
+// parseFindings decodes an impeccable JSON findings array; ok=false when the
+// output is empty or unparseable. A nil array normalizes to empty (clean).
+func parseFindings(stdout string) ([]Finding, bool) {
+	out := strings.TrimSpace(stdout)
 	if out == "" {
-		return nil, fmt.Errorf("design audit: no output (exit %d): %s", res.ExitCode, res.Stderr)
+		return nil, false
 	}
 	var findings []Finding
 	if err := json.Unmarshal([]byte(out), &findings); err != nil {
-		return nil, fmt.Errorf("design audit: bad json %q: %w", out, err)
+		return nil, false
 	}
 	if findings == nil {
 		findings = []Finding{} // audited and clean — distinct from "not audited"
 	}
 	for i := range findings {
-		findings[i].File = strings.TrimPrefix(findings[i].File, "/workspace/")
+		f := strings.TrimPrefix(findings[i].File, "/workspace/")
+		// Rendered-audit findings point at throwaway temp files
+		// (/tmp/forge-audit-XXXX/page3.html) — keep just the page name.
+		if strings.Contains(f, "forge-audit-") {
+			f = path.Base(f)
+		}
+		findings[i].File = f
 	}
-	return findings, nil
+	return findings, true
 }
 
 // templatePreamble tells the agent the workspace is a working starter app, not

@@ -104,3 +104,48 @@ func TestDestroyPreview_OperatorAction(t *testing.T) {
 		t.Errorf("project should be expired after operator destroy, got %q", got.Status)
 	}
 }
+
+func TestPurgeProject_RemovesAppAndRow(t *testing.T) {
+	st := store.NewMemory()
+	orch, machines := newTestOrchWithVerifier(st, NoopVerifier{})
+	ctx := context.Background()
+
+	seedWithStatus(t, st, "live1", project.StatusPreviewReady, "https://forge-live1.fly.dev", time.Now().UTC())
+
+	if err := orch.PurgeProject(ctx, "live1"); err != nil {
+		t.Fatalf("purge project: %v", err)
+	}
+	if !slices.Contains(machines.DestroyedApps(), builder.DeployAppName("live1")) {
+		t.Error("preview app was not destroyed")
+	}
+	if _, err := st.ProjectByID(ctx, "live1"); err == nil {
+		t.Error("project row should be gone after purge")
+	}
+}
+
+func TestPurgeAllProjects_CleansEverything(t *testing.T) {
+	st := store.NewMemory()
+	orch, machines := newTestOrchWithVerifier(st, NoopVerifier{})
+	ctx := context.Background()
+
+	seedWithStatus(t, st, "a", project.StatusPreviewReady, "https://forge-a.fly.dev", time.Now().UTC())
+	seedWithStatus(t, st, "b", project.StatusFailed, "", time.Now().UTC())
+	seedWithStatus(t, st, "c", project.StatusDelivered, "https://forge-c.fly.dev", time.Now().UTC())
+
+	n, err := orch.PurgeAllProjects(ctx)
+	if err != nil {
+		t.Fatalf("purge all: %v", err)
+	}
+	if n != 3 {
+		t.Errorf("expected 3 purged, got %d", n)
+	}
+	all, _ := st.Projects(ctx)
+	if len(all) != 0 {
+		t.Errorf("expected no projects left, got %d", len(all))
+	}
+	for _, id := range []string{"a", "c"} {
+		if !slices.Contains(machines.DestroyedApps(), builder.DeployAppName(id)) {
+			t.Errorf("app for %s not destroyed", id)
+		}
+	}
+}

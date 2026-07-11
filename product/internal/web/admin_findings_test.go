@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 )
@@ -28,9 +29,12 @@ func TestAdminRendersFindings(t *testing.T) {
 	preview := reviewItem{Project: &project.Project{ID: "p3", Name: "Prev", PreviewURL: "https://x.fly.dev",
 		Findings: []project.Finding{{Name: "Cramped padding", Severity: "warning"}}}}
 
+	waiting := []waitingItem{{ID: "p4", Name: "Nimbus Air", Status: project.StatusAwaitingApproval,
+		OwnerEmail: "astrid@example.com", Since: time.Date(2026, 7, 11, 9, 30, 0, 0, time.UTC)}}
+
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, "admin", View{Title: "Operator review", IsAdmin: true, CSRF: "x",
-		Data: adminView{Accepted: []reviewItem{flagged, clean}, Previews: []reviewItem{preview}}}); err != nil {
+		Data: adminView{Accepted: []reviewItem{flagged, clean}, Previews: []reviewItem{preview}, Waiting: waiting}}); err != nil {
 		t.Fatalf("render admin: %v", err)
 	}
 	out := buf.String()
@@ -42,6 +46,14 @@ func TestAdminRendersFindings(t *testing.T) {
 		"internal/web/static/app.css:3",        // file:line
 		"Design audit: clean ✓",                // the clean card
 		"⚑ 1",                                  // the preview flag
+		"Waiting on the customer",              // the new panel
+		"Nimbus Air",                           // the waiting project
+		"astrid@example.com",                   // its owner
+		"Waiting for your approval",            // its (English) status label
+		"Danger zone",                          // the cleanup panel
+		"Delete all projects",                  // the bulk purge button
+		"/admin/purge-all",                     // its action
+		"/admin/projects/p3/delete",            // per-project delete on the preview
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("admin render missing %q", want)

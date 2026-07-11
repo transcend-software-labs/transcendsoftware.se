@@ -65,8 +65,8 @@ func TestBuild_SnapshotSaveAfterSuccess(t *testing.T) {
 	if !strings.Contains(script, "tar") || !strings.Contains(script, "https://storage.example/put?sig=abc") {
 		t.Errorf("snapshot save exec should tar and upload to the PUT URL, got: %s", script)
 	}
-	if audit := strings.Join(execs[1].Command, " "); !strings.Contains(audit, "impeccable detect") {
-		t.Errorf("last exec should be the design audit, got: %s", audit)
+	if audit := strings.Join(execs[1].Command, " "); !strings.Contains(audit, "scripts/audit.js") {
+		t.Errorf("last exec should be the rendered design audit, got: %s", audit)
 	}
 }
 
@@ -97,8 +97,8 @@ func TestBuild_ReiterationRestoresBeforeAgent(t *testing.T) {
 	if !strings.Contains(save, "https://storage.example/put?sig=abc") {
 		t.Errorf("second exec should save the snapshot, got: %s", save)
 	}
-	if audit := strings.Join(execs[2].Command, " "); !strings.Contains(audit, "impeccable detect") {
-		t.Errorf("last exec should be the design audit, got: %s", audit)
+	if audit := strings.Join(execs[2].Command, " "); !strings.Contains(audit, "scripts/audit.js") {
+		t.Errorf("last exec should be the rendered design audit, got: %s", audit)
 	}
 }
 
@@ -361,7 +361,7 @@ func TestBuild_NoSnapshotURLsOnlyAudit(t *testing.T) {
 	if len(execs) != 1 {
 		t.Fatalf("expected only the design-audit exec, got %d", len(execs))
 	}
-	if got := strings.Join(execs[0].Command, " "); !strings.Contains(got, "impeccable detect") {
+	if got := strings.Join(execs[0].Command, " "); !strings.Contains(got, "scripts/audit.js") {
 		t.Errorf("the sole exec should be the design audit, got: %s", got)
 	}
 }

@@ -14,11 +14,21 @@ import (
 // adminView is the data for the operator dashboard.
 type adminView struct {
 	Escalated []*project.Project
-	Accepted  []reviewItem // accepted by the customer, awaiting delivery review
+	Accepted  []reviewItem  // accepted by the customer, awaiting delivery review
+	Waiting   []waitingItem // customer's turn (answering questions / approving the plan)
 	Active    []activeBuild
 	Previews  []reviewItem // live preview apps (cost money; can be destroyed)
 	Stats     buildStats
 	Recent    []recentBuild // recent builds with cost/timing
+}
+
+// waitingItem is a project sitting on the customer (needs input / plan approval).
+type waitingItem struct {
+	ID         string
+	Name       string
+	Status     project.Status
+	OwnerEmail string
+	Since      time.Time // last update, so the operator sees how long it's been idle
 }
 
 // recentBuild is one build's cost + timing line for /admin.
@@ -151,6 +161,7 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 	}
 	names := make(map[string]string, len(all))
 	var previews, accepted []reviewItem
+	var waiting []waitingItem
 	for _, p := range all {
 		names[p.ID] = p.Name
 		switch p.Status {
@@ -158,6 +169,17 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 			previews = append(previews, s.withScreenshots(ctx, p))
 		case project.StatusAccepted:
 			accepted = append(accepted, s.withScreenshots(ctx, p))
+		case project.StatusNeedsInput, project.StatusAwaitingApproval:
+			// The customer's turn — the operator can't act, but seeing these
+			// lets Rasmus nudge a stalled project instead of it going quiet.
+			owner := ""
+			if u, err := s.store.UserByID(ctx, p.UserID); err == nil {
+				owner = u.Email
+			}
+			waiting = append(waiting, waitingItem{
+				ID: p.ID, Name: p.Name, Status: p.Status,
+				Since: p.UpdatedAt, OwnerEmail: owner,
+			})
 		}
 	}
 
@@ -184,7 +206,7 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 	}
 
 	v := s.view(r, "Operator review", adminView{
-		Escalated: escalated, Accepted: accepted, Active: active, Previews: previews,
+		Escalated: escalated, Accepted: accepted, Waiting: waiting, Active: active, Previews: previews,
 		Stats: computeStats(recent, rate), Recent: builds,
 	})
 	v.Lang = "en" // operator pages are English regardless of the customer-facing selector
@@ -228,6 +250,28 @@ func (s *Server) handleAdminDestroyPreview(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
+// handleAdminDeleteProject fully removes one project and its preview env.
+// (requireAdmin already enforces admin auth + CSRF on this POST.)
+func (s *Server) handleAdminDeleteProject(w http.ResponseWriter, r *http.Request, _ *user.User) {
+	if err := s.orch.PurgeProject(r.Context(), r.PathValue("id")); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
+// handleAdminPurgeAll removes every project and its preview env — the operator's
+// clean-the-slate action. Confirmed in the UI; requireAdmin guards auth + CSRF.
+func (s *Server) handleAdminPurgeAll(w http.ResponseWriter, r *http.Request, _ *user.User) {
+	n, err := s.orch.PurgeAllProjects(r.Context())
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	s.log.Info("admin purge all", "purged", n)
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 

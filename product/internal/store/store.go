@@ -33,6 +33,8 @@ type Store interface {
 	// Projects
 	CreateProject(ctx context.Context, p *project.Project) error
 	UpdateProject(ctx context.Context, p *project.Project) error
+	// DeleteProject removes a project and its iterations + assets (operator cleanup).
+	DeleteProject(ctx context.Context, id string) error
 	ProjectByID(ctx context.Context, id string) (*project.Project, error)
 	ProjectsByUser(ctx context.Context, userID string) ([]*project.Project, error)
 	// EscalatedProjects returns projects awaiting operator review, newest first.

@@ -156,6 +156,26 @@ func (m *Memory) UpdateProject(_ context.Context, p *project.Project) error {
 	return nil
 }
 
+func (m *Memory) DeleteProject(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.projects[id]; !ok {
+		return project.ErrNotFound
+	}
+	delete(m.projects, id)
+	for k, it := range m.iterations {
+		if it.ProjectID == id {
+			delete(m.iterations, k)
+		}
+	}
+	for k, a := range m.assets {
+		if a.ProjectID == id {
+			delete(m.assets, k)
+		}
+	}
+	return nil
+}
+
 func (m *Memory) ProjectByID(_ context.Context, id string) (*project.Project, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
