@@ -82,6 +82,12 @@ type Config struct {
 	ImageGenModel         string
 	ImageGenMaxPerProject int // AI generations allowed per project (each is a paid call; default 20)
 
+	// Stripe subscription paywall (all three required to enable — see
+	// StripeEnabled). Absent → no payment UI, manual "Mark paid" only.
+	StripeSecretKey     string // sk_test_… / sk_live_…
+	StripePriceID       string // price_… of the recurring base plan (SEK/month)
+	StripeWebhookSecret string // whsec_… to verify webhook signatures
+
 	// Execution plane (empty → fake driver/machines):
 	OpencodeURL     string // fixed opencode server base URL (overrides per-machine)
 	OpencodePort    int    // port opencode listens on inside each sandbox machine
@@ -168,13 +174,17 @@ func Load() Config {
 		ImageGenAPIKey:        os.Getenv("IMAGEGEN_API_KEY"),
 		ImageGenModel:         envOr("IMAGEGEN_MODEL", "gpt-image-2"),
 		ImageGenMaxPerProject: envIntOr("IMAGEGEN_MAX_PER_PROJECT", 20),
-		OpencodeURL:           os.Getenv("OPENCODE_URL"),
-		OpencodePort:          4096,
-		FlyAPIToken:           os.Getenv("FLY_API_TOKEN"),
-		FlyOrg:                envOr("FLY_ORG", "personal"),
-		FlyDeployToken:        os.Getenv("FLY_DEPLOY_TOKEN"),
-		FlySandboxApp:         os.Getenv("FLY_SANDBOX_APP"),
-		FlySandboxImage:       os.Getenv("FLY_SANDBOX_IMAGE"),
+
+		StripeSecretKey:     os.Getenv("STRIPE_SECRET_KEY"),
+		StripePriceID:       os.Getenv("STRIPE_PRICE_ID"),
+		StripeWebhookSecret: os.Getenv("STRIPE_WEBHOOK_SECRET"),
+		OpencodeURL:         os.Getenv("OPENCODE_URL"),
+		OpencodePort:        4096,
+		FlyAPIToken:         os.Getenv("FLY_API_TOKEN"),
+		FlyOrg:              envOr("FLY_ORG", "personal"),
+		FlyDeployToken:      os.Getenv("FLY_DEPLOY_TOKEN"),
+		FlySandboxApp:       os.Getenv("FLY_SANDBOX_APP"),
+		FlySandboxImage:     os.Getenv("FLY_SANDBOX_IMAGE"),
 
 		StorageEndpoint:  os.Getenv("STORAGE_ENDPOINT"),
 		StorageAccessKey: os.Getenv("STORAGE_ACCESS_KEY"),
@@ -238,6 +248,13 @@ func Load() Config {
 
 // ImageGenEnabled reports whether "Generate with AI" is available.
 func (c Config) ImageGenEnabled() bool { return c.ImageGenAPIKey != "" }
+
+// StripeEnabled reports whether the subscription paywall is live. All three
+// secrets are required: without the webhook secret we could take a payment we
+// can never observe, so the feature stays fully off until it's set.
+func (c Config) StripeEnabled() bool {
+	return c.StripeSecretKey != "" && c.StripePriceID != "" && c.StripeWebhookSecret != ""
+}
 
 // DevMode reports whether the app is running fully in-memory/fake.
 func (c Config) DevMode() bool {

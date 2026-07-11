@@ -55,6 +55,35 @@ func TestReap_ExpiresIdlePreviews(t *testing.T) {
 	}
 }
 
+func TestReap_PaidPreviewSurvives(t *testing.T) {
+	st := store.NewMemory()
+	orch, machines := newTestOrchWithVerifier(st, NoopVerifier{})
+	ctx := context.Background()
+	old := time.Now().UTC().Add(-15 * 24 * time.Hour)
+
+	// A paid subscriber's idle preview must survive; an unpaid one of the same
+	// age is the control that expires.
+	seedWithStatus(t, st, "paid", project.StatusPreviewReady, "https://forge-paid.fly.dev", old)
+	p, _ := st.ProjectByID(ctx, "paid")
+	p.Paid = true
+	if err := st.UpdateProject(ctx, p); err != nil {
+		t.Fatalf("mark paid: %v", err)
+	}
+	seedWithStatus(t, st, "unpaid", project.StatusPreviewReady, "https://forge-unpaid.fly.dev", old)
+
+	orch.Reap(ctx, 14*24*time.Hour)
+
+	if slices.Contains(machines.DestroyedApps(), builder.DeployAppName("paid")) {
+		t.Errorf("paid preview must survive the reaper; destroyed: %v", machines.DestroyedApps())
+	}
+	if got, _ := st.ProjectByID(ctx, "paid"); got.Status != project.StatusPreviewReady {
+		t.Errorf("paid project should stay preview_ready, got %q", got.Status)
+	}
+	if got, _ := st.ProjectByID(ctx, "unpaid"); got.Status != project.StatusExpired {
+		t.Errorf("unpaid control should expire, got %q", got.Status)
+	}
+}
+
 func TestReap_DestroysFailedBuildApps(t *testing.T) {
 	st := store.NewMemory()
 	orch, machines := newTestOrchWithVerifier(st, NoopVerifier{})

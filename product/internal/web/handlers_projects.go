@@ -192,6 +192,11 @@ type projectView struct {
 	GenPrompts   map[string]string           // slug → the auto-seeded prompt (shown, editable)
 	GenExhausted bool                        // the project has hit its AI-generation cap
 	GenNotice    string                      // localized notice for a failed/blocked generation attempt
+
+	CanSubscribe  bool   // show the subscribe panel (billing on, unpaid, preview/accepted)
+	SubActive     bool   // paid via stripe — show "active" + manage-subscription
+	SubProcessing bool   // returned from Checkout success while the webhook is still in flight
+	PriceStr      string // formatted plan price ("99 kr"), "" if unavailable
 }
 
 // rosterMember is one team person for the template, with a presigned photo URL.
@@ -317,13 +322,54 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		genNotice = i18n.T(lang, "prj.gen.failed")
 	}
 
-	s.render(w, http.StatusOK, "project", s.view(r, p.Name, projectView{
+	pv := projectView{
 		Project: p, Iterations: its, Assets: general,
 		Shots: s.withScreenshots(ctx, p).Shots, Status: s.statusOf(r, p),
 		FilledSlots: filled, Rosters: rosters, SlotAssets: slotAssets, Candidates: candidates,
 		MissingReq: missing, ImageGen: s.imagegen != nil, GenSlots: genSlots, GenPrompts: genPrompts,
 		GenExhausted: exhausted, GenNotice: genNotice,
-	}))
+	}
+	sub := r.URL.Query().Get("sub")
+	if s.billing != nil {
+		pv.SubActive = p.Paid && p.PaidVia == "stripe" && p.StripeCustomerID != ""
+		pv.SubProcessing = !p.Paid && sub == "success" // paid on Stripe, webhook still in flight
+		pv.CanSubscribe = !p.Paid && subscribable(p) && !pv.SubProcessing
+		if pv.CanSubscribe || pv.SubProcessing {
+			if pr, err := s.billing.Price(ctx, s.cfg.StripePriceID); err == nil {
+				pv.PriceStr = formatPrice(pr.UnitAmount, pr.Currency)
+			}
+		}
+	}
+	v := s.view(r, p.Name, pv)
+	switch sub {
+	case "success":
+		v.Flash = i18n.T(lang, "flash.sub_success")
+	case "cancel":
+		v.Flash = i18n.T(lang, "flash.sub_cancel")
+	case "error":
+		v.Flash = i18n.T(lang, "flash.sub_error")
+	}
+	s.render(w, http.StatusOK, "project", v)
+}
+
+// formatPrice renders a Stripe unit amount (minor units) for display, e.g.
+// (9900,"sek") → "99 kr". Empty for a non-positive amount.
+func formatPrice(unitAmount int64, currency string) string {
+	if unitAmount <= 0 {
+		return ""
+	}
+	major, minor := unitAmount/100, unitAmount%100
+	if currency == "sek" {
+		if minor == 0 {
+			return fmt.Sprintf("%d kr", major)
+		}
+		return fmt.Sprintf("%d,%02d kr", major, minor)
+	}
+	sym := strings.ToUpper(currency)
+	if minor == 0 {
+		return fmt.Sprintf("%s %d", sym, major)
+	}
+	return fmt.Sprintf("%s %d.%02d", sym, major, minor)
 }
 
 var allowedAssetTypes = map[string]bool{

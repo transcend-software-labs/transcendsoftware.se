@@ -12,6 +12,7 @@ import (
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/activity"
 	"github.com/transcend-software-labs/rasmus-ai/internal/auth"
+	"github.com/transcend-software-labs/rasmus-ai/internal/billing"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/imagegen"
 	"github.com/transcend-software-labs/rasmus-ai/internal/notify"
@@ -42,6 +43,7 @@ type Server struct {
 	oauth    *oauth.Registry  // social login (nil → none configured)
 	notifier notify.Notifier  // for magic-link emails
 	imagegen *imagegen.Client // "Generate with AI" for image slots (nil = disabled)
+	billing  *billing.Client  // Stripe subscription paywall (nil = disabled)
 	tmpl     *template.Template
 	log      *slog.Logger
 }
@@ -58,6 +60,9 @@ func NewServer(cfg config.Config, st store.Store, sessions *auth.Sessions, orch 
 
 // SetImageGen enables "Generate with AI" for image content slots.
 func (s *Server) SetImageGen(c *imagegen.Client) { s.imagegen = c }
+
+// SetBilling enables the Stripe subscription paywall.
+func (s *Server) SetBilling(c *billing.Client) { s.billing = c }
 
 // SetAuth wires social login and the notifier used for magic-link emails.
 func (s *Server) SetAuth(reg *oauth.Registry, notifier notify.Notifier) {
@@ -124,6 +129,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /projects/{id}/apply-content", s.requireUser(s.handleApplyContent))
 	mux.HandleFunc("POST /projects/{id}/retry", s.requireUser(s.handleRetry))
 	mux.HandleFunc("POST /projects/{id}/accept", s.requireUser(s.handleAccept))
+	mux.HandleFunc("POST /projects/{id}/subscribe", s.requireUser(s.handleSubscribe))
+	mux.HandleFunc("POST /projects/{id}/billing", s.requireUser(s.handleBillingPortal))
+
+	// Stripe webhook — no session/CSRF (Stripe can't have either; the signature
+	// is the authentication). Bare handler like the magic-link route.
+	mux.HandleFunc("POST /webhooks/stripe", limitBody(1<<20, s.handleStripeWebhook))
+	mux.HandleFunc("GET /terms", s.handleTerms)
 
 	// Operator/admin views (gated by ADMIN_EMAIL).
 	mux.HandleFunc("GET /admin", s.requireAdmin(s.handleAdmin))
@@ -216,6 +228,7 @@ type statusView struct {
 	Activity string                // language-neutral activity code of a running build ("" = none)
 	Building string                // localized name of the page being built now ("" = none)
 	Pages    []activity.PageStatus // live per-page build checklist (nil = not building)
+	Billing  bool                  // Stripe paywall on — the accepted-state note nudges payment when unpaid
 }
 
 // statusOf assembles the live status box for a project: resolved language, the
@@ -223,7 +236,7 @@ type statusView struct {
 // project page and the htmx status poll so both render identically.
 func (s *Server) statusOf(r *http.Request, p *project.Project) statusView {
 	lang := s.lang(r)
-	sv := statusView{Project: p, Lang: lang, Activity: s.orch.Activity(p.ID), Pages: s.orch.Pages(p.ID)}
+	sv := statusView{Project: p, Lang: lang, Activity: s.orch.Activity(p.ID), Pages: s.orch.Pages(p.ID), Billing: s.billing != nil}
 	if pg, ok := s.orch.BuildingPage(p.ID); ok {
 		sv.Building = pg.Name(lang)
 	}

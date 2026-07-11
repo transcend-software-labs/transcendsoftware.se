@@ -58,8 +58,10 @@ func (o *Orchestrator) Reap(ctx context.Context, previewTTL time.Duration) {
 			// sweep (failed is already terminal, so there is no state to flip);
 			// DestroyApp tolerates 404s, making the repeat a cheap no-op.
 			o.destroyPreviewApp(ctx, p, project.StatusFailed, "")
-		case p.Status == project.StatusPreviewReady && previewTTL > 0 &&
+		case p.Status == project.StatusPreviewReady && !p.Paid && previewTTL > 0 &&
 			time.Since(p.UpdatedAt) > previewTTL:
+			// A paid subscriber's preview is never reaped — they're waiting on
+			// delivery, not idle.
 			o.log.Info("reap: expiring idle preview", "project", p.ID)
 			o.destroyPreviewApp(ctx, p, project.StatusExpired,
 				"Preview expired after "+formatDays(previewTTL)+" — start a new project to rebuild it.")

@@ -253,6 +253,32 @@
 </section>
 {{end}}
 
+{{if $.Data.CanSubscribe}}
+<section class="panel sub-panel">
+  <h2>{{$.T "sub.h2"}}</h2>
+  <p class="muted small">{{$.T "sub.intro"}}</p>
+  {{if $.Data.PriceStr}}<p class="sub-price">{{printf ($.T "sub.price") $.Data.PriceStr}}</p>{{end}}
+  <form method="post" action="/projects/{{.ID}}/subscribe">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <button class="btn" type="submit">{{$.T "sub.btn"}}</button>
+  </form>
+  <p class="muted small sub-terms">{{$.T "sub.terms_pre"}}<a href="/terms" target="_blank" rel="noopener">{{$.T "sub.terms_link"}}</a>.</p>
+</section>
+{{else if $.Data.SubProcessing}}
+<section class="panel sub-panel">
+  <h2>{{$.T "sub.h2"}}</h2>
+  <p class="muted small">{{$.T "sub.processing"}}</p>
+</section>
+{{else if $.Data.SubActive}}
+<section class="panel sub-panel">
+  <p><span class="pay-badge pay-yes">✓ {{$.T "sub.active"}}</span></p>
+  <form method="post" action="/projects/{{.ID}}/billing" class="inline">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <button class="linklike" type="submit">{{$.T "sub.manage"}}</button>
+  </form>
+</section>
+{{end}}
+
 {{if .CanReiterate}}
 <section class="panel">
   <h2>{{$.T "prj.change.h2"}}</h2>

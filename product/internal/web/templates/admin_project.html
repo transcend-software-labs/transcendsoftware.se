@@ -29,6 +29,7 @@
     <button class="btn btn-sm" type="submit">Mark paid</button>
   </form>
   {{end}}
+  {{if .StripeSubID}}<p class="muted small">Stripe: {{.StripeSubID}}{{if .StripeCustomerID}} · {{.StripeCustomerID}}{{end}}</p>{{end}}
 </section>
 
 {{if or (eq .Status "planning") (eq .Status "screening") (eq .Status "building")}}

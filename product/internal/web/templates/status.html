@@ -12,7 +12,7 @@
   {{end}}
   {{if eq .Status "accepted"}}
     <p><a class="btn" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{tr .Lang "st.open_preview"}}</a></p>
-    <p class="reason">{{tr .Lang "st.accepted_note"}}</p>
+    <p class="reason">{{if and .Billing (not .Paid)}}{{tr .Lang "st.accepted_unpaid"}}{{else}}{{tr .Lang "st.accepted_note"}}{{end}}</p>
   {{end}}
   {{if eq .Status "delivered"}}
     <p><a class="btn" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{tr .Lang "st.open_site"}}</a></p>

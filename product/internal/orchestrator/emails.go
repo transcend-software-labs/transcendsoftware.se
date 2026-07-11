@@ -24,6 +24,14 @@ var customerEmails = map[string]map[string]emailCopy{
 		"ru": {"Превью вашего сайта готово",
 			"Превью для «%s» готово. Откройте проект, чтобы просмотреть его или запросить изменение:"},
 	},
+	"subscription_active": {
+		"en": {"Thanks for subscribing — your site is on its way",
+			"Your subscription for \"%s\" is active. Rasmus is giving it a final personal review and will deliver it shortly:"},
+		"sv": {"Tack för din prenumeration — din sida är på väg",
+			"Din prenumeration för \"%s\" är aktiv. Rasmus gör en sista personlig granskning och levererar den inom kort:"},
+		"ru": {"Спасибо за подписку — ваш сайт уже в пути",
+			"Ваша подписка для «%s» активна. Rasmus проводит финальную личную проверку и вскоре доставит сайт:"},
+	},
 }
 
 // custEmail returns localized subject + body for a customer email, defaulting

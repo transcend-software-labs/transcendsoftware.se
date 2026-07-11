@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/auth"
+	"github.com/transcend-software-labs/rasmus-ai/internal/billing"
 	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
@@ -103,6 +104,10 @@ func main() {
 	if cfg.ImageGenEnabled() {
 		log.Info("imagegen: enabled", "model", cfg.ImageGenModel, "base", cfg.ImageGenBaseURL)
 		srv.SetImageGen(imagegen.New(cfg.ImageGenBaseURL, cfg.ImageGenAPIKey, cfg.ImageGenModel))
+	}
+	if cfg.StripeEnabled() {
+		log.Info("billing: stripe enabled", "price", cfg.StripePriceID)
+		srv.SetBilling(billing.New("https://api.stripe.com", cfg.StripeSecretKey))
 	}
 
 	httpSrv := &http.Server{

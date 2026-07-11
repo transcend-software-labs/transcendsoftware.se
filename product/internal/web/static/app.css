@@ -284,6 +284,13 @@ details summary { cursor: pointer; }
 .pay-no { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
 .pay-panel .pay-badge { font-size: .95rem; }
 
+/* Subscription paywall (customer) */
+.sub-panel { border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+.sub-price { font-size: 1.4rem; font-weight: 600; color: var(--accent); letter-spacing: -.01em; margin: .5rem 0; }
+.sub-terms { margin-top: .7rem; }
+.terms-doc h2 { margin-top: 1.6rem; font-size: 1.05rem; }
+.terms-doc p { margin: .4rem 0; max-width: 62ch; }
+
 .design-options { display: flex; flex-direction: column; gap: .5rem; }
 label.design-option {
   display: flex; flex-direction: row; align-items: baseline; gap: .6rem;

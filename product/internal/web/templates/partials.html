@@ -36,7 +36,7 @@
 
 {{define "foot"}}</main>
 <footer class="foot"><span class="muted">{{.T "foot.line"}}
-<a href="https://transcendsoftware.se">Rasmus Kockum ↗</a></span>
+<a href="https://transcendsoftware.se">Rasmus Kockum ↗</a> · <a href="/terms">{{.T "foot.terms"}}</a></span>
 <span class="lang-switch muted small">{{$cur := .Lang}}{{range .Languages}} <a href="?lang={{.Code}}"{{if eq .Code $cur}} class="lang-active"{{end}} lang="{{.Code}}" hreflang="{{.Code}}">{{.Label}}</a>{{end}}</span></footer>
 </body>
 </html>{{end}}

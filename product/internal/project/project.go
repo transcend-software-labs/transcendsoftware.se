@@ -197,37 +197,39 @@ type Finding struct {
 
 // Project is a single customer request to have a website built.
 type Project struct {
-	ID             string
-	UserID         string
-	Name           string
-	Brief          string // the customer's description of what they want
-	Status         Status
-	Questions      []string                   // clarifying questions from the intake step
-	DesignOptions  []DesignOption             // suggested design directions from intake
-	DesignBrief    string                     // the customer's chosen/stated design direction
-	Answers        string                     // the customer's answers to those questions
-	Plan           string                     // generated build plan (markdown; operator-facing)
-	Spec           PlanSpec                   // machine-readable plan: pages, scope, content needs (customer UI)
-	Verdict        Verdict                    // safety-gate outcome
-	RejectReason   string                     // populated when Status == rejected
-	PreviewURL     string                     // latest deployed preview link
-	RepoURL        string                     // vestigial: GitHub mirroring was removed; kept to avoid a DB migration (always "")
-	SnapshotKey    string                     // object-storage key of the workspace snapshot from the last successful build
-	Screenshots    []Screenshot               // one per page of the deployed site (for /admin review)
-	Findings       []Finding                  // impeccable design-audit findings from the last build (for /admin review)
-	Critique       string                     // design critic's verdict on the preview screenshots ("SHIP" or "POLISH" + issues)
-	Locale         string                     // customer's UI language at creation ("en"/"sv"/"ru"), for their emails
-	ContentAnswers map[string]string          // text the customer typed for text-kind content slots (slug → value)
-	ContentRosters map[string][]RosterEntry   // structured people for roster-kind slots (slug → members)
-	PendingImages  map[string]ImageCandidates // AI images awaiting the customer's pick (slug → candidates)
-	ImageGenCount  int                        // AI image generations run (cost cap)
-	IterationsUsed int                        // number of build passes consumed (1..MaxIterations)
-	Paid           bool                       // payment settled — unlocks delivery (see MarkPaid)
-	PaidAt         time.Time                  // when payment was recorded (zero = unpaid)
-	PaidVia        string                     // how it was settled: "manual", later "stripe"; provenance for accounting
-	ContentPending bool                       // content was added/changed since the last build — offer a rebuild to apply it
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID               string
+	UserID           string
+	Name             string
+	Brief            string // the customer's description of what they want
+	Status           Status
+	Questions        []string                   // clarifying questions from the intake step
+	DesignOptions    []DesignOption             // suggested design directions from intake
+	DesignBrief      string                     // the customer's chosen/stated design direction
+	Answers          string                     // the customer's answers to those questions
+	Plan             string                     // generated build plan (markdown; operator-facing)
+	Spec             PlanSpec                   // machine-readable plan: pages, scope, content needs (customer UI)
+	Verdict          Verdict                    // safety-gate outcome
+	RejectReason     string                     // populated when Status == rejected
+	PreviewURL       string                     // latest deployed preview link
+	RepoURL          string                     // vestigial: GitHub mirroring was removed; kept to avoid a DB migration (always "")
+	SnapshotKey      string                     // object-storage key of the workspace snapshot from the last successful build
+	Screenshots      []Screenshot               // one per page of the deployed site (for /admin review)
+	Findings         []Finding                  // impeccable design-audit findings from the last build (for /admin review)
+	Critique         string                     // design critic's verdict on the preview screenshots ("SHIP" or "POLISH" + issues)
+	Locale           string                     // customer's UI language at creation ("en"/"sv"/"ru"), for their emails
+	ContentAnswers   map[string]string          // text the customer typed for text-kind content slots (slug → value)
+	ContentRosters   map[string][]RosterEntry   // structured people for roster-kind slots (slug → members)
+	PendingImages    map[string]ImageCandidates // AI images awaiting the customer's pick (slug → candidates)
+	ImageGenCount    int                        // AI image generations run (cost cap)
+	IterationsUsed   int                        // number of build passes consumed (1..MaxIterations)
+	Paid             bool                       // payment settled — unlocks delivery (see MarkPaid)
+	PaidAt           time.Time                  // when payment was recorded (zero = unpaid)
+	PaidVia          string                     // how it was settled: "manual", "stripe", "legacy"; provenance for accounting
+	StripeCustomerID string                     // Stripe customer, set when Checkout completes (for the billing portal)
+	StripeSubID      string                     // Stripe subscription; the webhook matches lifecycle events back to the project through it
+	ContentPending   bool                       // content was added/changed since the last build — offer a rebuild to apply it
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // EffectiveBrief is the brief enriched with the customer's clarifying answers
