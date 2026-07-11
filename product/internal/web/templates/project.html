@@ -104,10 +104,18 @@
       <div class="content-row">
         <span class="content-mark">{{if $filled}}✓{{else}}○{{end}}</span>
         <span class="content-name">{{.Name $.Lang}}</span>
-        {{if .IsFile}}<span class="content-kind muted small">{{$.T "prj.content.a_file"}}</span>{{end}}
         {{if not .Required}}<span class="muted small">({{$.T "prj.content.optional"}})</span>{{end}}
       </div>
-      {{if not .IsFile}}
+      {{if .IsFile}}
+      {{/* Each file item uploads directly against its own slot — no "what is
+           this?" needed, the row already says what it is. */}}
+      <form method="post" action="/projects/{{$proj.ID}}/assets" enctype="multipart/form-data" class="content-upload">
+        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+        <input type="hidden" name="slot" value="{{.Slug}}">
+        <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" required>
+        <button class="btn btn-sm" type="submit">{{$.T "prj.assets.upload"}}</button>
+      </form>
+      {{else}}
       <form method="post" action="/projects/{{$proj.ID}}/content" class="content-answer">
         <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
         <input type="hidden" name="slot" value="{{.Slug}}">
@@ -128,15 +136,12 @@
     {{end}}
   </ul>
   {{end}}
+  {{/* One general uploader for anything not on the list — here the free-text
+       note is the only thing that says what the file is. */}}
+  {{if .Spec.ContentNeeded}}<h3 class="muted small upload-other-h">{{$.T "prj.assets.other"}}</h3>{{end}}
   <form method="post" action="/projects/{{.ID}}/assets" enctype="multipart/form-data" class="upload-form stack">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
     <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" required>
-    <label class="upload-slot">{{$.T "prj.content.which"}}
-      <select name="slot">
-        {{range .Spec.ContentNeeded}}{{if .IsFile}}<option value="{{.Slug}}">{{.Name $.Lang}}</option>{{end}}{{end}}
-        <option value="">{{$.T "prj.content.other"}}</option>
-      </select>
-    </label>
     <input type="text" name="description" maxlength="300"
       placeholder="{{$.T "prj.assets.desc_ph"}}">
     <button class="btn btn-sm" type="submit">{{$.T "prj.assets.upload"}}</button>

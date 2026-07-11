@@ -469,7 +469,7 @@ label.design-option:hover { border-color: var(--accent); }
 .content-checklist li { display: grid; gap: .4rem; }
 .content-row { display: flex; align-items: center; gap: .6rem; }
 .content-kind { margin-left: .1rem; }
-.content-answer { display: flex; gap: .5rem; margin-left: 1.7rem; }
+.content-answer, .content-upload { display: flex; gap: .5rem; margin-left: 1.7rem; align-items: center; flex-wrap: wrap; }
 .content-answer input[type=text] {
   flex: 1;
   padding: .5rem .6rem;
@@ -479,6 +479,8 @@ label.design-option:hover { border-color: var(--accent); }
   border-radius: var(--radius);
   font-family: inherit;
 }
+.content-upload input[type=file] { flex: 1; min-width: 0; font-size: .85rem; }
+.upload-other-h { margin-top: 1.5rem; }
 .content-mark { width: 1.1rem; text-align: center; }
 .content-have { color: var(--text); }
 .content-have .content-mark { color: var(--green); }
