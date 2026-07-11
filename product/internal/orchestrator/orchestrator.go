@@ -547,7 +547,11 @@ func (o *Orchestrator) ReturnToCustomer(projectID, note string) error {
 	return nil
 }
 
-// ApproveEscalated lets an operator clear an escalated project to build.
+// ApproveEscalated lets an operator clear an escalated project. It does NOT
+// start the build directly — it hands the project to the customer's own
+// approval gate (scope card + content checklist), so an escalated project
+// gets the same "approve the plan and provide your content before we build"
+// step as any other. The customer's ApprovePlan then starts the build.
 func (o *Orchestrator) ApproveEscalated(projectID string) {
 	o.async(projectID, func(ctx context.Context) error {
 		p, err := o.store.ProjectByID(ctx, projectID)
@@ -558,10 +562,14 @@ func (o *Orchestrator) ApproveEscalated(projectID string) {
 			return nil
 		}
 		p.Verdict = project.VerdictAllow
+		p.Status = project.StatusAwaitingApproval
 		if err := o.save(ctx, p); err != nil {
 			return err
 		}
-		return o.runBuild(ctx, projectID, "", false)
+		e := custEmail(p.Locale, "plan_ready")
+		o.notifyCustomer(ctx, p.UserID, e.Subject,
+			fmt.Sprintf(e.Body, p.Name)+"\n\n"+o.projectLink(p.ID))
+		return nil
 	})
 }
 

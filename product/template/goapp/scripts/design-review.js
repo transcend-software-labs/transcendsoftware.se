@@ -103,6 +103,10 @@ async function main() {
   }
   console.log('\n=== visual design review — ' + shots.length + ' page(s), by the design model ===\n');
   console.log(verdict + '\n');
+  // Also persist the verdict so the orchestrator can surface it to the operator
+  // (the agent sees stdout, but the build log only records the command, not its
+  // output). Last run wins — that's the state at deploy time.
+  try { require('fs').writeFileSync('/tmp/forge-design-review.txt', verdict); } catch {}
 }
 
 // Advisory: always exit 0 so a review hiccup never blocks a good build. The

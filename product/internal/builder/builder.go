@@ -402,6 +402,13 @@ func (b *Sandbox) finalize(ctx context.Context, sb *fly.Sandbox, req Request, re
 		}
 	}
 
+	// Surface the in-session visual review (Grok's verdict on the agent's own
+	// screenshots) so the operator can see it — the agent ran design-review.js
+	// during the build, but the log only records the command, not its output.
+	if review := b.readDesignReview(ctx, sb.MachineID); review != "" {
+		emit(hooks.OnLog, "In-session visual review (final pass):\n"+review)
+	}
+
 	// Independent design audit for Rasmus's review — the deterministic detector
 	// on the deployed UI, recorded for the /admin checklist. Best-effort like
 	// screenshots; a nil result (audit didn't run) leaves prior findings intact.
@@ -527,6 +534,17 @@ func (b *Sandbox) auditDesign(ctx context.Context, machineID, previewURL string)
 		return nil, fmt.Errorf("design audit: no/invalid output (exit %d): %s", res.ExitCode, res.Stderr)
 	}
 	return f, nil
+}
+
+// readDesignReview returns the last in-session visual-review verdict the agent
+// captured (design-review.js writes it to a temp file), or "" if it never ran.
+func (b *Sandbox) readDesignReview(ctx context.Context, machineID string) string {
+	res, err := b.machines.Exec(ctx, machineID,
+		[]string{"/bin/sh", "-c", "cat /tmp/forge-design-review.txt 2>/dev/null || true"}, 20)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(res.Stdout)
 }
 
 // parseFindings decodes an impeccable JSON findings array; ok=false when the

@@ -214,7 +214,7 @@ func TestPipeline_ReiterationCap(t *testing.T) {
 	}
 }
 
-func TestEscalation_ApproveBuilds(t *testing.T) {
+func TestEscalation_ApproveRoutesToCustomerGate(t *testing.T) {
 	st := store.NewMemory()
 	orch := newTestOrch(st)
 	id := seedProject(t, st, "an ambiguous request")
@@ -223,10 +223,22 @@ func TestEscalation_ApproveBuilds(t *testing.T) {
 	p.Verdict = project.VerdictEscalate
 	_ = st.UpdateProject(context.Background(), p)
 
+	// Operator approval clears the safety concern but does NOT build — it hands
+	// the project to the customer's own approval + content gate.
 	orch.ApproveEscalated(id)
-	got := waitFor(t, st, id, project.StatusPreviewReady)
-	if got.PreviewURL == "" {
-		t.Error("approved escalation should build a preview")
+	got := waitFor(t, st, id, project.StatusAwaitingApproval)
+	if got.Verdict != project.VerdictAllow {
+		t.Errorf("operator approval should mark the verdict allow, got %q", got.Verdict)
+	}
+	if got.PreviewURL != "" {
+		t.Error("no build should have run yet — the customer hasn't approved")
+	}
+
+	// The customer approving the plan starts the build.
+	orch.ApprovePlan(id)
+	done := waitFor(t, st, id, project.StatusPreviewReady)
+	if done.PreviewURL == "" {
+		t.Error("customer approval should build a preview")
 	}
 }
 
