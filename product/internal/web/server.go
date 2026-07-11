@@ -13,6 +13,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/activity"
 	"github.com/transcend-software-labs/rasmus-ai/internal/auth"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
+	"github.com/transcend-software-labs/rasmus-ai/internal/imagegen"
 	"github.com/transcend-software-labs/rasmus-ai/internal/notify"
 	"github.com/transcend-software-labs/rasmus-ai/internal/oauth"
 	"github.com/transcend-software-labs/rasmus-ai/internal/orchestrator"
@@ -38,8 +39,9 @@ type Server struct {
 	orch     *orchestrator.Orchestrator
 	broker   *stream.Broker
 	storage  storage.Store
-	oauth    *oauth.Registry // social login (nil → none configured)
-	notifier notify.Notifier // for magic-link emails
+	oauth    *oauth.Registry  // social login (nil → none configured)
+	notifier notify.Notifier  // for magic-link emails
+	imagegen *imagegen.Client // "Generate with AI" for image slots (nil = disabled)
 	tmpl     *template.Template
 	log      *slog.Logger
 }
@@ -53,6 +55,9 @@ func NewServer(cfg config.Config, st store.Store, sessions *auth.Sessions, orch 
 	return &Server{cfg: cfg, store: st, sessions: sessions, orch: orch, broker: broker,
 		storage: assets, oauth: oauth.NewRegistry(), notifier: notify.Noop{}, tmpl: tmpl, log: log}, nil
 }
+
+// SetImageGen enables "Generate with AI" for image content slots.
+func (s *Server) SetImageGen(c *imagegen.Client) { s.imagegen = c }
 
 // SetAuth wires social login and the notifier used for magic-link emails.
 func (s *Server) SetAuth(reg *oauth.Registry, notifier notify.Notifier) {
@@ -109,6 +114,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /projects/{id}/assets", limitBody(maxUpload+(1<<20), s.requireUser(s.handleUploadAsset)))
 	mux.HandleFunc("POST /projects/{id}/content", s.requireUser(s.handleContentAnswer))
 	mux.HandleFunc("POST /projects/{id}/roster", s.requireUser(s.handleRoster))
+	mux.HandleFunc("POST /projects/{id}/content/generate", s.requireUser(s.handleGenerateImage))
+	mux.HandleFunc("POST /projects/{id}/content/pick", s.requireUser(s.handlePickImage))
+	mux.HandleFunc("POST /projects/{id}/content/improve", s.requireUser(s.handleImproveImage))
 	mux.HandleFunc("POST /projects/{id}/reiterate", s.requireUser(s.handleReiterate))
 	mux.HandleFunc("POST /projects/{id}/retry", s.requireUser(s.handleRetry))
 	mux.HandleFunc("POST /projects/{id}/accept", s.requireUser(s.handleAccept))

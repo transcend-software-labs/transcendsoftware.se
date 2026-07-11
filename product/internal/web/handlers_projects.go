@@ -171,6 +171,8 @@ type projectView struct {
 	SlotAssets  map[string][]slotAssetView  // file/files slug → its uploaded assets (presigned)
 	Candidates  map[string][]candidateImage // slot → pending AI-image candidates awaiting pick
 	MissingReq  []string                    // localized names of required, unprovided content (for the approve gate)
+	ImageGen    bool                        // "Generate with AI" is available
+	GenSlots    map[string]bool             // slug → has a chosen AI-generated image (offer "improve")
 }
 
 // rosterMember is one team person for the template, with a presigned photo URL.
@@ -182,8 +184,9 @@ type rosterMember struct {
 
 // slotAssetView is one uploaded file shown under its content slot.
 type slotAssetView struct {
-	Filename string
-	URL      string // presigned
+	Filename  string
+	URL       string // presigned
+	Generated bool
 }
 
 // candidateImage is one pending AI-generated image awaiting the customer's pick.
@@ -222,6 +225,7 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 	// "other files". Slotted slots count as filled.
 	filled := map[string]bool{}
 	slotAssets := map[string][]slotAssetView{}
+	genSlots := map[string]bool{}
 	var general []*project.Asset
 	for _, a := range assets {
 		if a.Slot == "" {
@@ -229,7 +233,10 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 			continue
 		}
 		filled[a.Slot] = true
-		slotAssets[a.Slot] = append(slotAssets[a.Slot], slotAssetView{Filename: a.Filename, URL: presign(a.Key)})
+		if a.Generated {
+			genSlots[a.Slot] = true
+		}
+		slotAssets[a.Slot] = append(slotAssets[a.Slot], slotAssetView{Filename: a.Filename, URL: presign(a.Key), Generated: a.Generated})
 	}
 	// Text answers and roster people also fill their slots.
 	for slug, v := range p.ContentAnswers {
@@ -279,7 +286,7 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		Project: p, Iterations: its, Assets: general,
 		Shots: s.withScreenshots(ctx, p).Shots, Status: s.statusOf(r, p),
 		FilledSlots: filled, Rosters: rosters, SlotAssets: slotAssets, Candidates: candidates,
-		MissingReq: missing,
+		MissingReq: missing, ImageGen: s.imagegen != nil, GenSlots: genSlots,
 	}))
 }
 

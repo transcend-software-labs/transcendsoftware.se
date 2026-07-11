@@ -21,6 +21,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
+	"github.com/transcend-software-labs/rasmus-ai/internal/imagegen"
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
 	"github.com/transcend-software-labs/rasmus-ai/internal/notify"
 	"github.com/transcend-software-labs/rasmus-ai/internal/oauth"
@@ -103,6 +104,10 @@ func main() {
 		log.Info("auth: social login enabled", "providers", len(reg.Enabled()))
 	}
 	srv.SetAuth(reg, newNotifier(cfg, log))
+	if cfg.ImageGenEnabled() {
+		log.Info("imagegen: enabled", "model", cfg.ImageGenModel, "base", cfg.ImageGenBaseURL)
+		srv.SetImageGen(imagegen.New(cfg.ImageGenBaseURL, cfg.ImageGenAPIKey, cfg.ImageGenModel))
+	}
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,

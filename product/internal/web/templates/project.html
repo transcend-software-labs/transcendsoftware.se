@@ -119,9 +119,24 @@
         <button class="btn btn-sm" type="submit">{{$.T "prj.content.save"}}</button>
       </form>
       {{else}}
+      {{$cands := index $.Data.Candidates $slug}}
+      {{if $cands}}
+      {{/* Pending AI candidates — pick one. */}}
+      <p class="muted small">{{$.T "prj.gen.pick_intro"}}</p>
+      <div class="gen-candidates">
+        {{range $cands}}
+        <form method="post" action="/projects/{{$pid}}/content/pick" class="gen-candidate">
+          <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+          <input type="hidden" name="slot" value="{{$slug}}">
+          <input type="hidden" name="index" value="{{.Index}}">
+          <button type="submit" class="gen-pick"><img src="{{.URL}}" alt="" loading="lazy"><span>{{$.T "prj.gen.choose"}}</span></button>
+        </form>
+        {{end}}
+      </div>
+      {{else}}
       {{with index $.Data.SlotAssets $slug}}
       <ul class="slot-files">
-        {{range .}}<li>{{if .URL}}<a href="{{.URL}}" target="_blank" rel="noopener">{{.Filename}}</a>{{else}}{{.Filename}}{{end}}</li>{{end}}
+        {{range .}}<li>{{if .URL}}<a href="{{.URL}}" target="_blank" rel="noopener">{{.Filename}}</a>{{else}}{{.Filename}}{{end}}{{if .Generated}} <span class="muted small">(AI)</span>{{end}}</li>{{end}}
       </ul>
       {{end}}
       <form method="post" action="/projects/{{$pid}}/assets" enctype="multipart/form-data" class="content-upload">
@@ -130,6 +145,24 @@
         <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf"{{if .IsFiles}} multiple{{end}} required>
         <button class="btn btn-sm" type="submit">{{$.T "prj.assets.upload"}}</button>
       </form>
+      {{if and $.Data.ImageGen .CanGenerate}}
+        {{if index $.Data.GenSlots $slug}}
+        <form method="post" action="/projects/{{$pid}}/content/improve" class="gen-improve">
+          <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+          <input type="hidden" name="slot" value="{{$slug}}">
+          <input type="text" name="instruction" maxlength="1000" placeholder="{{$.T "prj.gen.improve_ph"}}">
+          <button class="btn btn-sm" type="submit">{{$.T "prj.gen.improve"}}</button>
+        </form>
+        {{else}}
+        <form method="post" action="/projects/{{$pid}}/content/generate" class="gen-create">
+          <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+          <input type="hidden" name="slot" value="{{$slug}}">
+          <input type="text" name="prompt" maxlength="1000" placeholder="{{$.T "prj.gen.prompt_ph"}}">
+          <button class="btn btn-sm gen-btn" type="submit">✨ {{$.T "prj.gen.button"}}</button>
+        </form>
+        {{end}}
+      {{end}}
+      {{end}}
       {{end}}
     </li>
     {{end}}

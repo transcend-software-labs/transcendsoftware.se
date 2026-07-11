@@ -84,6 +84,12 @@ type Config struct {
 	CriticEnabled    bool
 	CriticAutoPolish bool
 
+	// Image generation for content slots ("Generate with AI"). Defaults to
+	// OpenAI gpt-image-2 using OPENAI_API_KEY. Disabled when no key is set.
+	ImageGenBaseURL string
+	ImageGenAPIKey  string
+	ImageGenModel   string
+
 	// Execution plane (empty → fake driver/machines):
 	OpencodeURL     string // fixed opencode server base URL (overrides per-machine)
 	OpencodePort    int    // port opencode listens on inside each sandbox machine
@@ -171,13 +177,17 @@ func Load() Config {
 		CriticLLMModel:   os.Getenv("CRITIC_LLM_MODEL"),
 		CriticEnabled:    os.Getenv("DESIGN_CRITIC") != "off",
 		CriticAutoPolish: os.Getenv("CRITIC_AUTOPOLISH") != "off",
-		OpencodeURL:      os.Getenv("OPENCODE_URL"),
-		OpencodePort:     4096,
-		FlyAPIToken:      os.Getenv("FLY_API_TOKEN"),
-		FlyOrg:           envOr("FLY_ORG", "personal"),
-		FlyDeployToken:   os.Getenv("FLY_DEPLOY_TOKEN"),
-		FlySandboxApp:    os.Getenv("FLY_SANDBOX_APP"),
-		FlySandboxImage:  os.Getenv("FLY_SANDBOX_IMAGE"),
+
+		ImageGenBaseURL: envOr("IMAGEGEN_BASE_URL", "https://api.openai.com/v1"),
+		ImageGenAPIKey:  os.Getenv("IMAGEGEN_API_KEY"),
+		ImageGenModel:   envOr("IMAGEGEN_MODEL", "gpt-image-2"),
+		OpencodeURL:     os.Getenv("OPENCODE_URL"),
+		OpencodePort:    4096,
+		FlyAPIToken:     os.Getenv("FLY_API_TOKEN"),
+		FlyOrg:          envOr("FLY_ORG", "personal"),
+		FlyDeployToken:  os.Getenv("FLY_DEPLOY_TOKEN"),
+		FlySandboxApp:   os.Getenv("FLY_SANDBOX_APP"),
+		FlySandboxImage: os.Getenv("FLY_SANDBOX_IMAGE"),
 
 		StorageEndpoint:  os.Getenv("STORAGE_ENDPOINT"),
 		StorageAccessKey: os.Getenv("STORAGE_ACCESS_KEY"),
@@ -247,8 +257,15 @@ func Load() Config {
 			c.CriticLLMAPIKey = c.LLMAPIKey
 		}
 	}
+	// Image generation defaults to OpenAI on OPENAI_API_KEY.
+	if c.ImageGenAPIKey == "" {
+		c.ImageGenAPIKey = os.Getenv("OPENAI_API_KEY")
+	}
 	return c
 }
+
+// ImageGenEnabled reports whether "Generate with AI" is available.
+func (c Config) ImageGenEnabled() bool { return c.ImageGenAPIKey != "" }
 
 // DevMode reports whether the app is running fully in-memory/fake.
 func (c Config) DevMode() bool {

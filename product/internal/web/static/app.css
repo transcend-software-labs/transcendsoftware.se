@@ -548,3 +548,20 @@ label.design-option:hover { border-color: var(--accent); }
 .approve-gate .btn { margin-top: .5rem; }
 
 .content-done { color: var(--green); font-size: .8rem; font-weight: 600; }
+
+/* AI image generation on content slots. */
+.gen-create, .gen-improve { display: flex; gap: .5rem; margin-left: 1.7rem; margin-top: .5rem; flex-wrap: wrap; }
+.gen-create input[type=text], .gen-improve input[type=text] {
+  flex: 1; min-width: 10rem; padding: .5rem .6rem; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-2); border-radius: var(--radius); font-family: inherit;
+}
+.gen-btn { white-space: nowrap; }
+.gen-candidates { display: flex; gap: .6rem; margin-left: 1.7rem; flex-wrap: wrap; }
+.gen-candidate { margin: 0; }
+.gen-pick {
+  background: none; border: 1px solid var(--border-2); border-radius: var(--radius); padding: .3rem; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: .3rem; color: var(--muted); font: inherit; font-size: .78rem;
+  transition: border-color .15s var(--ease);
+}
+.gen-pick:hover { border-color: var(--accent); color: var(--accent); }
+.gen-pick img { width: 140px; height: 140px; object-fit: cover; border-radius: calc(var(--radius) - 2px); display: block; }
