@@ -485,7 +485,7 @@ label.design-option:hover { border-color: var(--accent); }
 .content-checklist li { display: grid; gap: .4rem; }
 .content-row { display: flex; align-items: center; gap: .6rem; }
 .content-kind { margin-left: .1rem; }
-.content-answer, .content-upload { display: flex; gap: .5rem; margin-left: 1.7rem; align-items: center; flex-wrap: wrap; }
+.content-answer, .content-upload { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
 .content-answer input[type=text] {
   flex: 1;
   padding: .5rem .6rem;
@@ -528,7 +528,7 @@ label.design-option:hover { border-color: var(--accent); }
 .danger-zone h2 { color: var(--red); }
 
 /* Roster: one grouped card per person — name/role/bio + their own photo. */
-.roster-form { display: grid; gap: .75rem; margin-left: 1.7rem; }
+.roster-form { display: grid; gap: .75rem; }
 .roster-member {
   border: 1px solid var(--border); border-radius: var(--radius); padding: .8rem;
   display: grid; gap: .5rem; background: var(--bg-2);
@@ -542,7 +542,7 @@ label.design-option:hover { border-color: var(--accent); }
 .roster-photo-row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; font-size: .85rem; color: var(--muted); }
 .roster-photo { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border-2); }
 .roster-photo-label { display: flex; align-items: center; gap: .4rem; }
-.slot-files { list-style: none; margin: .3rem 0 .3rem 1.7rem; padding: 0; font-size: .85rem; color: var(--muted); display: grid; gap: .2rem; }
+.slot-files { list-style: none; margin: .3rem 0; padding: 0; font-size: .85rem; color: var(--muted); display: grid; gap: .2rem; }
 .ack-later { display: flex; align-items: flex-start; gap: .5rem; font-size: .9rem; }
 .ack-later input { width: auto; margin-top: .2rem; }
 .approve-gate .btn { margin-top: .5rem; }
@@ -550,13 +550,13 @@ label.design-option:hover { border-color: var(--accent); }
 .content-done { color: var(--green); font-size: .8rem; font-weight: 600; }
 
 /* AI image generation on content slots. */
-.gen-create, .gen-improve { display: flex; gap: .5rem; margin-left: 1.7rem; margin-top: .5rem; flex-wrap: wrap; }
+.gen-create, .gen-improve { display: flex; gap: .5rem; margin-top: .5rem; flex-wrap: wrap; }
 .gen-create input[type=text], .gen-improve input[type=text] {
   flex: 1; min-width: 10rem; padding: .5rem .6rem; background: var(--surface); color: var(--text);
   border: 1px solid var(--border-2); border-radius: var(--radius); font-family: inherit;
 }
 .gen-btn { white-space: nowrap; }
-.gen-candidates { display: flex; gap: .6rem; margin-left: 1.7rem; flex-wrap: wrap; }
+.gen-candidates { display: flex; gap: .6rem; flex-wrap: wrap; }
 .gen-candidate { margin: 0; }
 .gen-pick {
   background: none; border: 1px solid var(--border-2); border-radius: var(--radius); padding: .3rem; cursor: pointer;
@@ -565,3 +565,6 @@ label.design-option:hover { border-color: var(--accent); }
 }
 .gen-pick:hover { border-color: var(--accent); color: var(--accent); }
 .gen-pick img { width: 140px; height: 140px; object-fit: cover; border-radius: calc(var(--radius) - 2px); display: block; }
+
+.gen-spark { font-weight: 700; }
+.content-checklist li { gap: .5rem; }
