@@ -11,7 +11,7 @@
   <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
   <input type="hidden" name="slot" value="{{$slug}}">
   <label class="gen-label" for="gen-prompt-{{$slug}}">{{tr $.Lang "prj.gen.prompt_label"}}</label>
-  <textarea id="gen-prompt-{{$slug}}" name="prompt" rows="4" maxlength="1000" placeholder="{{tr $.Lang "prj.gen.prompt_ph"}}">{{.Data.Prompt}}</textarea>
+  <textarea id="gen-prompt-{{$slug}}" name="prompt" rows="8" maxlength="1000" placeholder="{{tr $.Lang "prj.gen.prompt_ph"}}">{{.Data.Prompt}}</textarea>
   <button class="btn gen-btn" type="submit"><span class="gen-spark">✦</span> {{tr $.Lang "prj.gen.button"}}</button>
 </form>
 {{end}}

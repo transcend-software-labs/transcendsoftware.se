@@ -580,7 +580,7 @@ label.design-option:hover { border-color: var(--accent); }
 }
 
 .gen-modal {
-  width: min(560px, 92vw); max-height: 88vh; margin: auto; padding: 0; overflow: auto;
+  width: min(680px, 94vw); max-height: 90vh; margin: auto; padding: 0; overflow: auto;
   border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--bg-2); color: var(--text);
 }
@@ -605,6 +605,9 @@ label.design-option:hover { border-color: var(--accent); }
 .gen-spin.htmx-request { display: flex; }
 .gen-form { display: flex; flex-direction: column; gap: .6rem; }
 .gen-form textarea { width: 100%; }
+/* The seeded prompt is long — give it real height, and auto-grow to the content
+   on browsers that support field-sizing (capped so it never eats the modal). */
+.gen-form textarea[name=prompt] { min-height: 10rem; field-sizing: content; max-height: 50vh; }
 .gen-form .btn { align-self: flex-start; }
 .gen-label { font-size: .9rem; color: var(--muted); }
 .gen-error { color: var(--red); font-size: .9rem; margin: 0 0 .3rem; }
