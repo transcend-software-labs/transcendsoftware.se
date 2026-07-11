@@ -608,3 +608,31 @@ label.design-option:hover { border-color: var(--accent); }
   border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
 }
 .content-checklist li { gap: .5rem; }
+
+/* Mobile fixes for the content + AI-prompt inputs. Placed at the END of the
+   file on purpose: media queries don't add specificity, so these overrides must
+   come after the component rules (e.g. .caption-form's desktop flex) to win. */
+@media (max-width: 720px) {
+  /* 16px stops iOS Safari zooming the page when a field is focused. */
+  input, textarea, select { font-size: 16px; }
+  /* Stack input-above-button so the field gets the full width — long values and
+     AI prompts were being crushed and truncated next to the button. */
+  .content-answer, .content-upload, .caption-form, .gen-create, .gen-improve,
+  .slot-file {
+    flex-direction: column; align-items: stretch; flex-wrap: nowrap;
+  }
+  /* flex:0 0 auto so a horizontal flex-basis (e.g. .caption-form's 16rem) isn't
+     read as a huge HEIGHT once the row becomes a column. */
+  .content-answer > *, .content-upload > *, .caption-form > *,
+  .gen-create > *, .gen-improve > *,
+  .content-answer input, .content-upload input[type=file],
+  .gen-create textarea, .gen-improve textarea, .caption-form input {
+    width: 100%; min-width: 0; flex: 0 0 auto;
+  }
+  .caption-form { flex: 0 0 auto; }
+  .content-answer button, .content-upload button, .caption-form button,
+  .gen-create button, .gen-improve button { min-height: 44px; }
+  .slot-file-name { min-width: 0; }
+  .roster-member .roster-fields { flex-direction: column; }
+  .roster-member .roster-fields input { min-width: 0; }
+}
