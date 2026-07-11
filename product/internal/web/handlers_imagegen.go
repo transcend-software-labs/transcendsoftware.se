@@ -42,7 +42,16 @@ func (s *Server) genCandidates(ctx context.Context, p *project.Project, slot, pr
 		p.PendingImages = map[string]project.ImageCandidates{}
 	}
 	p.PendingImages[slot] = project.ImageCandidates{Prompt: prompt, Keys: keys}
+	p.ImageGenCount++ // each generate/improve is one paid API call; count it toward the cap
 	return s.store.UpdateProject(ctx, p)
+}
+
+// imageGenExhausted reports whether the project has hit its generation cap.
+// Each generate or improve is a real paid API call, so we bound the spend a
+// single project can incur.
+func (s *Server) imageGenExhausted(p *project.Project) bool {
+	cap := s.cfg.ImageGenMaxPerProject
+	return cap > 0 && p.ImageGenCount >= cap
 }
 
 // defaultImagePrompt seeds a generation prompt in the customer's language from
@@ -74,6 +83,10 @@ func (s *Server) handleGenerateImage(w http.ResponseWriter, r *http.Request, u *
 	c, ok := generatableSlot(p, slot)
 	if !ok || s.imagegen == nil {
 		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+		return
+	}
+	if s.imageGenExhausted(p) {
+		http.Redirect(w, r, "/projects/"+p.ID+"?genlimit=1", http.StatusSeeOther)
 		return
 	}
 	prompt := strings.TrimSpace(r.FormValue("prompt"))
@@ -141,6 +154,10 @@ func (s *Server) handleImproveImage(w http.ResponseWriter, r *http.Request, u *u
 	slot := slotID(r.FormValue("slot"))
 	if _, ok := generatableSlot(p, slot); !ok || s.imagegen == nil {
 		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+		return
+	}
+	if s.imageGenExhausted(p) {
+		http.Redirect(w, r, "/projects/"+p.ID+"?genlimit=1", http.StatusSeeOther)
 		return
 	}
 	instruction := strings.TrimSpace(r.FormValue("instruction"))

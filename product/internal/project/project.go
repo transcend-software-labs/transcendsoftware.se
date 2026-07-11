@@ -220,6 +220,7 @@ type Project struct {
 	ContentAnswers map[string]string          // text the customer typed for text-kind content slots (slug → value)
 	ContentRosters map[string][]RosterEntry   // structured people for roster-kind slots (slug → members)
 	PendingImages  map[string]ImageCandidates // AI images awaiting the customer's pick (slug → candidates)
+	ImageGenCount  int                        // AI image generations run (cost cap)
 	IterationsUsed int                        // number of build passes consumed (1..MaxIterations)
 	CreatedAt      time.Time
 	UpdatedAt      time.Time

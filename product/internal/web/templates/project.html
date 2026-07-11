@@ -79,6 +79,7 @@
 <section class="panel">
   <h2>{{$.T "prj.assets.h2"}}</h2>
   <p class="muted small">{{$.T "prj.assets.intro"}}</p>
+  {{if $.Data.GenNotice}}<p class="gen-notice small">{{$.Data.GenNotice}}</p>{{end}}
   {{if .Spec.ContentNeeded}}
   <ul class="content-checklist">
     {{$pid := .ID}}
@@ -146,7 +147,9 @@
         <button class="btn btn-sm" type="submit">{{$.T "prj.assets.upload"}}</button>
       </form>
       {{if and $.Data.ImageGen .CanGenerate}}
-        {{if index $.Data.GenSlots $slug}}
+        {{if $.Data.GenExhausted}}
+        <p class="muted small gen-exhausted">{{$.T "prj.gen.limit_note"}}</p>
+        {{else if index $.Data.GenSlots $slug}}
         <form method="post" action="/projects/{{$pid}}/content/improve" class="gen-improve">
           <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
           <input type="hidden" name="slot" value="{{$slug}}">

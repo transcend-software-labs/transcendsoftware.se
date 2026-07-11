@@ -11,6 +11,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -78,7 +79,21 @@ func newTestServerAuth(t *testing.T, cfg config.Config, notifier *recNotifier) (
 		}
 		srv.SetAuth(reg, n)
 	}
-	return httptest.NewServer(srv.Handler()), st, notifier
+	ts := httptest.NewServer(srv.Handler())
+	testStores.Store(ts.URL, st) // let sign-in helpers confirm the user's email
+	return ts, st, notifier
+}
+
+// testStores maps a running test server's URL to its backing store, so the
+// sign-in helpers can mark the freshly-signed-up account verified without
+// threading the store through every call site. (Email verification is exercised
+// on its own in the TestVerify_* tests.)
+var testStores sync.Map // base URL → store.Store
+
+func verifyTestUser(base, email string) {
+	if v, ok := testStores.Load(base); ok {
+		_ = v.(store.Store).MarkUserVerified(context.Background(), email)
+	}
 }
 
 var csrfRe = regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
@@ -112,6 +127,7 @@ func signedInClient(t *testing.T, base string) *http.Client {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("signup status = %d", resp.StatusCode)
 	}
+	verifyTestUser(base, "neighbour@example.com")
 	return c
 }
 
@@ -131,6 +147,7 @@ func signedInAdminClient(t *testing.T, base string) *http.Client {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("admin signup status = %d", resp.StatusCode)
 	}
+	verifyTestUser(base, "admin@example.com")
 	return c
 }
 
@@ -479,6 +496,88 @@ func TestMagicLink_RequestConsumeLogsIn(t *testing.T) {
 	resp.Body.Close()
 	if !strings.Contains(string(b), "invalid or has expired") {
 		t.Error("magic link should be single-use")
+	}
+}
+
+// signupRaw signs up without confirming the email (unlike signedInClient), so
+// the account stays unverified — for exercising the verification gate.
+func signupRaw(t *testing.T, base, email string) *http.Client {
+	t.Helper()
+	jar, _ := cookiejar.New(nil)
+	c := &http.Client{Jar: jar}
+	resp, err := c.PostForm(base+"/signup", url.Values{"email": {email}, "password": {"apples12345"}})
+	if err != nil {
+		t.Fatalf("signup: %v", err)
+	}
+	resp.Body.Close()
+	return c
+}
+
+func TestVerify_UnverifiedBlockedFromCreate(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+	c := signupRaw(t, srv.URL, "unverified@example.com")
+
+	// The dashboard nudges them to confirm their email.
+	dash, _ := c.Get(srv.URL + "/dashboard")
+	db, _ := io.ReadAll(dash.Body)
+	dash.Body.Close()
+	if !strings.Contains(string(db), "confirm your email") {
+		t.Error("expected the verify banner on the dashboard for an unverified user")
+	}
+
+	// Creating a project is refused until the email is confirmed.
+	tok := csrfToken(t, c, srv.URL)
+	resp, err := c.PostForm(srv.URL+"/projects", url.Values{
+		"brief": {"A brochure site for an apple farm selling juice"}, "csrf_token": {tok},
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("unverified create should be 403, got %d", resp.StatusCode)
+	}
+}
+
+func TestVerify_ConfirmLinkUnlocksCreate(t *testing.T) {
+	rec := &recNotifier{}
+	srv, st, _ := newTestServerAuth(t, config.Config{AdminEmail: "admin@example.com", BaseURL: "http://app.example"}, rec)
+	defer srv.Close()
+	c := signupRaw(t, srv.URL, "newbie@example.com")
+
+	// Signup sent a verification email carrying a /verify link.
+	if len(rec.bodies) == 0 {
+		t.Fatal("no verification email sent on signup")
+	}
+	m := regexp.MustCompile(`/verify\?token=[a-f0-9]+`).FindString(rec.bodies[len(rec.bodies)-1])
+	if m == "" {
+		t.Fatalf("no verify link in email: %q", rec.bodies)
+	}
+
+	// Follow the confirmation link → the account is now verified.
+	resp, err := c.Get(srv.URL + m)
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	resp.Body.Close()
+	u, err := st.UserByEmail(context.Background(), "newbie@example.com")
+	if err != nil || !u.Verified {
+		t.Fatalf("account should be verified after the link, got %+v (err %v)", u, err)
+	}
+
+	// And project creation now goes through to intake.
+	tok := csrfToken(t, c, srv.URL)
+	resp, err = c.PostForm(srv.URL+"/projects", url.Values{
+		"brief": {"A brochure site for an apple farm selling juice"}, "csrf_token": {tok},
+	})
+	if err != nil {
+		t.Fatalf("create after verify: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "A few quick questions") {
+		t.Fatalf("verified create should reach intake, got %d", resp.StatusCode)
 	}
 }
 

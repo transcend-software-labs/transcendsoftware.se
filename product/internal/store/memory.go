@@ -99,6 +99,17 @@ func (m *Memory) UserByID(_ context.Context, id string) (*user.User, error) {
 	return &cp, nil
 }
 
+func (m *Memory) MarkUserVerified(_ context.Context, email string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, u := range m.users {
+		if strings.EqualFold(u.Email, email) {
+			u.Verified = true
+		}
+	}
+	return nil
+}
+
 func (m *Memory) CreateSession(_ context.Context, s *user.Session) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

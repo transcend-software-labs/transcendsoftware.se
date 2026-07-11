@@ -156,6 +156,16 @@ textarea { resize: vertical; }
   animation: fadeInUp .3s var(--ease) both;
 }
 
+/* Email-verification banner: informational, not an error — uses the accent. */
+.verify-banner {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem;
+  padding: .7rem .9rem; border-radius: var(--radius); margin-bottom: 1.5rem;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  animation: fadeInUp .3s var(--ease) both;
+}
+.verify-banner .linklike { color: var(--accent); font-weight: 600; }
+
 /* Page head */
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
 
@@ -567,4 +577,10 @@ label.design-option:hover { border-color: var(--accent); }
 .gen-pick img { width: 140px; height: 140px; object-fit: cover; border-radius: calc(var(--radius) - 2px); display: block; }
 
 .gen-spark { font-weight: 700; }
+.gen-exhausted { margin-top: .5rem; font-style: italic; }
+.gen-notice {
+  margin: .25rem 0 0; padding: .55rem .75rem; border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+}
 .content-checklist li { gap: .5rem; }

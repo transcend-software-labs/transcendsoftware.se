@@ -57,7 +57,10 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	u := &user.User{ID: id.New(), Email: email, PasswordHash: hash, CreatedAt: time.Now().UTC()}
+	// Password signups start unverified — they must confirm the address before
+	// they can spend money (create a project). Social/magic-link logins prove
+	// the address inherently and are created verified elsewhere.
+	u := &user.User{ID: id.New(), Email: email, PasswordHash: hash, Verified: false, CreatedAt: time.Now().UTC()}
 	if err := s.store.CreateUser(r.Context(), u); err != nil {
 		if errors.Is(err, store.ErrEmailTaken) {
 			s.render(w, http.StatusConflict, "signup", s.authView(r, s.t(r, "signup.h1"), s.t(r, "flash.email_taken")))
@@ -66,10 +69,13 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	s.sendVerificationEmail(r.Context(), u.Email, s.lang(r))
 	if !s.startSession(w, r, u.ID) {
 		return
 	}
-	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+	// Signed in, but the dashboard shows a "confirm your email" banner and
+	// project creation stays blocked until they do.
+	http.Redirect(w, r, "/dashboard?verify_sent=1", http.StatusSeeOther)
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {

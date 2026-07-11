@@ -86,9 +86,10 @@ type Config struct {
 
 	// Image generation for content slots ("Generate with AI"). Defaults to
 	// OpenAI gpt-image-2 using OPENAI_API_KEY. Disabled when no key is set.
-	ImageGenBaseURL string
-	ImageGenAPIKey  string
-	ImageGenModel   string
+	ImageGenBaseURL       string
+	ImageGenAPIKey        string
+	ImageGenModel         string
+	ImageGenMaxPerProject int // AI generations allowed per project (each is a paid call; default 20)
 
 	// Execution plane (empty → fake driver/machines):
 	OpencodeURL     string // fixed opencode server base URL (overrides per-machine)
@@ -178,9 +179,10 @@ func Load() Config {
 		CriticEnabled:    os.Getenv("DESIGN_CRITIC") != "off",
 		CriticAutoPolish: os.Getenv("CRITIC_AUTOPOLISH") != "off",
 
-		ImageGenBaseURL: envOr("IMAGEGEN_BASE_URL", "https://api.openai.com/v1"),
-		ImageGenAPIKey:  os.Getenv("IMAGEGEN_API_KEY"),
-		ImageGenModel:   envOr("IMAGEGEN_MODEL", "gpt-image-2"),
+		ImageGenBaseURL:       envOr("IMAGEGEN_BASE_URL", "https://api.openai.com/v1"),
+		ImageGenAPIKey:        os.Getenv("IMAGEGEN_API_KEY"),
+		ImageGenModel:         envOr("IMAGEGEN_MODEL", "gpt-image-2"),
+		ImageGenMaxPerProject: envIntOr("IMAGEGEN_MAX_PER_PROJECT", 20),
 		OpencodeURL:     os.Getenv("OPENCODE_URL"),
 		OpencodePort:    4096,
 		FlyAPIToken:     os.Getenv("FLY_API_TOKEN"),

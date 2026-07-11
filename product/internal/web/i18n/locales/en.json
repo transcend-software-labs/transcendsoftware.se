@@ -32,6 +32,10 @@
   "flash.oauth_failed": "Could not sign you in with %s.",
   "flash.one_at_a_time": "One project at a time — wait for your current build to finish.",
   "flash.signup_invalid": "Enter a valid email and a password of at least 8 characters.",
+  "flash.verified": "Email confirmed — you're all set. Create your first project below.",
+  "flash.verify_invalid": "That confirmation link is invalid or has expired. Sign in and we'll send a fresh one.",
+  "flash.verify_required": "Please confirm your email address first — check your inbox for the link.",
+  "flash.verify_sent": "We've sent a confirmation link to your email. Click it to start building.",
   "flash.wrong_login": "Wrong email or password.",
   "foot.line": "Transcend Forge · © Transcend Software · by",
   "gen.prompt.business": "Business: ",
@@ -109,8 +113,10 @@
   "prj.content.save": "Save",
   "prj.gen.button": "Generate with AI",
   "prj.gen.choose": "Use this",
+  "prj.gen.failed": "Image generation didn’t work this time. Please try again.",
   "prj.gen.improve": "Improve",
   "prj.gen.improve_ph": "Describe a change, e.g. “more minimal”",
+  "prj.gen.limit_note": "You’ve reached the AI-image limit for this project. You can still upload your own images.",
   "prj.gen.pick_intro": "Pick the one you like — you can refine it after:",
   "prj.gen.prompt_ph": "Describe the image, or leave blank",
   "prj.hist.change": "Change",
@@ -173,5 +179,9 @@
   "timeline.plan": "Plan approved",
   "timeline.questions": "Questions answered",
   "timeline.review": "Rasmus reviews",
-  "title.landing": "Websites, built & guaranteed"
+  "title.landing": "Websites, built & guaranteed",
+  "verify.banner": "Please confirm your email address to start building — check your inbox for the link.",
+  "verify.email.body": "Welcome to Transcend Forge! Confirm your email address to start building your site:\n\n%s\n\nIf you didn't create this account, you can ignore this email.",
+  "verify.email.subject": "Confirm your email — Transcend Forge",
+  "verify.resend": "Resend email"
 }

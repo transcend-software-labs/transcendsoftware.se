@@ -17,6 +17,8 @@ type Store interface {
 	CreateUser(ctx context.Context, u *user.User) error
 	UserByEmail(ctx context.Context, email string) (*user.User, error)
 	UserByID(ctx context.Context, id string) (*user.User, error)
+	// MarkUserVerified confirms a password-signup account's email.
+	MarkUserVerified(ctx context.Context, email string) error
 
 	// Sessions (cookie tokens are stored hashed; see user.Session)
 	CreateSession(ctx context.Context, s *user.Session) error

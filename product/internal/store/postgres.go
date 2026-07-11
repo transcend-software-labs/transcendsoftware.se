@@ -131,8 +131,8 @@ func isUniqueViolation(err error) bool {
 
 func (p *Postgres) CreateUser(ctx context.Context, u *user.User) error {
 	_, err := p.pool.Exec(ctx,
-		`INSERT INTO users (id, email, password_hash, created_at) VALUES ($1, $2, $3, $4)`,
-		u.ID, u.Email, u.PasswordHash, u.CreatedAt)
+		`INSERT INTO users (id, email, password_hash, verified, created_at) VALUES ($1, $2, $3, $4, $5)`,
+		u.ID, u.Email, u.PasswordHash, u.Verified, u.CreatedAt)
 	if isUniqueViolation(err) {
 		return ErrEmailTaken
 	}
@@ -142,8 +142,8 @@ func (p *Postgres) CreateUser(ctx context.Context, u *user.User) error {
 func (p *Postgres) UserByEmail(ctx context.Context, email string) (*user.User, error) {
 	var u user.User
 	err := p.pool.QueryRow(ctx,
-		`SELECT id, email, password_hash, created_at FROM users WHERE lower(email) = lower($1)`, email).
-		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.CreatedAt)
+		`SELECT id, email, password_hash, verified, created_at FROM users WHERE lower(email) = lower($1)`, email).
+		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Verified, &u.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, project.ErrNotFound
 	}
@@ -156,8 +156,8 @@ func (p *Postgres) UserByEmail(ctx context.Context, email string) (*user.User, e
 func (p *Postgres) UserByID(ctx context.Context, id string) (*user.User, error) {
 	var u user.User
 	err := p.pool.QueryRow(ctx,
-		`SELECT id, email, password_hash, created_at FROM users WHERE id = $1`, id).
-		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.CreatedAt)
+		`SELECT id, email, password_hash, verified, created_at FROM users WHERE id = $1`, id).
+		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Verified, &u.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, project.ErrNotFound
 	}
@@ -165,6 +165,13 @@ func (p *Postgres) UserByID(ctx context.Context, id string) (*user.User, error) 
 		return nil, err
 	}
 	return &u, nil
+}
+
+// MarkUserVerified flips the verified flag for the account with this email.
+func (p *Postgres) MarkUserVerified(ctx context.Context, email string) error {
+	_, err := p.pool.Exec(ctx,
+		`UPDATE users SET verified = true WHERE lower(email) = lower($1)`, email)
+	return err
 }
 
 func (p *Postgres) CreateSession(ctx context.Context, s *user.Session) error {
@@ -232,13 +239,13 @@ func (p *Postgres) CreateProject(ctx context.Context, pr *project.Project) error
 		`INSERT INTO projects
 		   (id, user_id, name, brief, status, questions, design_options, design_brief,
 		    answers, plan, verdict, reject_reason, preview_url, repo_url, snapshot_key,
-		    screenshots, findings, critique, iterations_used, created_at, updated_at, plan_spec, locale, content_answers, content_rosters, pending_images)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
+		    screenshots, findings, critique, iterations_used, created_at, updated_at, plan_spec, locale, content_answers, content_rosters, pending_images, image_gen_count)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`,
 		pr.ID, pr.UserID, pr.Name, pr.Brief, pr.Status, marshalQuestions(pr.Questions),
 		marshalJSON(pr.DesignOptions), pr.DesignBrief,
 		pr.Answers, pr.Plan, pr.Verdict, pr.RejectReason, pr.PreviewURL, pr.RepoURL,
 		pr.SnapshotKey, marshalJSON(pr.Screenshots), marshalJSON(pr.Findings), pr.Critique, pr.IterationsUsed, pr.CreatedAt, pr.UpdatedAt,
-		marshalObj(pr.Spec), localeOr(pr.Locale), marshalObj(pr.ContentAnswers), marshalObj(pr.ContentRosters), marshalObj(pr.PendingImages))
+		marshalObj(pr.Spec), localeOr(pr.Locale), marshalObj(pr.ContentAnswers), marshalObj(pr.ContentRosters), marshalObj(pr.PendingImages), pr.ImageGenCount)
 	return err
 }
 
@@ -247,13 +254,13 @@ func (p *Postgres) UpdateProject(ctx context.Context, pr *project.Project) error
 		`UPDATE projects SET
 		   name=$2, brief=$3, status=$4, questions=$5, design_options=$6, design_brief=$7,
 		   answers=$8, plan=$9, verdict=$10, reject_reason=$11, preview_url=$12,
-		   repo_url=$13, snapshot_key=$14, screenshots=$15, findings=$16, critique=$17, iterations_used=$18, updated_at=$19, plan_spec=$20, locale=$21, content_answers=$22, content_rosters=$23, pending_images=$24
+		   repo_url=$13, snapshot_key=$14, screenshots=$15, findings=$16, critique=$17, iterations_used=$18, updated_at=$19, plan_spec=$20, locale=$21, content_answers=$22, content_rosters=$23, pending_images=$24, image_gen_count=$25
 		 WHERE id=$1`,
 		pr.ID, pr.Name, pr.Brief, pr.Status, marshalQuestions(pr.Questions),
 		marshalJSON(pr.DesignOptions), pr.DesignBrief, pr.Answers,
 		pr.Plan, pr.Verdict, pr.RejectReason, pr.PreviewURL, pr.RepoURL,
 		pr.SnapshotKey, marshalJSON(pr.Screenshots), marshalJSON(pr.Findings), pr.Critique, pr.IterationsUsed, pr.UpdatedAt,
-		marshalObj(pr.Spec), localeOr(pr.Locale), marshalObj(pr.ContentAnswers), marshalObj(pr.ContentRosters), marshalObj(pr.PendingImages))
+		marshalObj(pr.Spec), localeOr(pr.Locale), marshalObj(pr.ContentAnswers), marshalObj(pr.ContentRosters), marshalObj(pr.PendingImages), pr.ImageGenCount)
 	if err != nil {
 		return err
 	}
@@ -361,7 +368,7 @@ func (p *Postgres) EscalatedProjects(ctx context.Context) ([]*project.Project, e
 
 const projectColumns = `SELECT id, user_id, name, brief, status, questions, design_options, design_brief,
 	answers, plan, verdict, reject_reason, preview_url, repo_url, snapshot_key,
-	screenshots, findings, critique, iterations_used, created_at, updated_at, plan_spec, locale, content_answers, content_rosters, pending_images
+	screenshots, findings, critique, iterations_used, created_at, updated_at, plan_spec, locale, content_answers, content_rosters, pending_images, image_gen_count
 	FROM projects`
 
 // rowScanner is satisfied by both pgx.Row and pgx.Rows.
@@ -375,7 +382,7 @@ func scanProject(row rowScanner) (*project.Project, error) {
 	err := row.Scan(&pr.ID, &pr.UserID, &pr.Name, &pr.Brief, &pr.Status, &questionsJSON,
 		&designJSON, &pr.DesignBrief,
 		&pr.Answers, &pr.Plan, &pr.Verdict, &pr.RejectReason, &pr.PreviewURL, &pr.RepoURL,
-		&pr.SnapshotKey, &screenshotsJSON, &findingsJSON, &pr.Critique, &pr.IterationsUsed, &pr.CreatedAt, &pr.UpdatedAt, &specJSON, &pr.Locale, &contentJSON, &rostersJSON, &pendingJSON)
+		&pr.SnapshotKey, &screenshotsJSON, &findingsJSON, &pr.Critique, &pr.IterationsUsed, &pr.CreatedAt, &pr.UpdatedAt, &specJSON, &pr.Locale, &contentJSON, &rostersJSON, &pendingJSON, &pr.ImageGenCount)
 	if err != nil {
 		return nil, err
 	}

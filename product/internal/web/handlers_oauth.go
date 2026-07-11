@@ -34,7 +34,9 @@ func (s *Server) findOrCreateUser(r *http.Request, email string) (*user.User, er
 	if u, err := s.store.UserByEmail(r.Context(), email); err == nil {
 		return u, nil
 	}
-	u := &user.User{ID: id.New(), Email: email, CreatedAt: time.Now().UTC()}
+	// Social login and magic links both prove the address is reachable, so these
+	// accounts are created already verified.
+	u := &user.User{ID: id.New(), Email: email, Verified: true, CreatedAt: time.Now().UTC()}
 	if err := s.store.CreateUser(r.Context(), u); err != nil {
 		return nil, err
 	}

@@ -16,6 +16,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 	"github.com/transcend-software-labs/rasmus-ai/internal/stream"
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
+	"github.com/transcend-software-labs/rasmus-ai/internal/web/i18n"
 )
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request, u *user.User) {
@@ -24,7 +25,14 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request, u *user
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	s.render(w, http.StatusOK, "dashboard", s.view(r, s.t(r, "nav.dashboard"), projects))
+	v := s.view(r, s.t(r, "nav.dashboard"), projects)
+	switch {
+	case r.URL.Query().Get("verified") != "":
+		v.Flash = s.t(r, "flash.verified")
+	case r.URL.Query().Get("verify_sent") != "":
+		v.Flash = s.t(r, "flash.verify_sent")
+	}
+	s.render(w, http.StatusOK, "dashboard", v)
 }
 
 func (s *Server) handleNewProjectForm(w http.ResponseWriter, r *http.Request, _ *user.User) {
@@ -36,6 +44,14 @@ func (s *Server) handleNewProjectForm(w http.ResponseWriter, r *http.Request, _ 
 const maxBriefLen = 4000
 
 func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request, u *user.User) {
+	// Email must be confirmed before a project can be created — building spends
+	// real money, so we don't let unverified addresses trigger it.
+	if !u.Verified {
+		v := s.view(r, s.t(r, "new.h1"), nil)
+		v.Flash = s.t(r, "flash.verify_required")
+		s.render(w, http.StatusForbidden, "new_project", v)
+		return
+	}
 	brief := strings.TrimSpace(r.FormValue("brief"))
 	name := strings.TrimSpace(r.FormValue("name"))
 	if len(brief) < 10 {
@@ -171,9 +187,11 @@ type projectView struct {
 	SlotAssets  map[string][]slotAssetView  // file/files slug → its uploaded assets (presigned)
 	Candidates  map[string][]candidateImage // slot → pending AI-image candidates awaiting pick
 	MissingReq  []string                    // localized names of required, unprovided content (for the approve gate)
-	ImageGen    bool                        // "Generate with AI" is available
-	GenSlots    map[string]bool             // slug → has a chosen AI-generated image (offer "improve")
-	GenPrompts  map[string]string           // slug → the auto-seeded prompt (shown, editable)
+	ImageGen     bool              // "Generate with AI" is available
+	GenSlots     map[string]bool   // slug → has a chosen AI-generated image (offer "improve")
+	GenPrompts   map[string]string // slug → the auto-seeded prompt (shown, editable)
+	GenExhausted bool              // the project has hit its AI-generation cap
+	GenNotice    string            // localized notice for a failed/blocked generation attempt
 }
 
 // rosterMember is one team person for the template, with a presigned photo URL.
@@ -287,11 +305,21 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		}
 	}
 
+	exhausted := s.imageGenExhausted(p)
+	genNotice := ""
+	switch {
+	case r.URL.Query().Get("genlimit") != "" || (exhausted && r.URL.Query().Get("genfail") != ""):
+		genNotice = i18n.T(lang, "prj.gen.limit_note")
+	case r.URL.Query().Get("genfail") != "":
+		genNotice = i18n.T(lang, "prj.gen.failed")
+	}
+
 	s.render(w, http.StatusOK, "project", s.view(r, p.Name, projectView{
 		Project: p, Iterations: its, Assets: general,
 		Shots: s.withScreenshots(ctx, p).Shots, Status: s.statusOf(r, p),
 		FilledSlots: filled, Rosters: rosters, SlotAssets: slotAssets, Candidates: candidates,
 		MissingReq: missing, ImageGen: s.imagegen != nil, GenSlots: genSlots, GenPrompts: genPrompts,
+		GenExhausted: exhausted, GenNotice: genNotice,
 	}))
 }
 

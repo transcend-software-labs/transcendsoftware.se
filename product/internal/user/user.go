@@ -8,6 +8,7 @@ type User struct {
 	ID           string
 	Email        string
 	PasswordHash string
+	Verified     bool // email confirmed (password signups); magic-link/OAuth are inherently verified
 	CreatedAt    time.Time
 }
 

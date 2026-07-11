@@ -32,6 +32,10 @@
   "flash.oauth_failed": "Kunde inte logga in dig med %s.",
   "flash.one_at_a_time": "Ett projekt i taget — vänta tills ditt pågående bygge är klart.",
   "flash.signup_invalid": "Ange en giltig e-postadress och ett lösenord på minst 8 tecken.",
+  "flash.verified": "E-post bekräftad — nu är du redo. Skapa ditt första projekt nedan.",
+  "flash.verify_invalid": "Bekräftelselänken är ogiltig eller har gått ut. Logga in så skickar vi en ny.",
+  "flash.verify_required": "Bekräfta din e-postadress först — kolla din inkorg efter länken.",
+  "flash.verify_sent": "Vi har skickat en bekräftelselänk till din e-post. Klicka på den för att börja bygga.",
   "flash.wrong_login": "Fel e-post eller lösenord.",
   "foot.line": "Transcend Forge · © Transcend Software · av",
   "gen.prompt.business": "Verksamhet: ",
@@ -109,8 +113,10 @@
   "prj.content.save": "Spara",
   "prj.gen.button": "Skapa med AI",
   "prj.gen.choose": "Välj den här",
+  "prj.gen.failed": "Bildgenereringen fungerade inte den här gången. Försök igen.",
   "prj.gen.improve": "Förbättra",
   "prj.gen.improve_ph": "Beskriv en ändring, t.ex. “mer minimalistisk”",
+  "prj.gen.limit_note": "Du har nått gränsen för AI-bilder i det här projektet. Du kan fortfarande ladda upp egna bilder.",
   "prj.gen.pick_intro": "Välj den du gillar — du kan finjustera den sedan:",
   "prj.gen.prompt_ph": "Beskriv bilden, eller lämna tomt",
   "prj.hist.change": "Ändring",
@@ -173,5 +179,9 @@
   "timeline.plan": "Plan godkänd",
   "timeline.questions": "Frågor besvarade",
   "timeline.review": "Rasmus granskar",
-  "title.landing": "Webbplatser, byggda & garanterade"
+  "title.landing": "Webbplatser, byggda & garanterade",
+  "verify.banner": "Bekräfta din e-postadress för att börja bygga — kolla din inkorg efter länken.",
+  "verify.email.body": "Välkommen till Transcend Forge! Bekräfta din e-postadress för att börja bygga din webbplats:\n\n%s\n\nOm du inte skapade det här kontot kan du ignorera det här mejlet.",
+  "verify.email.subject": "Bekräfta din e-post — Transcend Forge",
+  "verify.resend": "Skicka igen"
 }

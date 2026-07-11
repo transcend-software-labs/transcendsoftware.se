@@ -100,6 +100,8 @@ func (s *Server) Handler() http.Handler {
 	// Passwordless + social login.
 	mux.HandleFunc("POST /auth/magic", s.handleMagicRequest)
 	mux.HandleFunc("GET /auth/magic", s.handleMagicConsume)
+	mux.HandleFunc("GET /verify", s.handleVerify)
+	mux.HandleFunc("POST /verify/resend", s.requireUser(s.handleResendVerification))
 	mux.HandleFunc("GET /auth/{provider}", s.handleOAuthStart)
 	mux.HandleFunc("GET /auth/{provider}/callback", s.handleOAuthCallback)
 
@@ -178,9 +180,10 @@ type View struct {
 	CSRF      string
 	Flash     string
 	Lang      string // resolved UI language ("en", "sv", "ru")
-	Data      any
-	Providers []oauth.Provider // social-login buttons on auth pages
-	MagicLink bool             // advertise passwordless email login
+	Data       any
+	Providers  []oauth.Provider // social-login buttons on auth pages
+	MagicLink  bool             // advertise passwordless email login
+	Unverified bool             // logged in but email not yet confirmed → show the verify banner
 }
 
 // T translates a catalog key into the view's language (templates: {{.T "nav.login"}}).
@@ -240,7 +243,8 @@ func (s *Server) t(r *http.Request, key string) string { return i18n.T(s.lang(r)
 func (s *Server) view(r *http.Request, title string, data any) View {
 	u := s.currentUser(r)
 	return View{Title: title, User: u, IsAdmin: s.isAdmin(u), CSRF: s.csrfToken(r), Lang: s.lang(r),
-		Data: data, Providers: s.oauth.Enabled(), MagicLink: s.cfg.MagicLinkEnabled}
+		Data: data, Providers: s.oauth.Enabled(), MagicLink: s.cfg.MagicLinkEnabled,
+		Unverified: u != nil && !u.Verified}
 }
 
 // authView builds a View for the login/signup pages with a flash message,
