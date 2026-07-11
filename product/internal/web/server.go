@@ -173,6 +173,17 @@ func templateFuncs() template.FuncMap {
 		"polling":       polling,
 		"pollEvery":     pollEvery,
 		"dur":           func(d time.Duration) string { return d.Round(time.Second).String() },
+		// dict builds a map so a fragment can be rendered both inline (from a page
+		// template) and standalone (from an htmx handler) with the same shape.
+		"dict": func(kv ...any) map[string]any {
+			m := make(map[string]any, len(kv)/2)
+			for i := 0; i+1 < len(kv); i += 2 {
+				if k, ok := kv[i].(string); ok {
+					m[k] = kv[i+1]
+				}
+			}
+			return m
+		},
 	}
 }
 

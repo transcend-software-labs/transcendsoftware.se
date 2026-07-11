@@ -566,14 +566,48 @@ label.design-option:hover { border-color: var(--accent); }
 
 .content-done { color: var(--green); font-size: .8rem; font-weight: 600; }
 
-/* AI image generation on content slots. */
-.gen-create, .gen-improve { display: flex; gap: .5rem; margin-top: .5rem; flex-wrap: wrap; }
-.gen-create input[type=text], .gen-create textarea, .gen-improve input[type=text], .gen-improve textarea {
-  flex: 1; min-width: 10rem; padding: .5rem .6rem; background: var(--surface); color: var(--text);
-  border: 1px solid var(--border-2); border-radius: var(--radius); font-family: inherit;
+/* AI image generation: a "Create with AI" option beside upload, opening a modal. */
+.content-actions { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: .5rem; }
+.gen-open {
+  background: transparent; color: var(--accent);
+  border: 1px solid var(--accent); box-shadow: none; white-space: nowrap;
 }
+.gen-open:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); filter: none; }
+
+.gen-modal {
+  width: min(560px, 92vw); max-height: 88vh; margin: auto; padding: 0; overflow: auto;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg-2); color: var(--text);
+}
+.gen-modal::backdrop { background: rgba(0,0,0,.6); }
+.gen-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 1rem 1.2rem; border-bottom: 1px solid var(--border);
+}
+.gen-modal-head h3 { margin: 0; }
+.gen-modal-x {
+  background: none; border: none; color: var(--muted); cursor: pointer;
+  font-size: 1.15rem; line-height: 1; padding: .2rem .4rem; width: auto;
+}
+.gen-modal-x:hover { color: var(--text); }
+.gen-modal-content { position: relative; padding: 1.2rem; }
+.gen-modal-body { min-height: 4rem; }
+.gen-spin {
+  display: none; position: absolute; inset: 0; z-index: 3;
+  align-items: center; justify-content: center; gap: .6rem; color: var(--muted);
+  background: color-mix(in srgb, var(--bg-2) 88%, transparent);
+}
+.gen-spin.htmx-request { display: flex; }
+.gen-form { display: flex; flex-direction: column; gap: .6rem; }
+.gen-form textarea { width: 100%; }
+.gen-form .btn { align-self: flex-start; }
+.gen-label { font-size: .9rem; color: var(--muted); }
+.gen-error { color: var(--red); font-size: .9rem; margin: 0 0 .3rem; }
+.gen-again { margin-top: 1.1rem; border-top: 1px solid var(--border); padding-top: .8rem; }
+.gen-again summary { cursor: pointer; color: var(--muted); font-size: .85rem; }
+.gen-again[open] summary { margin-bottom: .7rem; }
 .gen-btn { white-space: nowrap; }
-.gen-candidates { display: flex; gap: .6rem; flex-wrap: wrap; }
+.gen-candidates { display: flex; gap: .6rem; flex-wrap: wrap; justify-content: center; }
 .gen-candidate { margin: 0; }
 .gen-pick {
   background: none; border: 1px solid var(--border-2); border-radius: var(--radius); padding: .3rem; cursor: pointer;
@@ -615,23 +649,21 @@ label.design-option:hover { border-color: var(--accent); }
 @media (max-width: 720px) {
   /* 16px stops iOS Safari zooming the page when a field is focused. */
   input, textarea, select { font-size: 16px; }
-  /* Stack input-above-button so the field gets the full width — long values and
-     AI prompts were being crushed and truncated next to the button. */
-  .content-answer, .content-upload, .caption-form, .gen-create, .gen-improve,
-  .slot-file {
+  /* Stack input-above-button so the field gets the full width — long values were
+     being crushed and truncated next to the button. */
+  .content-answer, .content-upload, .caption-form, .slot-file, .content-actions {
     flex-direction: column; align-items: stretch; flex-wrap: nowrap;
   }
   /* flex:0 0 auto so a horizontal flex-basis (e.g. .caption-form's 16rem) isn't
      read as a huge HEIGHT once the row becomes a column. */
-  .content-answer > *, .content-upload > *, .caption-form > *,
-  .gen-create > *, .gen-improve > *,
-  .content-answer input, .content-upload input[type=file],
-  .gen-create textarea, .gen-improve textarea, .caption-form input {
+  .content-answer > *, .content-upload > *, .caption-form > *, .content-actions > *,
+  .content-answer input, .content-upload input[type=file], .caption-form input {
     width: 100%; min-width: 0; flex: 0 0 auto;
   }
   .caption-form { flex: 0 0 auto; }
   .content-answer button, .content-upload button, .caption-form button,
-  .gen-create button, .gen-improve button { min-height: 44px; }
+  .gen-open, .gen-form .btn { min-height: 44px; }
+  .gen-form .btn { align-self: stretch; }
   .slot-file-name { min-width: 0; }
   .roster-member .roster-fields { flex-direction: column; }
   .roster-member .roster-fields input { min-width: 0; }

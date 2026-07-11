@@ -1,0 +1,49 @@
+{{/* AI image-generation modal fragments. Rendered inline (initial dialog body,
+     from project.html via {{template}}) AND standalone by the htmx handlers on
+     generate/improve — same shape either way, via the `dict` helper. `$` is
+     {Lang, CSRF, Data:{PID, Slug, Prompt, Err, Candidates}}. */}}
+
+{{define "gen_prompt"}}
+{{- $pid := .Data.PID}}{{$slug := .Data.Slug}}
+{{if .Data.Err}}<p class="gen-error">{{.Data.Err}}</p>{{end}}
+<form hx-post="/projects/{{$pid}}/content/generate" hx-target="#gen-body-{{$slug}}" hx-swap="innerHTML"
+      hx-indicator="#gen-spin-{{$slug}}" hx-disabled-elt="find button" class="gen-form">
+  <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+  <input type="hidden" name="slot" value="{{$slug}}">
+  <label class="gen-label" for="gen-prompt-{{$slug}}">{{tr $.Lang "prj.gen.prompt_label"}}</label>
+  <textarea id="gen-prompt-{{$slug}}" name="prompt" rows="4" maxlength="1000" placeholder="{{tr $.Lang "prj.gen.prompt_ph"}}">{{.Data.Prompt}}</textarea>
+  <button class="btn gen-btn" type="submit"><span class="gen-spark">✦</span> {{tr $.Lang "prj.gen.button"}}</button>
+</form>
+{{end}}
+
+{{define "gen_improve"}}
+{{- $pid := .Data.PID}}{{$slug := .Data.Slug}}
+{{if .Data.Err}}<p class="gen-error">{{.Data.Err}}</p>{{end}}
+<form hx-post="/projects/{{$pid}}/content/improve" hx-target="#gen-body-{{$slug}}" hx-swap="innerHTML"
+      hx-indicator="#gen-spin-{{$slug}}" hx-disabled-elt="find button" class="gen-form">
+  <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+  <input type="hidden" name="slot" value="{{$slug}}">
+  <label class="gen-label" for="gen-instr-{{$slug}}">{{tr $.Lang "prj.gen.improve_label"}}</label>
+  <textarea id="gen-instr-{{$slug}}" name="instruction" rows="3" maxlength="1000" required placeholder="{{tr $.Lang "prj.gen.improve_ph"}}"></textarea>
+  <button class="btn gen-btn" type="submit"><span class="gen-spark">✦</span> {{tr $.Lang "prj.gen.improve"}}</button>
+</form>
+{{end}}
+
+{{define "gen_candidates"}}
+{{- $pid := .Data.PID}}{{$slug := .Data.Slug}}
+<p class="muted small gen-pick-intro">{{tr $.Lang "prj.gen.pick_intro"}}</p>
+<div class="gen-candidates">
+  {{range .Data.Candidates}}
+  <form hx-post="/projects/{{$pid}}/content/pick" hx-swap="none" class="gen-candidate">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <input type="hidden" name="slot" value="{{$slug}}">
+    <input type="hidden" name="index" value="{{.Index}}">
+    <button type="submit" class="gen-pick"><img src="{{.URL}}" alt="" loading="lazy"><span>{{tr $.Lang "prj.gen.choose"}}</span></button>
+  </form>
+  {{end}}
+</div>
+<details class="gen-again">
+  <summary>{{tr $.Lang "prj.gen.again"}}</summary>
+  {{template "gen_prompt" .}}
+</details>
+{{end}}

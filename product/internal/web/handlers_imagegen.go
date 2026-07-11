@@ -54,6 +54,36 @@ func (s *Server) imageGenExhausted(p *project.Project) bool {
 	return cap > 0 && p.ImageGenCount >= cap
 }
 
+// slotCandidates presigns a slot's pending AI images for display in the modal.
+func (s *Server) slotCandidates(ctx context.Context, p *project.Project, slot string) []candidateImage {
+	set, ok := p.PendingImages[slot]
+	if !ok {
+		return nil
+	}
+	out := make([]candidateImage, 0, len(set.Keys))
+	for i, k := range set.Keys {
+		if u, err := s.storage.PresignGet(ctx, k, 30*time.Minute); err == nil {
+			out = append(out, candidateImage{Index: i, URL: u})
+		}
+	}
+	return out
+}
+
+// renderGen renders one of the AI-modal fragments (gen_prompt / gen_improve /
+// gen_candidates) for an htmx swap. data is the fragment's ".Data"; Lang/CSRF
+// are supplied so the fragment can translate and post safely.
+func (s *Server) renderGen(w http.ResponseWriter, r *http.Request, name string, data map[string]any) {
+	full := map[string]any{"Lang": s.lang(r), "CSRF": s.csrfToken(r), "Data": data}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.tmpl.ExecuteTemplate(w, name, full); err != nil {
+		s.log.Error("render gen fragment", "err", err)
+	}
+}
+
+// isHTMX reports whether the request came from htmx (an in-page swap) rather
+// than a full navigation, so handlers can return a fragment instead of a redirect.
+func isHTMX(r *http.Request) bool { return r.Header.Get("HX-Request") == "true" }
+
 // defaultImagePrompt seeds a generation prompt in the customer's language from
 // the plan's design direction and the slot's purpose, so the customer sees a
 // ready prompt they can edit. gpt-image handles non-English prompts fine.
@@ -79,30 +109,43 @@ func (s *Server) handleGenerateImage(w http.ResponseWriter, r *http.Request, u *
 	if !ok {
 		return
 	}
+	lang := s.lang(r)
 	slot := slotID(r.FormValue("slot"))
 	c, ok := generatableSlot(p, slot)
 	if !ok || s.imagegen == nil {
 		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 		return
 	}
-	if s.imageGenExhausted(p) {
-		http.Redirect(w, r, "/projects/"+p.ID+"?genlimit=1", http.StatusSeeOther)
-		return
-	}
 	prompt := strings.TrimSpace(r.FormValue("prompt"))
 	if prompt == "" {
-		prompt = defaultImagePrompt(p, c, s.lang(r))
+		prompt = defaultImagePrompt(p, c, lang)
 	} else if len(prompt) > 1000 {
 		prompt = prompt[:1000]
+	}
+	if s.imageGenExhausted(p) {
+		if isHTMX(r) {
+			s.renderGen(w, r, "gen_prompt", map[string]any{"PID": p.ID, "Slug": slot, "Prompt": prompt, "Err": i18n.T(lang, "prj.gen.limit_note")})
+			return
+		}
+		http.Redirect(w, r, "/projects/"+p.ID+"?genlimit=1", http.StatusSeeOther)
+		return
 	}
 	pngs, err := s.imagegen.Generate(r.Context(), prompt, 3)
 	if err != nil {
 		s.log.Error("imagegen generate", "err", err)
+		if isHTMX(r) {
+			s.renderGen(w, r, "gen_prompt", map[string]any{"PID": p.ID, "Slug": slot, "Prompt": prompt, "Err": i18n.T(lang, "prj.gen.failed")})
+			return
+		}
 		http.Redirect(w, r, "/projects/"+p.ID+"?genfail=1", http.StatusSeeOther)
 		return
 	}
 	if err := s.genCandidates(r.Context(), p, slot, prompt, pngs); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if isHTMX(r) {
+		s.renderGen(w, r, "gen_candidates", map[string]any{"PID": p.ID, "Slug": slot, "Prompt": prompt, "Candidates": s.slotCandidates(r.Context(), p, slot)})
 		return
 	}
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
@@ -142,6 +185,13 @@ func (s *Server) handlePickImage(w http.ResponseWriter, r *http.Request, u *user
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	// From the modal (htmx): tell the client to reload so the chosen image shows
+	// in the slot and the dialog goes away. Full-nav fallback redirects.
+	if isHTMX(r) {
+		w.Header().Set("HX-Redirect", "/projects/"+p.ID)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 }
 
@@ -152,12 +202,24 @@ func (s *Server) handleImproveImage(w http.ResponseWriter, r *http.Request, u *u
 	if !ok {
 		return
 	}
+	lang := s.lang(r)
 	slot := slotID(r.FormValue("slot"))
 	if _, ok := generatableSlot(p, slot); !ok || s.imagegen == nil {
 		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 		return
 	}
+	improveErr := func(key string) {
+		if isHTMX(r) {
+			s.renderGen(w, r, "gen_improve", map[string]any{"PID": p.ID, "Slug": slot, "Err": i18n.T(lang, key)})
+			return
+		}
+		http.Redirect(w, r, "/projects/"+p.ID+"?genfail=1", http.StatusSeeOther)
+	}
 	if s.imageGenExhausted(p) {
+		if isHTMX(r) {
+			s.renderGen(w, r, "gen_improve", map[string]any{"PID": p.ID, "Slug": slot, "Err": i18n.T(lang, "prj.gen.limit_note")})
+			return
+		}
 		http.Redirect(w, r, "/projects/"+p.ID+"?genlimit=1", http.StatusSeeOther)
 		return
 	}
@@ -182,7 +244,7 @@ func (s *Server) handleImproveImage(w http.ResponseWriter, r *http.Request, u *u
 		}
 	}
 	if srcKey == "" {
-		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+		improveErr("prj.gen.failed")
 		return
 	}
 	src, err := s.storage.Get(r.Context(), srcKey)
@@ -193,11 +255,15 @@ func (s *Server) handleImproveImage(w http.ResponseWriter, r *http.Request, u *u
 	pngs, err := s.imagegen.Edit(r.Context(), src, instruction, 3)
 	if err != nil {
 		s.log.Error("imagegen edit", "err", err)
-		http.Redirect(w, r, "/projects/"+p.ID+"?genfail=1", http.StatusSeeOther)
+		improveErr("prj.gen.failed")
 		return
 	}
 	if err := s.genCandidates(r.Context(), p, slot, instruction, pngs); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if isHTMX(r) {
+		s.renderGen(w, r, "gen_candidates", map[string]any{"PID": p.ID, "Slug": slot, "Prompt": instruction, "Candidates": s.slotCandidates(r.Context(), p, slot)})
 		return
 	}
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)

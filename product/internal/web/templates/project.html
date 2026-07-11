@@ -130,21 +130,6 @@
         <button class="btn btn-sm" type="submit">{{$.T "prj.content.save"}}</button>
       </form>
       {{else}}
-      {{$cands := index $.Data.Candidates $slug}}
-      {{if $cands}}
-      {{/* Pending AI candidates — pick one. */}}
-      <p class="muted small">{{$.T "prj.gen.pick_intro"}}</p>
-      <div class="gen-candidates">
-        {{range $cands}}
-        <form method="post" action="/projects/{{$pid}}/content/pick" class="gen-candidate">
-          <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-          <input type="hidden" name="slot" value="{{$slug}}">
-          <input type="hidden" name="index" value="{{.Index}}">
-          <button type="submit" class="gen-pick"><img src="{{.URL}}" alt="" loading="lazy"><span>{{$.T "prj.gen.choose"}}</span></button>
-        </form>
-        {{end}}
-      </div>
-      {{else}}
       {{with index $.Data.SlotAssets $slug}}
       <ul class="slot-files">
         {{range .}}
@@ -162,32 +147,41 @@
       </ul>
       {{end}}
       {{if .IsFiles}}<p class="muted small files-hint">{{$.T "prj.files.label_hint"}}</p>{{end}}
-      <form method="post" action="/projects/{{$pid}}/assets" enctype="multipart/form-data" class="content-upload">
-        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-        <input type="hidden" name="slot" value="{{$slug}}">
-        <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf"{{if .IsFiles}} multiple{{end}} required>
-        <button class="btn btn-sm" type="submit">{{$.T "prj.assets.upload"}}</button>
-      </form>
-      {{if and $.Data.ImageGen .CanGenerate}}
-        {{if $.Data.GenExhausted}}
-        <p class="muted small gen-exhausted">{{$.T "prj.gen.limit_note"}}</p>
-        {{else if index $.Data.GenSlots $slug}}
-        <form method="post" action="/projects/{{$pid}}/content/improve" class="gen-improve">
+      <div class="content-actions">
+        <form method="post" action="/projects/{{$pid}}/assets" enctype="multipart/form-data" class="content-upload">
           <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
           <input type="hidden" name="slot" value="{{$slug}}">
-          <textarea name="instruction" rows="2" maxlength="1000" required placeholder="{{$.T "prj.gen.improve_ph"}}"></textarea>
-          <button class="btn btn-sm" type="submit">{{$.T "prj.gen.improve"}}</button>
+          <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf"{{if .IsFiles}} multiple{{end}} required>
+          <button class="btn btn-sm" type="submit">{{$.T "prj.assets.upload"}}</button>
         </form>
-        {{else}}
-        <form method="post" action="/projects/{{$pid}}/content/generate" class="gen-create">
-          <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-          <input type="hidden" name="slot" value="{{$slug}}">
-          <textarea name="prompt" rows="2" maxlength="1000" placeholder="{{$.T "prj.gen.prompt_ph"}}">{{index $.Data.GenPrompts $slug}}</textarea>
-          <button class="btn btn-sm gen-btn" type="submit"><span class="gen-spark">✦</span> {{$.T "prj.gen.button"}}</button>
-        </form>
+        {{if and $.Data.ImageGen .CanGenerate}}
+          {{if $.Data.GenExhausted}}
+          <p class="muted small gen-exhausted">{{$.T "prj.gen.limit_note"}}</p>
+          {{else}}
+          {{$cands := index $.Data.Candidates $slug}}
+          {{$chosen := index $.Data.GenSlots $slug}}
+          <button type="button" class="btn btn-sm gen-open" onclick="document.getElementById('genm-{{$slug}}').showModal()"><span class="gen-spark">✦</span> {{if $cands}}{{$.T "prj.gen.review"}}{{else if $chosen}}{{$.T "prj.gen.refine"}}{{else}}{{$.T "prj.gen.button"}}{{end}}</button>
+          <dialog id="genm-{{$slug}}" class="gen-modal">
+            <div class="gen-modal-head">
+              <h3>{{$.T "prj.gen.modal_title"}}</h3>
+              <button type="button" class="gen-modal-x" onclick="this.closest('dialog').close()" aria-label="{{$.T "prj.gen.close"}}">✕</button>
+            </div>
+            <div class="gen-modal-content">
+              <div class="gen-spin" id="gen-spin-{{$slug}}"><span class="spinner"></span> {{$.T "prj.gen.loading"}}</div>
+              <div id="gen-body-{{$slug}}" class="gen-modal-body">
+                {{if $cands}}
+                  {{template "gen_candidates" (dict "Lang" $.Lang "CSRF" $.CSRF "Data" (dict "PID" $pid "Slug" $slug "Prompt" (index $.Data.GenPrompts $slug) "Candidates" $cands))}}
+                {{else if $chosen}}
+                  {{template "gen_improve" (dict "Lang" $.Lang "CSRF" $.CSRF "Data" (dict "PID" $pid "Slug" $slug))}}
+                {{else}}
+                  {{template "gen_prompt" (dict "Lang" $.Lang "CSRF" $.CSRF "Data" (dict "PID" $pid "Slug" $slug "Prompt" (index $.Data.GenPrompts $slug)))}}
+                {{end}}
+              </div>
+            </div>
+          </dialog>
+          {{end}}
         {{end}}
-      {{end}}
-      {{end}}
+      </div>
       {{end}}
     </li>
     {{end}}
