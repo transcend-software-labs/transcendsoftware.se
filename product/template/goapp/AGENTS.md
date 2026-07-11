@@ -227,6 +227,18 @@ Forge-specific rules layered on top of it.
   all of these. Fix what it flags in the CSS and re-run until it prints `clean`.
   Do NOT edit `audit.js`.
 
+- **Visual design review — see your own work before deploy.** audit.js is a
+  linter; this is a pair of eyes. With the app still running:
+
+      node scripts/design-review.js
+
+  It screenshots your pages and a design director (a vision model) critiques the
+  real rendered look — hierarchy, balance, whether it reads as intentionally
+  designed or generic — judgments a linter can't make. If it says `POLISH`, apply
+  the concrete fixes it lists (CSS/templates) and run it again; do at most two
+  polish passes, then stop. If it prints that it's skipping (no vision model),
+  just rely on audit.js. Do NOT edit `design-review.js`.
+
 ## Build, test, deploy
 
     make run        # local dev on :8080

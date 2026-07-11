@@ -600,8 +600,20 @@ Grotesk or Inter, all-caps body text) — NOT optional polish — so do NOT depl
 with unresolved findings; keep fixing and re-running. The bar is a clean report.
 Only leave a finding if it directly conflicts with the customer's explicit stated
 design choice (then note why), or if after a few honest attempts that one specific
-finding genuinely will not clear. Run fly deploy only once audit.js is clean (or
-down to such a noted exception).`
+finding genuinely will not clear.
+
+Then SEE your own work: with the app still running locally, run
+  node scripts/design-review.js
+It screenshots your pages and a design director (a vision model) critiques the
+REAL rendered look — hierarchy, balance, whether it reads as intentionally
+designed or generic — things a linter can't judge. If it replies POLISH, apply
+the concrete fixes it lists (edit CSS/templates, not the plan), then run it again
+to confirm. Do at most TWO polish passes: land the clear wins, then stop — don't
+chase subjective nitpicks. If it can't run (prints that it's skipping), just rely
+on audit.js. Treat SHIP as the goal.
+
+Run fly deploy only once audit.js is clean (or down to such a noted exception)
+and you've done the visual review.`
 
 // resumePreamble tells the agent the workspace holds an interrupted build's
 // progress: finish and deploy, don't redo completed work.

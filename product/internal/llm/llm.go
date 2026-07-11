@@ -278,6 +278,12 @@ site is dead, and curl will NOT catch it):
     node scripts/audit.js
   It catches contrast/design defects that only exist in the composed page — the
   #1 thing that ships broken. Fix what it flags and re-run until it is clean.
+- Then SEE your work — screenshot your pages and get a design director's eyes on
+  the real rendered look (things a linter can't judge — hierarchy, balance,
+  designed-vs-generic):
+    node scripts/design-review.js
+  If it says POLISH, apply the fixes it lists (CSS/templates) and re-run; at most
+  two polish passes. If it prints that it's skipping, rely on audit.js.
 - In that real browser, walk through EVERY path a visitor actually uses: sign
   up, log in, log out, and each core feature — submit each form, click each
   primary button ONCE, and assert the RESULT page/state actually appears on the
