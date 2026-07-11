@@ -157,7 +157,7 @@
         <form method="post" action="/projects/{{$pid}}/content/generate" class="gen-create">
           <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
           <input type="hidden" name="slot" value="{{$slug}}">
-          <input type="text" name="prompt" maxlength="1000" placeholder="{{$.T "prj.gen.prompt_ph"}}">
+          <textarea name="prompt" rows="2" maxlength="1000" placeholder="{{$.T "prj.gen.prompt_ph"}}">{{index $.Data.GenPrompts $slug}}</textarea>
           <button class="btn btn-sm gen-btn" type="submit"><span class="gen-spark">✦</span> {{$.T "prj.gen.button"}}</button>
         </form>
         {{end}}

@@ -173,6 +173,7 @@ type projectView struct {
 	MissingReq  []string                    // localized names of required, unprovided content (for the approve gate)
 	ImageGen    bool                        // "Generate with AI" is available
 	GenSlots    map[string]bool             // slug → has a chosen AI-generated image (offer "improve")
+	GenPrompts  map[string]string           // slug → the auto-seeded prompt (shown, editable)
 }
 
 // rosterMember is one team person for the template, with a presigned photo URL.
@@ -276,9 +277,13 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 	// gate so they consciously choose "provide now" or "build with placeholders".
 	lang := s.lang(r)
 	var missing []string
+	genPrompts := map[string]string{}
 	for _, c := range p.Spec.ContentNeeded {
 		if c.Required && !filled[c.Slug] {
 			missing = append(missing, c.Name(lang))
+		}
+		if s.imagegen != nil && c.CanGenerate() {
+			genPrompts[c.Slug] = defaultImagePrompt(p, c) // shown pre-filled, editable
 		}
 	}
 
@@ -286,7 +291,7 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		Project: p, Iterations: its, Assets: general,
 		Shots: s.withScreenshots(ctx, p).Shots, Status: s.statusOf(r, p),
 		FilledSlots: filled, Rosters: rosters, SlotAssets: slotAssets, Candidates: candidates,
-		MissingReq: missing, ImageGen: s.imagegen != nil, GenSlots: genSlots,
+		MissingReq: missing, ImageGen: s.imagegen != nil, GenSlots: genSlots, GenPrompts: genPrompts,
 	}))
 }
 
