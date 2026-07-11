@@ -131,6 +131,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /projects/{id}/subscribe", s.requireUser(s.handleSubscribe))
 	mux.HandleFunc("POST /projects/{id}/billing", s.requireUser(s.handleBillingPortal))
 
+	// Custom domains (invisible until Cloudflare is wired; guarded per-handler).
+	mux.HandleFunc("GET /projects/{id}/domain/search", s.requireUser(s.handleDomainSearch))
+	mux.HandleFunc("POST /projects/{id}/domain/attach", s.requireUser(s.handleDomainAttach))
+	mux.HandleFunc("POST /projects/{id}/domain/verify", s.requireUser(s.handleDomainVerify))
+	mux.HandleFunc("POST /projects/{id}/domain/buy", s.requireUser(s.handleDomainBuy))
+	mux.HandleFunc("POST /projects/{id}/domain/detach", s.requireUser(s.handleDomainDetach))
+
 	// Stripe webhook — no session/CSRF (Stripe can't have either; the signature
 	// is the authentication). Bare handler like the magic-link route.
 	mux.HandleFunc("POST /webhooks/stripe", limitBody(1<<20, s.handleStripeWebhook))
@@ -148,6 +155,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /admin/projects/{id}/mark-paid", s.requireAdmin(s.handleAdminMarkPaid))
 	mux.HandleFunc("POST /admin/projects/{id}/mark-unpaid", s.requireAdmin(s.handleAdminMarkUnpaid))
 	mux.HandleFunc("POST /admin/projects/{id}/return", s.requireAdmin(s.handleAdminReturn))
+	mux.HandleFunc("POST /admin/projects/{id}/domain/detach", s.requireAdmin(s.handleAdminDomainDetach))
 
 	return logRequests(s.log, langSelector(mux))
 }

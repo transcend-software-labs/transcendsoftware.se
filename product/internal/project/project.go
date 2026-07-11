@@ -48,6 +48,35 @@ const (
 	VerdictEscalate Verdict = "escalate" // ambiguous — route to a human (Rasmus)
 )
 
+// DomainStatus is the lifecycle of a project's custom domain (see
+// internal/orchestrator/domains.go). The zero value means no domain.
+type DomainStatus string
+
+const (
+	DomainNone        DomainStatus = ""            // no domain attached
+	DomainRegistering DomainStatus = "registering" // Cloudflare is registering a purchased domain (async)
+	DomainPendingDNS  DomainStatus = "pending_dns" // BYOD: awaiting the customer's DNS records
+	DomainVerifying   DomainStatus = "verifying"   // DNS seen; Fly is issuing the certificate
+	DomainActive      DomainStatus = "active"      // certificate issued, domain serving
+	DomainFailed      DomainStatus = "failed"      // registration/verification gave up (operator alerted)
+)
+
+// Domain kinds: a customer's own domain vs one bought in-app via Cloudflare.
+const (
+	DomainKindBYOD      = "byod"
+	DomainKindPurchased = "purchased"
+)
+
+// DomainRecord is one DNS record shown in the domain panel — the customer sets
+// it (BYOD) or we set it automatically (purchased). Note is a short per-record
+// hint. Every record we create in Cloudflare is proxied:false.
+type DomainRecord struct {
+	Type  string `json:"type"`  // A | AAAA | CNAME | TXT
+	Name  string `json:"name"`  // host, e.g. "@", "www", "_acme-challenge"
+	Value string `json:"value"` // target/content
+	Note  string `json:"note,omitempty"`
+}
+
 // DesignOption is one suggested visual direction from the intake step. The
 // customer picks one — or states their own preference — before building.
 type DesignOption struct {
@@ -228,8 +257,20 @@ type Project struct {
 	StripeCustomerID string                     // Stripe customer, set when Checkout completes (for the billing portal)
 	StripeSubID      string                     // Stripe subscription; the webhook matches lifecycle events back to the project through it
 	ContentPending   bool                       // content was added/changed since the last build — offer a rebuild to apply it
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+
+	// Custom domain (see internal/orchestrator/domains.go). Zero value = none.
+	DomainName       string         // the attached/purchased hostname, e.g. "acme.se"
+	DomainStatus     DomainStatus   // lifecycle of the domain
+	DomainKind       string         // "byod" | "purchased"
+	DomainZoneID     string         // Cloudflare zone id (purchased domains)
+	DomainIPv6       string         // dedicated apex IPv6 on the Fly app (allocate-once guard)
+	DomainSubItemID  string         // Stripe subscription-item id for the monthly add-on
+	DomainRecords    []DomainRecord // DNS records to show the customer (cached from the cert requirements)
+	DomainCreatedAt  time.Time      // when the domain flow started (stuck-timeout clock)
+	DomainVerifiedAt time.Time      // when it went active (guards one-time emails/billing)
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // EffectiveBrief is the brief enriched with the customer's clarifying answers
@@ -287,6 +328,15 @@ var TimelineSteps = []string{"brief", "questions", "plan", "building", "review",
 // send it to Rasmus for final review.
 func (p *Project) CanAccept() bool {
 	return p.Status == StatusPreviewReady
+}
+
+// HasDomain reports whether a domain flow is under way or complete.
+func (p *Project) HasDomain() bool { return p.DomainStatus != DomainNone }
+
+// CanAttachDomain reports whether the customer may start attaching or buying a
+// domain: they've paid, a preview exists, and no domain is attached yet.
+func (p *Project) CanAttachDomain() bool {
+	return p.Paid && p.PreviewURL != "" && p.DomainStatus == DomainNone
 }
 
 // CanRetry reports whether a failed build can be retried. A build only reaches

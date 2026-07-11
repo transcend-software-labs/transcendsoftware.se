@@ -41,6 +41,9 @@ type Store interface {
 	ProjectsByUser(ctx context.Context, userID string) ([]*project.Project, error)
 	// EscalatedProjects returns projects awaiting operator review, newest first.
 	EscalatedProjects(ctx context.Context) ([]*project.Project, error)
+	// PendingDomainProjects returns projects whose domain is still in flight
+	// (registering / pending_dns / verifying), for the reconcile poller.
+	PendingDomainProjects(ctx context.Context) ([]*project.Project, error)
 	// Projects returns every project, newest first (reaper + operator views;
 	// fine at current scale, paginate before it isn't).
 	Projects(ctx context.Context) ([]*project.Project, error)

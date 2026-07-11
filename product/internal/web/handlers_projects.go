@@ -197,6 +197,16 @@ type projectView struct {
 	SubActive     bool   // paid via stripe — show "active" + manage-subscription
 	SubProcessing bool   // returned from Checkout success while the webhook is still in flight
 	PriceStr      string // formatted plan price ("99 kr"), "" if unavailable
+
+	// Custom domain panel (see handlers_domains.go). Visible only to paying
+	// customers when the feature is wired.
+	ShowDomain    bool                   // the domain panel is visible
+	DomainBuyable bool                   // buying a domain in-app is available
+	DomainStatus  string                 // "" | registering | pending_dns | verifying | active | failed
+	DomainName    string                 // the attached/purchased hostname
+	DomainKind    string                 // "byod" | "purchased"
+	DomainRecords []project.DomainRecord // DNS records to show (pending_dns/verifying)
+	DomainMaxUSD  int                    // self-serve price cap, for the buy copy
 }
 
 // rosterMember is one team person for the template, with a presigned photo URL.
@@ -340,6 +350,17 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 			}
 		}
 	}
+	// Domain panel: paying customers only, when the feature is wired. Everything
+	// it renders comes from the cached project fields — no live API call here.
+	if s.orch.DomainsEnabled() && p.Paid {
+		pv.ShowDomain = true
+		pv.DomainBuyable = s.orch.DomainBuyEnabled()
+		pv.DomainStatus = string(p.DomainStatus)
+		pv.DomainName = p.DomainName
+		pv.DomainKind = p.DomainKind
+		pv.DomainRecords = p.DomainRecords
+		pv.DomainMaxUSD = int(s.orch.MaxDomainUSD())
+	}
 	v := s.view(r, p.Name, pv)
 	switch sub {
 	case "success":
@@ -349,7 +370,32 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 	case "error":
 		v.Flash = i18n.T(lang, "flash.sub_error")
 	}
+	if code := r.URL.Query().Get("domain"); code != "" {
+		v.Flash = i18n.T(lang, domainFlashKey(code))
+	}
 	s.render(w, http.StatusOK, "project", v)
+}
+
+// domainFlashKey maps a ?domain=<code> redirect param to an i18n flash key.
+func domainFlashKey(code string) string {
+	switch code {
+	case "attached":
+		return "flash.domain_attached"
+	case "buying":
+		return "flash.domain_buying"
+	case "checking":
+		return "flash.domain_checking"
+	case "invalid":
+		return "flash.domain_invalid"
+	case "toopricey":
+		return "flash.domain_toopricey"
+	case "unavailable":
+		return "flash.domain_unavailable"
+	case "exists":
+		return "flash.domain_exists"
+	default:
+		return "flash.domain_error"
+	}
 }
 
 // formatPrice renders a Stripe unit amount (minor units) for display, e.g.

@@ -64,6 +64,13 @@ type Orchestrator struct {
 	active        map[string]bool // projects with an in-flight pipeline goroutine in THIS process
 
 	activity *activity.Tracker // debounced per-project build activity for the customer status line
+
+	// Custom domains (see domains.go). All nil/zero until SetDomains wires
+	// Cloudflare — the feature stays invisible and inert without it.
+	domains       DomainRegistrar // Cloudflare registrar + DNS (nil → disabled)
+	biller        domainBiller    // Stripe sub-items for the monthly add-on (nil → comped)
+	domainPriceID string          // Stripe recurring price for the domain add-on
+	maxDomainUSD  float64         // refuse a self-serve buy above this
 }
 
 // Activity returns the language-neutral activity code of a project's running

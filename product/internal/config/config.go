@@ -88,6 +88,15 @@ type Config struct {
 	StripePriceID       string // price_… of the recurring base plan (SEK/month)
 	StripeWebhookSecret string // whsec_… to verify webhook signatures
 
+	// Custom domains via Cloudflare (both required to enable — see
+	// CloudflareEnabled). Lets a paying customer attach their own domain (we
+	// show DNS records, verify, auto-issue the Fly cert) or buy one in-app.
+	// Buying additionally needs StripeDomainPriceID (see DomainBuyEnabled).
+	CloudflareAPIToken  string  // scoped: Registrar write + Zone read + DNS edit
+	CloudflareAccountID string  // account the domains/zones live under
+	StripeDomainPriceID string  // price_… recurring add-on (SEK/mo) per domain
+	MaxDomainUSD        float64 // refuse a self-serve buy above this (default 100)
+
 	// Execution plane (empty → fake driver/machines):
 	OpencodeURL     string // fixed opencode server base URL (overrides per-machine)
 	OpencodePort    int    // port opencode listens on inside each sandbox machine
@@ -178,13 +187,19 @@ func Load() Config {
 		StripeSecretKey:     os.Getenv("STRIPE_SECRET_KEY"),
 		StripePriceID:       os.Getenv("STRIPE_PRICE_ID"),
 		StripeWebhookSecret: os.Getenv("STRIPE_WEBHOOK_SECRET"),
-		OpencodeURL:         os.Getenv("OPENCODE_URL"),
-		OpencodePort:        4096,
-		FlyAPIToken:         os.Getenv("FLY_API_TOKEN"),
-		FlyOrg:              envOr("FLY_ORG", "personal"),
-		FlyDeployToken:      os.Getenv("FLY_DEPLOY_TOKEN"),
-		FlySandboxApp:       os.Getenv("FLY_SANDBOX_APP"),
-		FlySandboxImage:     os.Getenv("FLY_SANDBOX_IMAGE"),
+
+		CloudflareAPIToken:  os.Getenv("CLOUDFLARE_API_TOKEN"),
+		CloudflareAccountID: os.Getenv("CLOUDFLARE_ACCOUNT_ID"),
+		StripeDomainPriceID: os.Getenv("STRIPE_DOMAIN_PRICE_ID"),
+		MaxDomainUSD:        envFloatOr("MAX_DOMAIN_USD", 100),
+
+		OpencodeURL:     os.Getenv("OPENCODE_URL"),
+		OpencodePort:    4096,
+		FlyAPIToken:     os.Getenv("FLY_API_TOKEN"),
+		FlyOrg:          envOr("FLY_ORG", "personal"),
+		FlyDeployToken:  os.Getenv("FLY_DEPLOY_TOKEN"),
+		FlySandboxApp:   os.Getenv("FLY_SANDBOX_APP"),
+		FlySandboxImage: os.Getenv("FLY_SANDBOX_IMAGE"),
 
 		StorageEndpoint:  os.Getenv("STORAGE_ENDPOINT"),
 		StorageAccessKey: os.Getenv("STORAGE_ACCESS_KEY"),
@@ -254,6 +269,20 @@ func (c Config) ImageGenEnabled() bool { return c.ImageGenAPIKey != "" }
 // can never observe, so the feature stays fully off until it's set.
 func (c Config) StripeEnabled() bool {
 	return c.StripeSecretKey != "" && c.StripePriceID != "" && c.StripeWebhookSecret != ""
+}
+
+// CloudflareEnabled reports whether the custom-domain feature is available
+// (attach your own domain, show DNS, auto-issue the cert). Needs the API token
+// and account id. Invisible in the UI when off.
+func (c Config) CloudflareEnabled() bool {
+	return c.CloudflareAPIToken != "" && c.CloudflareAccountID != ""
+}
+
+// DomainBuyEnabled reports whether customers can buy a domain in-app. Beyond
+// Cloudflare access it needs the recurring add-on price to bill the domain, so
+// we never register a domain we can't charge for.
+func (c Config) DomainBuyEnabled() bool {
+	return c.CloudflareEnabled() && c.StripeDomainPriceID != ""
 }
 
 // DevMode reports whether the app is running fully in-memory/fake.

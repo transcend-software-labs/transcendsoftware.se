@@ -33,6 +33,7 @@ type HTTP struct {
 	sandboxApp   string // Fly app the per-task sandbox machines run under
 	sandboxImage string // OCI image containing opencode + toolchains
 	graphqlURL   string // Fly GraphQL endpoint (overridable in tests)
+	machinesURL  string // Fly Machines API base (overridable in tests)
 	log          *slog.Logger
 	client       *http.Client
 
@@ -48,6 +49,7 @@ type Options struct {
 	SandboxApp   string
 	SandboxImage string
 	GraphQLURL   string // optional; defaults to Fly's GraphQL endpoint
+	MachinesURL  string // optional; defaults to Fly's Machines API base
 	Logger       *slog.Logger
 }
 
@@ -56,6 +58,10 @@ func NewHTTP(o Options) *HTTP {
 	gql := o.GraphQLURL
 	if gql == "" {
 		gql = graphqlAPI
+	}
+	mach := o.MachinesURL
+	if mach == "" {
+		mach = machinesAPI
 	}
 	log := o.Logger
 	if log == nil {
@@ -68,6 +74,7 @@ func NewHTTP(o Options) *HTTP {
 		sandboxApp:   o.SandboxApp,
 		sandboxImage: o.SandboxImage,
 		graphqlURL:   gql,
+		machinesURL:  mach,
 		log:          log,
 		client:       &http.Client{Timeout: 120 * time.Second}, // covers the machine wait endpoint
 	}
@@ -474,7 +481,7 @@ func (h *HTTP) Exec(ctx context.Context, machineID string, command []string, tim
 	if err != nil {
 		return ExecResult{}, err
 	}
-	url := fmt.Sprintf("%s/apps/%s/machines/%s/exec", machinesAPI, h.sandboxApp, machineID)
+	url := fmt.Sprintf("%s/apps/%s/machines/%s/exec", h.machinesURL, h.sandboxApp, machineID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return ExecResult{}, err
@@ -523,7 +530,7 @@ func (h *HTTP) do(ctx context.Context, method, path string, in, out any) error {
 		}
 		reader = bytes.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, machinesAPI+path, reader)
+	req, err := http.NewRequestWithContext(ctx, method, h.machinesURL+path, reader)
 	if err != nil {
 		return err
 	}

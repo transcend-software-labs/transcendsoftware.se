@@ -240,6 +240,21 @@ func (m *Memory) EscalatedProjects(_ context.Context) ([]*project.Project, error
 	return out, nil
 }
 
+func (m *Memory) PendingDomainProjects(_ context.Context) ([]*project.Project, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var out []*project.Project
+	for _, p := range m.projects {
+		switch p.DomainStatus {
+		case project.DomainRegistering, project.DomainPendingDNS, project.DomainVerifying:
+			cp := *p
+			out = append(out, &cp)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out, nil
+}
+
 func (m *Memory) CreateIteration(_ context.Context, it *project.Iteration) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

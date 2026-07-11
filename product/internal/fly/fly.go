@@ -72,6 +72,45 @@ type Machines interface {
 	// RepoDeployToken returns a longer-lived app-scoped deploy token for the
 	// project's GitHub Action (deploy-on-push). "" if not available.
 	RepoDeployToken(ctx context.Context, appName string) (string, error)
+
+	// AddCertificate requests an ACME (Let's Encrypt) certificate for hostname on
+	// appName and returns the DNS records the customer must set for it to
+	// validate (from the Machines API's dns_requirements).
+	AddCertificate(ctx context.Context, appName, hostname string) (CertRequirements, error)
+	// CheckCertificate forces a validation re-check and reports whether the cert
+	// is issued and its DNS is configured, plus the (possibly refreshed) records.
+	CheckCertificate(ctx context.Context, appName, hostname string) (CertStatus, error)
+	// DeleteCertificate removes the hostname's certificate. An absent cert (404)
+	// is not an error — detaching must be idempotent.
+	DeleteCertificate(ctx context.Context, appName, hostname string) error
+	// AllocateIPv6 allocates a dedicated IPv6 on appName (needed to serve an apex
+	// domain via A/AAAA) and returns the address. Callers guard re-allocation on
+	// a stored address, so this need not be internally idempotent.
+	AllocateIPv6(ctx context.Context, appName string) (string, error)
+}
+
+// CertRecord is one DNS record a custom domain needs — ready both to show the
+// customer (BYOD) and to push to Cloudflare (purchased).
+type CertRecord struct {
+	Type  string // A | AAAA | CNAME | TXT
+	Name  string // record host (FQDN), e.g. "acme.se", "_acme-challenge.acme.se"
+	Value string // target / content
+}
+
+// CertRequirements is what a hostname needs to validate: the DNS records to set
+// and whether it's an apex (A/AAAA, needs a dedicated IP) or a subdomain (CNAME).
+type CertRequirements struct {
+	Hostname string
+	IsApex   bool
+	Records  []CertRecord
+}
+
+// CertStatus is a certificate's validation state.
+type CertStatus struct {
+	Configured    bool // issued and serving
+	DNSConfigured bool // the validation records are visible in DNS
+	Status        string
+	Requirements  CertRequirements // refreshed records, for re-display
 }
 
 // DefaultPort is the opencode port used when a spec leaves Port unset.
@@ -85,6 +124,9 @@ type Fake struct {
 	execs         []FakeExec
 	destroyedApps []string
 	appSecrets    map[string]map[string]string
+	certs         map[string]bool // "app|hostname" → cert requested
+	certActive    bool            // what CheckCertificate reports (settable to drive poller tests)
+	allocatedIPv6 []string        // apps a dedicated IPv6 was allocated on
 }
 
 // FakeExec is one recorded Exec call.
@@ -166,5 +208,81 @@ func (f *Fake) Execs() []FakeExec {
 	defer f.mu.Unlock()
 	out := make([]FakeExec, len(f.execs))
 	copy(out, f.execs)
+	return out
+}
+
+// AddCertificate records the request and returns canned apex requirements (an
+// A + AAAA + the ACME-challenge CNAME) so orchestrator tests exercise the
+// records-and-IP path.
+func (f *Fake) AddCertificate(_ context.Context, appName, hostname string) (CertRequirements, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.certs == nil {
+		f.certs = map[string]bool{}
+	}
+	f.certs[appName+"|"+hostname] = true
+	return CertRequirements{
+		Hostname: hostname,
+		IsApex:   true,
+		Records: []CertRecord{
+			{Type: "A", Name: hostname, Value: "66.0.0.1"},
+			{Type: "AAAA", Name: hostname, Value: "2a09:8280:1::99"},
+			{Type: "CNAME", Name: "_acme-challenge." + hostname, Value: hostname + ".flydns.net"},
+		},
+	}, nil
+}
+
+// CheckCertificate reports Configured/DNSConfigured according to the settable
+// certActive flag (see SetCertActive).
+func (f *Fake) CheckCertificate(_ context.Context, _, hostname string) (CertStatus, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	status := "pending_validation"
+	if f.certActive {
+		status = "active"
+	}
+	return CertStatus{
+		Configured:    f.certActive,
+		DNSConfigured: f.certActive,
+		Status:        status,
+		Requirements:  CertRequirements{Hostname: hostname, IsApex: true},
+	}, nil
+}
+
+// SetCertActive flips what CheckCertificate reports, to drive poller tests from
+// pending → active.
+func (f *Fake) SetCertActive(active bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.certActive = active
+}
+
+// HasCert reports whether a certificate was requested (and not deleted).
+func (f *Fake) HasCert(appName, hostname string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.certs[appName+"|"+hostname]
+}
+
+func (f *Fake) DeleteCertificate(_ context.Context, appName, hostname string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.certs, appName+"|"+hostname)
+	return nil
+}
+
+func (f *Fake) AllocateIPv6(_ context.Context, appName string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.allocatedIPv6 = append(f.allocatedIPv6, appName)
+	return "2a09:8280:1::1", nil
+}
+
+// AllocatedIPv6 returns the apps a dedicated IPv6 was allocated on.
+func (f *Fake) AllocatedIPv6() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, len(f.allocatedIPv6))
+	copy(out, f.allocatedIPv6)
 	return out
 }

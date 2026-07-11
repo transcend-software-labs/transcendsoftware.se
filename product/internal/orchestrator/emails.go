@@ -32,6 +32,14 @@ var customerEmails = map[string]map[string]emailCopy{
 		"ru": {"Спасибо за подписку — ваш сайт уже в пути",
 			"Ваша подписка для «%s» активна. Rasmus проводит финальную личную проверку и вскоре доставит сайт:"},
 	},
+	"domain_live": {
+		"en": {"Your domain is live",
+			"Your website is now live on %s. It can take a little while to appear everywhere as DNS settles worldwide:"},
+		"sv": {"Din domän är live",
+			"Din webbplats är nu live på %s. Det kan ta en liten stund innan den syns överallt medan DNS uppdateras i världen:"},
+		"ru": {"Ваш домен активен",
+			"Ваш сайт теперь доступен по адресу %s. Может пройти немного времени, пока он появится везде, по мере обновления DNS:"},
+	},
 }
 
 // custEmail returns localized subject + body for a customer email, defaulting

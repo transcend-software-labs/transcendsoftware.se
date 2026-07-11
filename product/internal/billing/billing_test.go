@@ -108,3 +108,53 @@ func TestCheckout_StripeErrorSurfaced(t *testing.T) {
 		t.Fatalf("expected surfaced stripe error, got %v", err)
 	}
 }
+
+func TestAddSubscriptionItem(t *testing.T) {
+	var gotPath, gotMethod, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotMethod = r.URL.Path, r.Method
+		_ = r.ParseForm()
+		gotBody = r.Form.Encode()
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"si_123","object":"subscription_item"}`))
+	}))
+	defer srv.Close()
+
+	id, err := New(srv.URL, "sk_test_x").AddSubscriptionItem(context.Background(), "sub_1", "price_dom")
+	if err != nil {
+		t.Fatalf("add item: %v", err)
+	}
+	if id != "si_123" {
+		t.Fatalf("id = %q", id)
+	}
+	if gotPath != "/v1/subscription_items" || gotMethod != http.MethodPost {
+		t.Fatalf("path=%q method=%q", gotPath, gotMethod)
+	}
+	for _, want := range []string{
+		"subscription=sub_1",
+		"price=price_dom",
+		"quantity=1",
+		"proration_behavior=create_prorations",
+	} {
+		if !strings.Contains(gotBody, want) {
+			t.Errorf("add-item body missing %q\nbody: %s", want, gotBody)
+		}
+	}
+}
+
+func TestRemoveSubscriptionItem(t *testing.T) {
+	var gotPath, gotMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotMethod = r.URL.Path, r.Method
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"si_123","deleted":true}`))
+	}))
+	defer srv.Close()
+
+	if err := New(srv.URL, "sk_test_x").RemoveSubscriptionItem(context.Background(), "si_123"); err != nil {
+		t.Fatalf("remove item: %v", err)
+	}
+	if gotPath != "/v1/subscription_items/si_123" || gotMethod != http.MethodDelete {
+		t.Fatalf("path=%q method=%q", gotPath, gotMethod)
+	}
+}

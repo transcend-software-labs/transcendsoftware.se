@@ -284,6 +284,55 @@
 </section>
 {{end}}
 
+{{if $.Data.ShowDomain}}
+<section class="panel domain-panel">
+  <h2>{{$.T "domain.h2"}}</h2>
+  {{if eq $.Data.DomainStatus ""}}
+    <p class="muted small">{{$.T "domain.intro"}}</p>
+    <div class="domain-attach">
+      <form method="post" action="/projects/{{.ID}}/domain/attach" class="domain-row">
+        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+        <input type="text" name="host" placeholder="{{$.T "domain.byod_ph"}}" autocapitalize="off" autocomplete="off" spellcheck="false">
+        <button class="btn btn-sm" type="submit">{{$.T "domain.byod_btn"}}</button>
+      </form>
+      <p class="muted xsmall">{{$.T "domain.byod_note"}}</p>
+    </div>
+    {{if $.Data.DomainBuyable}}
+    <div class="domain-buy">
+      <p class="domain-or">{{$.T "domain.or_buy"}}</p>
+      <input class="domain-search" type="search" name="q" placeholder="{{$.T "domain.buy_ph"}}"
+             hx-get="/projects/{{.ID}}/domain/search" hx-target="#domain-results" hx-swap="innerHTML"
+             hx-trigger="input changed delay:400ms, search" autocapitalize="off" autocomplete="off" spellcheck="false">
+      <div id="domain-results"></div>
+      <p class="muted xsmall">{{printf ($.T "domain.buy_note") $.Data.DomainMaxUSD}}</p>
+    </div>
+    {{end}}
+  {{else if eq $.Data.DomainStatus "registering"}}
+    <p class="muted small">{{printf ($.T "domain.registering_note") $.Data.DomainName}} <span class="spinner"></span></p>
+  {{else if eq $.Data.DomainStatus "pending_dns"}}
+    <p class="muted small">{{printf ($.T "domain.pending_note") $.Data.DomainName}}</p>
+    {{template "domain_records" $}}
+    <div class="domain-row">
+      <form method="post" action="/projects/{{.ID}}/domain/verify" class="inline">
+        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+        <button class="btn btn-sm" type="submit">{{$.T "domain.verify_btn"}}</button>
+      </form>
+      {{template "domain_detach" $}}
+    </div>
+  {{else if eq $.Data.DomainStatus "verifying"}}
+    <p class="muted small">{{$.T "domain.verifying_note"}} <span class="spinner"></span></p>
+    {{template "domain_detach" $}}
+  {{else if eq $.Data.DomainStatus "active"}}
+    <p><span class="pay-badge pay-yes">✓ {{$.T "domain.active"}}</span></p>
+    <p><a class="btn btn-sm" href="https://{{$.Data.DomainName}}" target="_blank" rel="noopener">{{$.Data.DomainName}} ↗</a></p>
+    {{template "domain_detach" $}}
+  {{else if eq $.Data.DomainStatus "failed"}}
+    <p class="reason">{{$.T "domain.failed_note"}}</p>
+    {{template "domain_detach" $}}
+  {{end}}
+</section>
+{{end}}
+
 {{if .CanReiterate}}
 <section class="panel">
   <h2>{{$.T "prj.change.h2"}}</h2>
@@ -327,3 +376,40 @@
   {{end}}
 </ol>
 {{end}}
+
+{{/* Domain DNS records table. Called with $ (the root View) so it can range
+     .Data.DomainRecords and still translate headers. */}}
+{{define "domain_records"}}<div class="domain-records-wrap">
+<table class="domain-records">
+  <thead><tr><th>{{.T "domain.rec_type"}}</th><th>{{.T "domain.rec_name"}}</th><th>{{.T "domain.rec_value"}}</th></tr></thead>
+  <tbody>
+  {{range .Data.DomainRecords}}<tr><td>{{.Type}}</td><td class="mono">{{.Name}}</td><td class="mono">{{.Value}}</td></tr>
+  {{end}}</tbody>
+</table>
+</div>
+<p class="muted xsmall">{{.T "domain.rec_note"}}</p>{{end}}
+
+{{/* Small detach form. Called with $ (the root View). */}}
+{{define "domain_detach"}}<form method="post" action="/projects/{{.Data.Project.ID}}/domain/detach" class="inline">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <button class="linklike danger" type="submit" onclick="return confirm('{{.T "domain.detach_confirm"}}')">{{.T "domain.detach_btn"}}</button>
+</form>{{end}}
+
+{{/* Domain search results fragment (htmx swap). Rendered View-less: uses .Lang,
+     .CSRF, .Data{PID,Results,Error,None}. */}}
+{{define "domain_results"}}{{if .Data.Error}}<p class="reason">{{.Data.Error}}</p>{{end}}
+{{if .Data.None}}<p class="muted small">{{tr .Lang "domain.none"}}</p>{{end}}
+{{if .Data.Results}}<ul class="domain-hits">
+  {{range .Data.Results}}<li>
+    <span class="domain-hit-name mono">{{.Name}}</span>
+    {{if .Buyable}}<span class="domain-hit-price">{{.Price}} {{tr $.Lang "domain.per_year"}}</span>
+      <form method="post" action="/projects/{{$.Data.PID}}/domain/buy" class="inline" onsubmit="return confirm('{{tr $.Lang "domain.buy_confirm"}} {{.Name}}?')">
+        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+        <input type="hidden" name="domain" value="{{.Name}}">
+        <input type="hidden" name="ack" value="1">
+        <button class="btn btn-sm" type="submit">{{tr $.Lang "domain.buy_btn"}}</button>
+      </form>
+    {{else}}<span class="muted small">{{tr $.Lang "domain.taken"}}</span>{{end}}
+  </li>
+  {{end}}</ul>
+{{end}}{{end}}

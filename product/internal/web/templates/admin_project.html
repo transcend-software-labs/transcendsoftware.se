@@ -32,6 +32,26 @@
   {{if .StripeSubID}}<p class="muted small">Stripe: {{.StripeSubID}}{{if .StripeCustomerID}} · {{.StripeCustomerID}}{{end}}</p>{{end}}
 </section>
 
+{{if .DomainName}}
+<section class="panel">
+  <h2>Domain</h2>
+  <p><span class="mono">{{.DomainName}}</span> · {{.DomainStatus}} · {{.DomainKind}}{{if .DomainZoneID}} · zone {{.DomainZoneID}}{{end}}{{if .DomainIPv6}} · {{.DomainIPv6}}{{end}}</p>
+  {{if .DomainSubItemID}}<p class="muted small">Stripe add-on item: {{.DomainSubItemID}}</p>{{end}}
+  {{if .DomainRecords}}
+  <div class="domain-records-wrap">
+  <table class="domain-records">
+    <thead><tr><th>Type</th><th>Name</th><th>Value</th></tr></thead>
+    <tbody>{{range .DomainRecords}}<tr><td>{{.Type}}</td><td class="mono">{{.Name}}</td><td class="mono">{{.Value}}</td></tr>{{end}}</tbody>
+  </table>
+  </div>
+  {{end}}
+  <form method="post" action="/admin/projects/{{.ID}}/domain/detach" class="inline" onsubmit="return confirm('Detach {{.DomainName}}?')">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <button class="linklike danger" type="submit">Detach domain</button>
+  </form>
+</section>
+{{end}}
+
 {{if or (eq .Status "planning") (eq .Status "screening") (eq .Status "building")}}
 {{/* The live build log lives OUTSIDE the polled #status box on purpose: the
      status poll swaps #status every few seconds, and if the log were inside it

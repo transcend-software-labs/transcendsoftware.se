@@ -20,6 +20,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/auth"
 	"github.com/transcend-software-labs/rasmus-ai/internal/billing"
 	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
+	"github.com/transcend-software-labs/rasmus-ai/internal/cloudflare"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
 	"github.com/transcend-software-labs/rasmus-ai/internal/imagegen"
@@ -105,9 +106,23 @@ func main() {
 		log.Info("imagegen: enabled", "model", cfg.ImageGenModel, "base", cfg.ImageGenBaseURL)
 		srv.SetImageGen(imagegen.New(cfg.ImageGenBaseURL, cfg.ImageGenAPIKey, cfg.ImageGenModel))
 	}
+	var bill *billing.Client
 	if cfg.StripeEnabled() {
 		log.Info("billing: stripe enabled", "price", cfg.StripePriceID)
-		srv.SetBilling(billing.New("https://api.stripe.com", cfg.StripeSecretKey))
+		bill = billing.New("https://api.stripe.com", cfg.StripeSecretKey)
+		srv.SetBilling(bill)
+	}
+	if cfg.CloudflareEnabled() {
+		log.Info("domains: cloudflare enabled", "buy", cfg.DomainBuyEnabled())
+		cf := cloudflare.New("https://api.cloudflare.com/client/v4", cfg.CloudflareAPIToken, cfg.CloudflareAccountID)
+		// bill may be nil (Stripe off) — then purchased domains are comped and the
+		// operator is alerted. Pass an untyped nil so the interface is truly nil.
+		if bill != nil {
+			orch.SetDomains(cf, bill, cfg.StripeDomainPriceID, cfg.MaxDomainUSD)
+		} else {
+			orch.SetDomains(cf, nil, cfg.StripeDomainPriceID, cfg.MaxDomainUSD)
+		}
+		orch.StartDomainPoller(context.Background(), 3*time.Minute)
 	}
 
 	httpSrv := &http.Server{
