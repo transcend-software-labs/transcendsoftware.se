@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/transcend-software-labs/rasmus-ai/internal/activity"
 	"github.com/transcend-software-labs/rasmus-ai/internal/auth"
 	"github.com/transcend-software-labs/rasmus-ai/internal/billing"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
@@ -225,10 +224,8 @@ func (v View) Languages() []i18n.Lang { return i18n.Langs }
 type statusView struct {
 	*project.Project
 	Lang     string
-	Activity string                // language-neutral activity code of a running build ("" = none)
-	Building string                // localized name of the page being built now ("" = none)
-	Pages    []activity.PageStatus // live per-page build checklist (nil = not building)
-	Billing  bool                  // Stripe paywall on — the accepted-state note nudges payment when unpaid
+	Activity string // language-neutral activity code of a running build ("" = none)
+	Billing  bool   // Stripe paywall on — the accepted-state note nudges payment when unpaid
 }
 
 // statusOf assembles the live status box for a project: resolved language, the
@@ -236,11 +233,7 @@ type statusView struct {
 // project page and the htmx status poll so both render identically.
 func (s *Server) statusOf(r *http.Request, p *project.Project) statusView {
 	lang := s.lang(r)
-	sv := statusView{Project: p, Lang: lang, Activity: s.orch.Activity(p.ID), Pages: s.orch.Pages(p.ID), Billing: s.billing != nil}
-	if pg, ok := s.orch.BuildingPage(p.ID); ok {
-		sv.Building = pg.Name(lang)
-	}
-	return sv
+	return statusView{Project: p, Lang: lang, Activity: s.orch.Activity(p.ID), Billing: s.billing != nil}
 }
 
 // trStatus is statusLabel's localized sibling; unknown statuses fall back to

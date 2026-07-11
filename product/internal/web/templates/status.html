@@ -1,12 +1,12 @@
 {{define "project_status"}}<div id="status" class="statusbox status-{{.Status}}"{{if polling .Project}} hx-get="/projects/{{.ID}}/status" hx-trigger="every {{pollEvery .Project}}" hx-swap="outerHTML"{{end}}>
   <p class="status-line">{{trStatus .Lang .Status}}{{if polling .Project}} <span class="spinner"></span>{{end}}</p>
-  {{/* Current action, derived from the latest build event + the file it touches
-       — honest about what's happening NOW. We deliberately do NOT show a
-       per-page ✓/pending checklist: the agent doesn't build pages one at a
-       time (it writes tokens, interleaves templates, audits everything), so
-       "is the start page done?" has no reliable signal. */}}
-  {{if .Building}}<p class="muted small">{{printf (tr .Lang "act.building_page") .Building}}</p>
-  {{else if .Activity}}<p class="muted small">{{tr .Lang (printf "act.%s" .Activity)}}</p>{{end}}
+  {{/* Current action, derived from the latest build event — honest about what's
+       happening NOW and updates as the build moves (preparing → building →
+       styling → testing → deploying). We deliberately do NOT name the page
+       being built: the agent doesn't build pages one at a time (it interleaves
+       templates and audits everything), so "which page" has no reliable signal
+       and would stick on the first one. */}}
+  {{if .Activity}}<p class="muted small">{{tr .Lang (printf "act.%s" .Activity)}}</p>{{end}}
   {{if eq .Status "preview_ready"}}
     <p><a class="btn" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{tr .Lang "st.open_preview"}}</a></p>
   {{end}}

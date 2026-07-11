@@ -5,7 +5,7 @@
   <form method="post" action="/projects" class="stack">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
     <label>{{.T "new.name_label"}} <span class="hint">{{.T "new.name_hint"}}</span>
-      <input type="text" name="name" placeholder="Äppelmust site">
+      <input type="text" name="name" placeholder="{{.T "new.name_ph"}}">
     </label>
     <label>{{.T "new.brief_label"}}
       <textarea name="brief" rows="7" required

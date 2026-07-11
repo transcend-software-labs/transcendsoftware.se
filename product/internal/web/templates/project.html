@@ -103,11 +103,16 @@
         {{if not .Required}}<span class="muted small">({{$.T "prj.content.optional"}})</span>{{end}}
       </div>
       {{if .IsText}}
-      <form method="post" action="/projects/{{$pid}}/content" class="content-answer">
+      {{/* Saves in place via htmx (hx-swap into the badge) so typing in one
+           field and saving it never reloads the page and wipes what you've
+           typed in the others. Plain POST still works without JS. */}}
+      <form method="post" action="/projects/{{$pid}}/content" class="content-answer"
+            hx-post="/projects/{{$pid}}/content" hx-target="#saved-{{$slug}}" hx-swap="innerHTML" hx-disabled-elt="find button">
         <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
         <input type="hidden" name="slot" value="{{$slug}}">
         <input type="text" name="value" maxlength="2000" value="{{index $.Data.Project.ContentAnswers $slug}}" placeholder="{{.Name $.Lang}}…">
         <button class="btn btn-sm" type="submit">{{$.T "prj.content.save"}}</button>
+        <span id="saved-{{$slug}}" class="content-saved" aria-live="polite"></span>
       </form>
       {{else if .IsRoster}}
       <form method="post" action="/projects/{{$pid}}/roster" enctype="multipart/form-data" class="roster-form">
@@ -270,7 +275,7 @@
   <p class="muted small">{{$.T "sub.processing"}}</p>
 </section>
 {{else if $.Data.SubActive}}
-<section class="panel sub-panel">
+<section class="panel sub-panel sub-done">
   <p><span class="pay-badge pay-yes">✓ {{$.T "sub.active"}}</span></p>
   <form method="post" action="/projects/{{.ID}}/billing" class="inline">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">

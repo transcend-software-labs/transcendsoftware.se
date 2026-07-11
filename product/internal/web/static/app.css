@@ -284,10 +284,41 @@ details summary { cursor: pointer; }
 .pay-no { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
 .pay-panel .pay-badge { font-size: .95rem; }
 
-/* Subscription paywall (customer) */
-.sub-panel { border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
-.sub-price { font-size: 1.4rem; font-weight: 600; color: var(--accent); letter-spacing: -.01em; margin: .5rem 0; }
-.sub-terms { margin-top: .7rem; }
+/* Subscription paywall (customer) — a self-contained pricing card. It reuses
+   .panel for vertical rhythm but overrides the top-border-only look with a full
+   rounded, padded, accent-tinted card (later source order beats .panel). */
+.sub-panel {
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: var(--radius-lg);
+  padding: 1.6rem 1.5rem;
+  background:
+    radial-gradient(140% 120% at 0% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 55%),
+    var(--surface);
+  box-shadow: var(--shadow);
+}
+.sub-panel > h2 { margin-bottom: .3rem; }
+.sub-panel > p { margin-bottom: 1rem; }
+.sub-panel > p:last-child { margin-bottom: 0; }
+.sub-price {
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--accent-2);
+  letter-spacing: -.02em;
+  line-height: 1.1;
+  margin: .2rem 0 1.2rem;
+}
+.sub-panel .btn { width: 100%; }
+.sub-terms { margin-top: 1rem; }
+/* Active subscription: the card reads as "settled" — a calm green accent
+   instead of the gold call-to-action tint. */
+.sub-panel.sub-done {
+  border-color: color-mix(in srgb, var(--green) 40%, transparent);
+  background:
+    radial-gradient(140% 120% at 0% 0%, color-mix(in srgb, var(--green) 10%, transparent), transparent 55%),
+    var(--surface);
+}
+.sub-done .pay-badge { font-size: 1rem; }
+.sub-done form.inline { margin-top: .9rem; }
 .terms-doc h2 { margin-top: 1.6rem; font-size: 1.05rem; }
 .terms-doc p { margin: .4rem 0; max-width: 62ch; }
 
@@ -510,6 +541,7 @@ label.design-option:hover { border-color: var(--accent); }
 .content-row { display: flex; align-items: center; gap: .6rem; }
 .content-kind { margin-left: .1rem; }
 .content-answer, .content-upload { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.content-saved { color: var(--green); font-size: .8rem; white-space: nowrap; }
 .content-answer input[type=text] {
   flex: 1;
   padding: .5rem .6rem;
@@ -567,8 +599,11 @@ label.design-option:hover { border-color: var(--accent); }
 .roster-photo { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border-2); }
 .roster-photo-label { display: flex; align-items: center; gap: .4rem; }
 .slot-files { list-style: none; margin: .3rem 0; padding: 0; font-size: .85rem; color: var(--muted); display: grid; gap: .2rem; }
-.ack-later { display: flex; align-items: flex-start; gap: .5rem; font-size: .9rem; }
-.ack-later input { width: auto; margin-top: .2rem; }
+/* label.ack-later, not .ack-later, so it beats `.stack label { flex-direction:
+   column }` (same specificity, later in the file) — otherwise the checkbox
+   stacks above its text instead of sitting beside it. */
+label.ack-later { display: flex; flex-direction: row; align-items: flex-start; gap: .5rem; font-size: .9rem; }
+.ack-later input { width: auto; margin-top: .2rem; flex: none; }
 .approve-gate .btn { margin-top: .5rem; }
 
 .content-done { color: var(--green); font-size: .8rem; font-weight: 600; }

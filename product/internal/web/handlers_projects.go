@@ -801,6 +801,13 @@ func (s *Server) handleContentAnswer(w http.ResponseWriter, r *http.Request, u *
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	// Saved in place: reply with just the "✓ Saved" badge so the other text
+	// fields the customer is still typing into aren't wiped by a full reload.
+	if isHTMX(r) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, "✓ %s", template.HTMLEscapeString(i18n.T(s.lang(r), "prj.content.saved")))
+		return
+	}
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 }
 

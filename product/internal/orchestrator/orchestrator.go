@@ -721,14 +721,25 @@ func (o *Orchestrator) runPlanGateBuild(ctx context.Context, projectID string) e
 // build — the only path out of awaiting_approval into building. Async because a
 // build takes minutes; a re-approval while already building is a no-op.
 func (o *Orchestrator) ApprovePlan(projectID string) {
+	// Flip out of awaiting_approval synchronously so the customer's redirect
+	// immediately shows the build starting — otherwise the redirected page still
+	// renders the approve gate until the async build gets around to setting the
+	// status, and it looks like the click did nothing. Also makes a double-click
+	// a clean no-op (the second read sees building).
+	ctx := context.Background()
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		o.log.Error("approve plan: load", "err", err)
+		return
+	}
+	if p.Status != project.StatusAwaitingApproval {
+		return // idempotent
+	}
+	if err := o.setStatus(ctx, p, project.StatusBuilding); err != nil {
+		o.log.Error("approve plan: set building", "err", err)
+		return
+	}
 	o.async(projectID, func(ctx context.Context) error {
-		p, err := o.store.ProjectByID(ctx, projectID)
-		if err != nil {
-			return err
-		}
-		if p.Status != project.StatusAwaitingApproval {
-			return nil // idempotent: double-click or already building
-		}
 		return o.runBuild(ctx, projectID, "", false)
 	})
 }
