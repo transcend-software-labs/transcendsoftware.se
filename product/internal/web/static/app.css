@@ -463,9 +463,22 @@ label.design-option:hover { border-color: var(--accent); }
   border-top: 1px solid var(--border);
 }
 
-/* Content checklist — what we still need from the customer. */
-.content-checklist { list-style: none; margin: 0 0 1.25rem; padding: 0; display: grid; gap: .5rem; }
-.content-checklist li { display: flex; align-items: center; gap: .6rem; }
+/* Content checklist — what we still need from the customer. File-kind items
+   are satisfied by the upload form; text-kind items get an inline field. */
+.content-checklist { list-style: none; margin: 0 0 1.25rem; padding: 0; display: grid; gap: .8rem; }
+.content-checklist li { display: grid; gap: .4rem; }
+.content-row { display: flex; align-items: center; gap: .6rem; }
+.content-kind { margin-left: .1rem; }
+.content-answer { display: flex; gap: .5rem; margin-left: 1.7rem; }
+.content-answer input[type=text] {
+  flex: 1;
+  padding: .5rem .6rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  font-family: inherit;
+}
 .content-mark { width: 1.1rem; text-align: center; }
 .content-have { color: var(--text); }
 .content-have .content-mark { color: var(--green); }

@@ -526,3 +526,58 @@ func TestAdmin_ForbiddenForNonAdmin(t *testing.T) {
 		t.Errorf("expected 404 for non-admin /admin, got %d", resp.StatusCode)
 	}
 }
+
+// TestContentAnswer_TextSlotSavedFileSlotRejected verifies the fix for
+// text-shaped content needs: a text-kind slot (a contact email) is saved and
+// shown as filled, while a file-kind slot cannot be satisfied by typed text.
+func TestContentAnswer_TextSlotSavedFileSlotRejected(t *testing.T) {
+	srv, st, _ := newTestServerAuth(t, config.Config{AdminEmail: "admin@example.com"}, nil)
+	defer srv.Close()
+	c := signedInClient(t, srv.URL)
+	ctx := context.Background()
+	u, err := st.UserByEmail(ctx, "neighbour@example.com")
+	if err != nil {
+		t.Fatalf("user: %v", err)
+	}
+	p := &project.Project{
+		ID: "proj-content", UserID: u.ID, Name: "Nimbus", Status: project.StatusPreviewReady,
+		Spec: project.PlanSpec{ContentNeeded: []project.ContentItem{
+			{Slug: "contact_email", Names: map[string]string{"en": "Contact email"}, Kind: "text"},
+			{Slug: "logo", Names: map[string]string{"en": "Logo"}, Kind: "file"},
+		}},
+	}
+	if err := st.CreateProject(ctx, p); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	tok := csrfToken(t, c, srv.URL)
+
+	// A text slot accepts a typed value.
+	post := func(slot, value string) {
+		r, err := c.PostForm(srv.URL+"/projects/"+p.ID+"/content",
+			url.Values{"slot": {slot}, "value": {value}, "csrf_token": {tok}})
+		if err != nil {
+			t.Fatalf("post %s: %v", slot, err)
+		}
+		r.Body.Close()
+	}
+	post("contact_email", "hello@nimbusair.example")
+	got, _ := st.ProjectByID(ctx, p.ID)
+	if got.ContentAnswers["contact_email"] != "hello@nimbusair.example" {
+		t.Errorf("text slot not saved: %v", got.ContentAnswers)
+	}
+
+	// A file slot must NOT be satisfiable by typed text.
+	post("logo", "some text pretending to be a logo")
+	got, _ = st.ProjectByID(ctx, p.ID)
+	if _, ok := got.ContentAnswers["logo"]; ok {
+		t.Errorf("file slot should reject a typed answer, got %v", got.ContentAnswers)
+	}
+
+	// The project page shows the text slot as filled with its value.
+	r, _ := c.Get(srv.URL + "/projects/" + p.ID)
+	body, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	if !strings.Contains(string(body), "hello@nimbusair.example") {
+		t.Error("saved contact email not shown on the project page")
+	}
+}

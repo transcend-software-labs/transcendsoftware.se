@@ -95,11 +95,27 @@
   <p class="muted small">{{$.T "prj.assets.intro"}}</p>
   {{if .Spec.ContentNeeded}}
   <ul class="content-checklist">
+    {{$proj := .}}
     {{range .Spec.ContentNeeded}}
-    <li class="content-{{if index $.Data.FilledSlots .Slug}}have{{else}}need{{end}}">
-      <span class="content-mark">{{if index $.Data.FilledSlots .Slug}}✓{{else}}○{{end}}</span>
-      <span class="content-name">{{.Name $.Lang}}</span>
-      {{if not .Required}}<span class="muted small">({{$.T "prj.content.optional"}})</span>{{end}}
+    {{$filled := false}}
+    {{if .IsFile}}{{if index $.Data.FilledSlots .Slug}}{{$filled = true}}{{end}}
+    {{else}}{{if index $proj.ContentAnswers .Slug}}{{$filled = true}}{{end}}{{end}}
+    <li class="content-{{if $filled}}have{{else}}need{{end}}">
+      <div class="content-row">
+        <span class="content-mark">{{if $filled}}✓{{else}}○{{end}}</span>
+        <span class="content-name">{{.Name $.Lang}}</span>
+        {{if .IsFile}}<span class="content-kind muted small">{{$.T "prj.content.a_file"}}</span>{{end}}
+        {{if not .Required}}<span class="muted small">({{$.T "prj.content.optional"}})</span>{{end}}
+      </div>
+      {{if not .IsFile}}
+      <form method="post" action="/projects/{{$proj.ID}}/content" class="content-answer">
+        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+        <input type="hidden" name="slot" value="{{.Slug}}">
+        <input type="text" name="value" maxlength="2000" value="{{index $proj.ContentAnswers .Slug}}"
+          placeholder="{{.Name $.Lang}}…">
+        <button class="btn btn-sm" type="submit">{{$.T "prj.content.save"}}</button>
+      </form>
+      {{end}}
     </li>
     {{end}}
   </ul>
@@ -115,14 +131,12 @@
   <form method="post" action="/projects/{{.ID}}/assets" enctype="multipart/form-data" class="upload-form stack">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
     <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" required>
-    {{if .Spec.ContentNeeded}}
     <label class="upload-slot">{{$.T "prj.content.which"}}
       <select name="slot">
-        {{range .Spec.ContentNeeded}}<option value="{{.Slug}}">{{.Name $.Lang}}</option>{{end}}
+        {{range .Spec.ContentNeeded}}{{if .IsFile}}<option value="{{.Slug}}">{{.Name $.Lang}}</option>{{end}}{{end}}
         <option value="">{{$.T "prj.content.other"}}</option>
       </select>
     </label>
-    {{end}}
     <input type="text" name="description" maxlength="300"
       placeholder="{{$.T "prj.assets.desc_ph"}}">
     <button class="btn btn-sm" type="submit">{{$.T "prj.assets.upload"}}</button>

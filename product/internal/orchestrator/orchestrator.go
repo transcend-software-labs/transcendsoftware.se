@@ -175,19 +175,30 @@ func progressNote(pages []project.PlanPage) string {
 // prompts: the filename plus their own words on what each file is. "" when
 // nothing is uploaded.
 func (o *Orchestrator) assetContext(ctx context.Context, projectID string) string {
-	assets, err := o.store.AssetsByProject(ctx, projectID)
-	if err != nil || len(assets) == 0 {
-		return ""
-	}
 	var b strings.Builder
-	b.WriteString("Files uploaded by the customer (available in /workspace/assets/ during the build), with their description of what each one is:")
-	for _, a := range assets {
-		b.WriteString("\n- " + a.Filename)
-		if a.Description != "" {
-			b.WriteString(" — " + a.Description)
+	if assets, err := o.store.AssetsByProject(ctx, projectID); err == nil && len(assets) > 0 {
+		b.WriteString("Files uploaded by the customer (available in /workspace/assets/ during the build), with their description of what each one is:")
+		for _, a := range assets {
+			b.WriteString("\n- " + a.Filename)
+			if a.Description != "" {
+				b.WriteString(" — " + a.Description)
+			}
+		}
+		b.WriteString("\nUse them where the customer's description says they belong.")
+	}
+	// Text the customer typed for text-kind content slots (contact email, copy,
+	// hours) — real values to put on the site, not placeholders.
+	if p, err := o.store.ProjectByID(ctx, projectID); err == nil && len(p.ContentAnswers) > 0 {
+		if b.Len() > 0 {
+			b.WriteString("\n\n")
+		}
+		b.WriteString("Details the customer provided — use these EXACT values on the site instead of placeholders:")
+		for _, c := range p.Spec.ContentNeeded {
+			if v := p.ContentAnswers[c.Slug]; v != "" {
+				b.WriteString("\n- " + c.Name("en") + ": " + v)
+			}
 		}
 	}
-	b.WriteString("\nUse them where the customer's description says they belong.")
 	return b.String()
 }
 

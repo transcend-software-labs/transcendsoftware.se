@@ -416,6 +416,49 @@ func slotLabel(p *project.Project, slot string) string {
 	return slot
 }
 
+// textSlot returns the content item for a text-kind slot, or false — so the
+// handler only accepts answers for slots the plan actually asked to be typed.
+func textSlot(p *project.Project, slot string) (project.ContentItem, bool) {
+	for _, c := range p.Spec.ContentNeeded {
+		if c.Slug == slot && !c.IsFile() {
+			return c, true
+		}
+	}
+	return project.ContentItem{}, false
+}
+
+// handleContentAnswer saves the customer's typed value for a text-kind content
+// slot (a contact email, opening hours, copy) — the counterpart to uploading a
+// file for a file-kind slot.
+func (s *Server) handleContentAnswer(w http.ResponseWriter, r *http.Request, u *user.User) {
+	p, ok := s.ownedProject(w, r, u)
+	if !ok {
+		return
+	}
+	slot := slotID(r.FormValue("slot"))
+	if _, ok := textSlot(p, slot); !ok {
+		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+		return
+	}
+	value := strings.TrimSpace(r.FormValue("value"))
+	if len(value) > 2000 {
+		value = value[:2000]
+	}
+	if p.ContentAnswers == nil {
+		p.ContentAnswers = map[string]string{}
+	}
+	if value == "" {
+		delete(p.ContentAnswers, slot) // clearing the field un-fills the slot
+	} else {
+		p.ContentAnswers[slot] = value
+	}
+	if err := s.store.UpdateProject(r.Context(), p); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+}
+
 // handleAccept records the customer accepting the preview, sending it to
 // Rasmus's final-review queue.
 func (s *Server) handleAccept(w http.ResponseWriter, r *http.Request, u *user.User) {

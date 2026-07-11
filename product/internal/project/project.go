@@ -11,6 +11,7 @@ package project
 
 import (
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -83,12 +84,38 @@ type PlanPage struct {
 	Included string            `json:"included"` // one plain-language phrase, customer's language
 }
 
-// ContentItem is one thing the customer must provide (logo, product list, …),
-// shown as a named upload slot. Names is per-locale for the label.
+// ContentItem is one thing the customer must provide (logo, product list,
+// contact email, …). Kind decides how they provide it: "file" (an upload) or
+// "text" (typed in — copy, an email address, opening hours). Names is per-locale.
 type ContentItem struct {
 	Slug     string            `json:"slug"`
 	Names    map[string]string `json:"names"`
 	Required bool              `json:"required"`
+	Kind     string            `json:"kind"` // "file" | "text"; empty → inferred
+}
+
+// imageWords hint that an untagged content item is a file to upload rather than
+// text to type (used only when the planner didn't set Kind).
+var imageWords = []string{"logo", "logotyp", "photo", "foto", "image", "bild",
+	"hero", "picture", "gallery", "galleri", "banner", "icon", "ikon"}
+
+// IsFile reports whether this item is provided as an uploaded file (vs typed
+// text). Honors Kind when set; otherwise infers from the slug/name — image-ish
+// things are files, everything else (copy, emails, lists) is text.
+func (c ContentItem) IsFile() bool {
+	switch c.Kind {
+	case "file":
+		return true
+	case "text":
+		return false
+	}
+	hay := strings.ToLower(c.Slug + " " + c.Names["en"] + " " + c.Names["sv"])
+	for _, w := range imageWords {
+		if strings.Contains(hay, w) {
+			return true
+		}
+	}
+	return false
 }
 
 // Name returns the page's display name in lang, falling back to English then
@@ -127,22 +154,23 @@ type Project struct {
 	Name           string
 	Brief          string // the customer's description of what they want
 	Status         Status
-	Questions      []string       // clarifying questions from the intake step
-	DesignOptions  []DesignOption // suggested design directions from intake
-	DesignBrief    string         // the customer's chosen/stated design direction
-	Answers        string         // the customer's answers to those questions
-	Plan           string         // generated build plan (markdown; operator-facing)
-	Spec           PlanSpec       // machine-readable plan: pages, scope, content needs (customer UI)
-	Verdict        Verdict        // safety-gate outcome
-	RejectReason   string         // populated when Status == rejected
-	PreviewURL     string         // latest deployed preview link
-	RepoURL        string         // vestigial: GitHub mirroring was removed; kept to avoid a DB migration (always "")
-	SnapshotKey    string         // object-storage key of the workspace snapshot from the last successful build
-	Screenshots    []Screenshot   // one per page of the deployed site (for /admin review)
-	Findings       []Finding      // impeccable design-audit findings from the last build (for /admin review)
-	Critique       string         // design critic's verdict on the preview screenshots ("SHIP" or "POLISH" + issues)
-	Locale         string         // customer's UI language at creation ("en"/"sv"/"ru"), for their emails
-	IterationsUsed int            // number of build passes consumed (1..MaxIterations)
+	Questions      []string          // clarifying questions from the intake step
+	DesignOptions  []DesignOption    // suggested design directions from intake
+	DesignBrief    string            // the customer's chosen/stated design direction
+	Answers        string            // the customer's answers to those questions
+	Plan           string            // generated build plan (markdown; operator-facing)
+	Spec           PlanSpec          // machine-readable plan: pages, scope, content needs (customer UI)
+	Verdict        Verdict           // safety-gate outcome
+	RejectReason   string            // populated when Status == rejected
+	PreviewURL     string            // latest deployed preview link
+	RepoURL        string            // vestigial: GitHub mirroring was removed; kept to avoid a DB migration (always "")
+	SnapshotKey    string            // object-storage key of the workspace snapshot from the last successful build
+	Screenshots    []Screenshot      // one per page of the deployed site (for /admin review)
+	Findings       []Finding         // impeccable design-audit findings from the last build (for /admin review)
+	Critique       string            // design critic's verdict on the preview screenshots ("SHIP" or "POLISH" + issues)
+	Locale         string            // customer's UI language at creation ("en"/"sv"/"ru"), for their emails
+	ContentAnswers map[string]string // text the customer typed for text-kind content slots (slug → value)
+	IterationsUsed int               // number of build passes consumed (1..MaxIterations)
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
