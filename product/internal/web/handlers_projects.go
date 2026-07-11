@@ -283,7 +283,7 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 			missing = append(missing, c.Name(lang))
 		}
 		if s.imagegen != nil && c.CanGenerate() {
-			genPrompts[c.Slug] = defaultImagePrompt(p, c) // shown pre-filled, editable
+			genPrompts[c.Slug] = defaultImagePrompt(p, c, lang) // shown pre-filled, editable
 		}
 	}
 

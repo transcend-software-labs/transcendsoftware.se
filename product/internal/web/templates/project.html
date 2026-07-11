@@ -150,7 +150,7 @@
         <form method="post" action="/projects/{{$pid}}/content/improve" class="gen-improve">
           <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
           <input type="hidden" name="slot" value="{{$slug}}">
-          <input type="text" name="instruction" maxlength="1000" placeholder="{{$.T "prj.gen.improve_ph"}}">
+          <textarea name="instruction" rows="2" maxlength="1000" required placeholder="{{$.T "prj.gen.improve_ph"}}"></textarea>
           <button class="btn btn-sm" type="submit">{{$.T "prj.gen.improve"}}</button>
         </form>
         {{else}}

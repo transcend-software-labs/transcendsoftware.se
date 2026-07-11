@@ -551,7 +551,7 @@ label.design-option:hover { border-color: var(--accent); }
 
 /* AI image generation on content slots. */
 .gen-create, .gen-improve { display: flex; gap: .5rem; margin-top: .5rem; flex-wrap: wrap; }
-.gen-create input[type=text], .gen-improve input[type=text] {
+.gen-create input[type=text], .gen-create textarea, .gen-improve input[type=text], .gen-improve textarea {
   flex: 1; min-width: 10rem; padding: .5rem .6rem; background: var(--surface); color: var(--text);
   border: 1px solid var(--border-2); border-radius: var(--radius); font-family: inherit;
 }

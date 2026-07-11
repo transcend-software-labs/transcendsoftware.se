@@ -13,6 +13,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/id"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
+	"github.com/transcend-software-labs/rasmus-ai/internal/web/i18n"
 )
 
 // generatableSlot returns the content item for a slot if it's an image slot
@@ -44,21 +45,22 @@ func (s *Server) genCandidates(ctx context.Context, p *project.Project, slot, pr
 	return s.store.UpdateProject(ctx, p)
 }
 
-// defaultImagePrompt seeds a generation prompt from the plan's design direction
-// and the slot's purpose, so the customer usually needn't write one.
-func defaultImagePrompt(p *project.Project, c project.ContentItem) string {
+// defaultImagePrompt seeds a generation prompt in the customer's language from
+// the plan's design direction and the slot's purpose, so the customer sees a
+// ready prompt they can edit. gpt-image handles non-English prompts fine.
+func defaultImagePrompt(p *project.Project, c project.ContentItem, lang string) string {
 	var b strings.Builder
-	b.WriteString(c.Name("en") + " for this website.")
+	b.WriteString(fmt.Sprintf(i18n.T(lang, "gen.prompt.lead"), c.Name(lang)))
 	if brief := strings.TrimSpace(p.Brief); brief != "" {
 		if len(brief) > 300 {
 			brief = brief[:300]
 		}
-		b.WriteString(" Business: " + brief)
+		b.WriteString(" " + i18n.T(lang, "gen.prompt.business") + brief)
 	}
 	if p.DesignBrief != "" {
-		b.WriteString(" Design direction: " + p.DesignBrief + ".")
+		b.WriteString(" " + i18n.T(lang, "gen.prompt.direction") + p.DesignBrief + ".")
 	}
-	b.WriteString(" Clean and professional, ready to place directly on the site, no watermark or text unless it is a logo wordmark.")
+	b.WriteString(" " + i18n.T(lang, "gen.prompt.style"))
 	return b.String()
 }
 
@@ -76,7 +78,7 @@ func (s *Server) handleGenerateImage(w http.ResponseWriter, r *http.Request, u *
 	}
 	prompt := strings.TrimSpace(r.FormValue("prompt"))
 	if prompt == "" {
-		prompt = defaultImagePrompt(p, c)
+		prompt = defaultImagePrompt(p, c, s.lang(r))
 	} else if len(prompt) > 1000 {
 		prompt = prompt[:1000]
 	}
