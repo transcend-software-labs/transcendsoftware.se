@@ -746,3 +746,67 @@ func TestAdmin_PaidGateAndDelivery(t *testing.T) {
 		t.Fatalf("paid project should deliver, got %q", got.Status)
 	}
 }
+
+// TestApplyContent_ButtonAppearsAndRebuilds covers content added after a build:
+// it flags the project, surfaces the "update my site" button, and the button
+// triggers a rebuild that consumes a change and clears the flag.
+func TestApplyContent_ButtonAppearsAndRebuilds(t *testing.T) {
+	srv, st, _ := newTestServerAuth(t, config.Config{AdminEmail: "admin@example.com"}, nil)
+	defer srv.Close()
+	c := signedInClient(t, srv.URL)
+	ctx := context.Background()
+	u, _ := st.UserByEmail(ctx, "neighbour@example.com")
+	// A project that already has one build (a preview the customer has seen).
+	p := &project.Project{
+		ID: "proj-apply", UserID: u.ID, Name: "Bakery", Status: project.StatusPreviewReady,
+		IterationsUsed: 1, PreviewURL: "https://forge-proj-apply.fly.dev",
+		Spec: project.PlanSpec{ContentNeeded: []project.ContentItem{
+			{Slug: "tagline", Names: map[string]string{"en": "Tagline"}, Kind: "text"},
+		}},
+	}
+	if err := st.CreateProject(ctx, p); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	tok := csrfToken(t, c, srv.URL)
+
+	page := func() string {
+		r, _ := c.Get(srv.URL + "/projects/" + p.ID)
+		b, _ := io.ReadAll(r.Body)
+		r.Body.Close()
+		return string(b)
+	}
+	// No content added yet → no update button.
+	if strings.Contains(page(), "Update my site with it") {
+		t.Error("apply-content button should not show before new content is added")
+	}
+
+	// Add content after the build → flag set, button appears.
+	r, _ := c.PostForm(srv.URL+"/projects/"+p.ID+"/content",
+		url.Values{"slot": {"tagline"}, "value": {"Fresh sourdough daily"}, "csrf_token": {tok}})
+	r.Body.Close()
+	if got, _ := st.ProjectByID(ctx, p.ID); !got.ContentPending {
+		t.Fatal("adding content after a build should set ContentPending")
+	}
+	if !strings.Contains(page(), "Update my site with it") {
+		t.Error("apply-content button should appear once content is pending")
+	}
+
+	// Click it → a rebuild runs (a 2nd iteration), and the flag clears.
+	r, _ = c.PostForm(srv.URL+"/projects/"+p.ID+"/apply-content", url.Values{"csrf_token": {tok}})
+	r.Body.Close()
+	deadline := time.Now().Add(8 * time.Second)
+	var got *project.Project
+	for time.Now().Before(deadline) {
+		got, _ = st.ProjectByID(ctx, p.ID)
+		if got.Status == project.StatusPreviewReady && got.IterationsUsed == 2 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if got.IterationsUsed != 2 {
+		t.Fatalf("apply-content should rebuild as a change, IterationsUsed=%d", got.IterationsUsed)
+	}
+	if got.ContentPending {
+		t.Error("ContentPending should be cleared by the rebuild")
+	}
+}

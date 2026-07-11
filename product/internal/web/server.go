@@ -120,6 +120,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /projects/{id}/content/pick", s.requireUser(s.handlePickImage))
 	mux.HandleFunc("POST /projects/{id}/content/improve", s.requireUser(s.handleImproveImage))
 	mux.HandleFunc("POST /projects/{id}/reiterate", s.requireUser(s.handleReiterate))
+	mux.HandleFunc("POST /projects/{id}/apply-content", s.requireUser(s.handleApplyContent))
 	mux.HandleFunc("POST /projects/{id}/retry", s.requireUser(s.handleRetry))
 	mux.HandleFunc("POST /projects/{id}/accept", s.requireUser(s.handleAccept))
 

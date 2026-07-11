@@ -137,6 +137,7 @@ func (s *Server) handlePickImage(w http.ResponseWriter, r *http.Request, u *user
 		return
 	}
 	delete(p.PendingImages, slot)
+	markContentPending(p) // a picked image changes what the build should use
 	if err := s.store.UpdateProject(r.Context(), p); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

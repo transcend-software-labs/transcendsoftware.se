@@ -225,6 +225,7 @@ type Project struct {
 	Paid           bool                       // payment settled — unlocks delivery (see MarkPaid)
 	PaidAt         time.Time                  // when payment was recorded (zero = unpaid)
 	PaidVia        string                     // how it was settled: "manual", later "stripe"; provenance for accounting
+	ContentPending bool                       // content was added/changed since the last build — offer a rebuild to apply it
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }

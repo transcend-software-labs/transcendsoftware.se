@@ -75,15 +75,6 @@ type Config struct {
 	PlannerLLMAPIKey  string
 	PlannerLLMModel   string
 
-	// Design critic: a vision-capable model that reviews the deployed site's
-	// screenshots after preview_ready and can trigger one internal polish pass.
-	// Defaults to the impl LLM wiring; disable with DESIGN_CRITIC=off.
-	CriticLLMBaseURL string
-	CriticLLMAPIKey  string
-	CriticLLMModel   string
-	CriticEnabled    bool
-	CriticAutoPolish bool
-
 	// Image generation for content slots ("Generate with AI"). Defaults to
 	// OpenAI gpt-image-2 using OPENAI_API_KEY. Disabled when no key is set.
 	ImageGenBaseURL       string
@@ -173,12 +164,6 @@ func Load() Config {
 		PlannerLLMAPIKey:  os.Getenv("PLANNER_LLM_API_KEY"),
 		PlannerLLMModel:   envOr("PLANNER_LLM_MODEL", "glm-5.2"),
 
-		CriticLLMBaseURL: os.Getenv("CRITIC_LLM_BASE_URL"),
-		CriticLLMAPIKey:  os.Getenv("CRITIC_LLM_API_KEY"),
-		CriticLLMModel:   os.Getenv("CRITIC_LLM_MODEL"),
-		CriticEnabled:    os.Getenv("DESIGN_CRITIC") != "off",
-		CriticAutoPolish: os.Getenv("CRITIC_AUTOPOLISH") != "off",
-
 		ImageGenBaseURL:       envOr("IMAGEGEN_BASE_URL", "https://api.openai.com/v1"),
 		ImageGenAPIKey:        os.Getenv("IMAGEGEN_API_KEY"),
 		ImageGenModel:         envOr("IMAGEGEN_MODEL", "gpt-image-2"),
@@ -244,21 +229,6 @@ func Load() Config {
 		}
 	}
 
-	// Critic defaults: whatever the impl model resolved to above (Zen/OpenAI
-	// included), unless CRITIC_LLM_* points it somewhere else explicitly.
-	if c.CriticLLMBaseURL == "" {
-		c.CriticLLMBaseURL = c.LLMBaseURL
-	}
-	if c.CriticLLMModel == "" {
-		c.CriticLLMModel = c.LLMModel
-	}
-	if c.CriticLLMAPIKey == "" {
-		if strings.Contains(c.CriticLLMBaseURL, "api.openai.com") {
-			c.CriticLLMAPIKey = os.Getenv("OPENAI_API_KEY")
-		} else {
-			c.CriticLLMAPIKey = c.LLMAPIKey
-		}
-	}
 	// Image generation defaults to OpenAI on OPENAI_API_KEY.
 	if c.ImageGenAPIKey == "" {
 		c.ImageGenAPIKey = os.Getenv("OPENAI_API_KEY")

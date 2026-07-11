@@ -97,6 +97,7 @@ type Result struct {
 	Screenshots   []CapturedPage // pages captured (slot → path)
 	Findings      []Finding      // impeccable design-audit findings (non-nil iff the audit ran; empty = clean)
 	Tokens        int            // model tokens consumed by the build agent
+	Critique      string         // in-session visual-review verdict (SHIP / POLISH + notes), "" if it didn't run
 }
 
 // Finding is one issue the impeccable design detector reported on the built UI.
@@ -402,11 +403,14 @@ func (b *Sandbox) finalize(ctx context.Context, sb *fly.Sandbox, req Request, re
 		}
 	}
 
-	// Surface the in-session visual review (Grok's verdict on the agent's own
-	// screenshots) so the operator can see it — the agent ran design-review.js
-	// during the build, but the log only records the command, not its output.
-	if review := b.readDesignReview(ctx, sb.MachineID); review != "" {
-		emit(hooks.OnLog, "In-session visual review (final pass):\n"+review)
+	// Surface the in-session visual review (the design model's verdict on the
+	// agent's own screenshots) so the operator can see it — the agent ran
+	// design-review.js during the build (and applied its fixes before deploying),
+	// but the log only records the command, not its output. This verdict is the
+	// single source of the design critique now: there is no post-deploy pass.
+	critique := b.readDesignReview(ctx, sb.MachineID)
+	if critique != "" {
+		emit(hooks.OnLog, "In-session visual review (final pass):\n"+critique)
 	}
 
 	// Independent design audit for Rasmus's review — the deterministic detector
@@ -422,7 +426,7 @@ func (b *Sandbox) finalize(ctx context.Context, sb *fly.Sandbox, req Request, re
 	}
 
 	return Result{PreviewURL: preview, Log: res.Log, Tokens: res.Tokens,
-		SnapshotSaved: snapshotSaved, Screenshots: shots, Findings: findings}, nil
+		SnapshotSaved: snapshotSaved, Screenshots: shots, Findings: findings, Critique: critique}, nil
 }
 
 // crawlerJS crawls a deployed site's same-origin pages and screenshots each

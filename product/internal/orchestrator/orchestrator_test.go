@@ -654,3 +654,31 @@ func TestEscalation_Reject(t *testing.T) {
 		t.Errorf("expected rejected with reason, got %q / %q", got.Status, got.RejectReason)
 	}
 }
+
+// TestBuild_PreviewReadyEmailsExactlyOnce guards the email-timing fix: a build
+// reaching preview_ready notifies the customer once — no premature send before a
+// polish pass, and no duplicate (the post-deploy critic that used to redeploy
+// and re-send is gone; design polish happens in the one sandbox execution).
+func TestBuild_PreviewReadyEmailsExactlyOnce(t *testing.T) {
+	st := store.NewMemory()
+	orch := newTestOrch(st)
+	rec := &recordingNotifier{}
+	orch.SetNotifications(rec, "rasmus@example.com", "https://app.example")
+	if err := st.CreateUser(context.Background(),
+		&user.User{ID: "u1", Email: "customer@example.com", CreatedAt: time.Now().UTC()}); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	id := seedProject(t, st, "A brochure site for an apple farm selling juice")
+	startThroughIntake(t, orch, st, id)
+	waitFor(t, st, id, project.StatusPreviewReady)
+
+	n := 0
+	for _, m := range rec.all() {
+		if m.To == "customer@example.com" && strings.Contains(strings.ToLower(m.Subject), "preview") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("expected exactly one preview email, got %d (%+v)", n, rec.all())
+	}
+}

@@ -378,6 +378,11 @@ func (s *Server) handleUploadAsset(w http.ResponseWriter, r *http.Request, u *us
 			return
 		}
 	}
+	if markContentPending(p); p.ContentPending {
+		if err := s.store.UpdateProject(r.Context(), p); err != nil {
+			s.log.Error("flag content pending", "project", p.ID, "err", err)
+		}
+	}
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 }
 
@@ -402,6 +407,16 @@ func (s *Server) storeUpload(ctx context.Context, projectID string, hdr *multipa
 		ID: id.New(), ProjectID: projectID, Key: key, Filename: filename,
 		ContentType: ct, Description: desc, Slot: slot, Generated: generated, Size: hdr.Size, CreatedAt: time.Now().UTC(),
 	})
+}
+
+// markContentPending flags (in memory — the caller saves) that the customer
+// changed content after a build already ran, so the project page can offer a
+// rebuild that applies it. No-op before the first build: that content flows into
+// the first build normally.
+func markContentPending(p *project.Project) {
+	if p.IterationsUsed > 0 {
+		p.ContentPending = true
+	}
 }
 
 // maxRosterEntries caps how many people a roster slot renders/accepts.
@@ -461,6 +476,7 @@ func (s *Server) handleRoster(w http.ResponseWriter, r *http.Request, u *user.Us
 	} else {
 		p.ContentRosters[slot] = entries
 	}
+	markContentPending(p)
 	if err := s.store.UpdateProject(r.Context(), p); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -569,6 +585,33 @@ func (s *Server) handleReiterate(w http.ResponseWriter, r *http.Request, u *user
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 }
 
+// applyContentPrompt directs a reiteration to fold in content the customer
+// provided after the last build. The assets/text/roster reach the agent through
+// AssetNotes; this just tells it to actually use them.
+const applyContentPrompt = "The customer has provided new content since the last build — uploaded logo/photos, AI-generated images, text, and/or team info (see the attached assets and notes). Incorporate it: place each asset where it belongs (match by filename and description), replace any placeholder or stand-in imagery and copy with the real content, and fill in the text they supplied. Keep the existing design, layout and structure — this is a content update, not a redesign. Then verify and redeploy."
+
+// handleApplyContent rebuilds the site to fold in content the customer added
+// after the last build. It counts as a change (consumes one reiteration).
+func (s *Server) handleApplyContent(w http.ResponseWriter, r *http.Request, u *user.User) {
+	p, ok := s.ownedProject(w, r, u)
+	if !ok {
+		return
+	}
+	if !p.ContentPending || !p.CanReiterate() {
+		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+		return
+	}
+	// Like any reiteration this spawns a build — respect the global capacity cap.
+	if s.cfg.MaxConcurrentBuilds > 0 {
+		if active, err := s.store.ActiveIterations(r.Context()); err == nil && len(active) >= s.cfg.MaxConcurrentBuilds {
+			http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+			return
+		}
+	}
+	s.orch.Reiterate(p.ID, applyContentPrompt)
+	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+}
+
 // handleRetry re-runs a failed build (e.g. an agent error, or a build
 // interrupted by a crash or deploy). It consumes no change credit.
 func (s *Server) handleRetry(w http.ResponseWriter, r *http.Request, u *user.User) {
@@ -663,6 +706,7 @@ func (s *Server) handleContentAnswer(w http.ResponseWriter, r *http.Request, u *
 	} else {
 		p.ContentAnswers[slot] = value
 	}
+	markContentPending(p)
 	if err := s.store.UpdateProject(r.Context(), p); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

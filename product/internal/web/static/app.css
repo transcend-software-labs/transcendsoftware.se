@@ -583,6 +583,15 @@ label.design-option:hover { border-color: var(--accent); }
 .gen-pick:hover { border-color: var(--accent); color: var(--accent); }
 .gen-pick img { width: 140px; height: 140px; object-fit: cover; border-radius: calc(var(--radius) - 2px); display: block; }
 
+/* "You added content — update your site" call-to-action */
+.apply-content {
+  margin: .25rem 0 1rem; padding: 1rem 1.1rem; border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.apply-content p { margin: 0 0 .6rem; }
+.apply-content .apply-note { margin: .5rem 0 0; }
+
 .gen-spark { font-weight: 700; }
 .gen-exhausted { margin-top: .5rem; font-style: italic; }
 .gen-notice {

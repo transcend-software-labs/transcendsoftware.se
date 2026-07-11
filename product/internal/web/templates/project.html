@@ -80,6 +80,16 @@
   <h2>{{$.T "prj.assets.h2"}}</h2>
   <p class="muted small">{{$.T "prj.assets.intro"}}</p>
   {{if $.Data.GenNotice}}<p class="gen-notice small">{{$.Data.GenNotice}}</p>{{end}}
+  {{if and .ContentPending .CanReiterate}}
+  <div class="apply-content">
+    <p>{{$.T "prj.apply.intro"}}</p>
+    <form method="post" action="/projects/{{.ID}}/apply-content" class="inline">
+      <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+      <button class="btn" type="submit">{{$.T "prj.apply.btn"}}</button>
+    </form>
+    <p class="muted small apply-note">{{$.T "prj.apply.note"}}</p>
+  </div>
+  {{end}}
   {{if .Spec.ContentNeeded}}
   <ul class="content-checklist">
     {{$pid := .ID}}
