@@ -147,7 +147,7 @@ customer's language. Exact shape:
 ` + "```json" + `
 {"pages":[{"slug":"start","paths":["index","home","landing"],"names":{"en":"the home page","sv":"Startsidan","ru":"главная страница"},"included":"Hero, om oss, utvalda produkter och kontakt"}],
  "not_included":["Onlinebetalning","Kundinloggning"],
- "content_needed":[{"slug":"logo","names":{"en":"Logo","sv":"Logotyp","ru":"Логотип"},"required":true,"kind":"file"},{"slug":"contact_email","names":{"en":"Contact email","sv":"Kontaktmejl","ru":"Контактный email"},"required":true,"kind":"text"}]}
+ "content_needed":[{"slug":"logo","names":{"en":"Logo","sv":"Logotyp","ru":"Логотип"},"required":true,"kind":"file","generatable":true},{"slug":"team","names":{"en":"The team","sv":"Teamet","ru":"Команда"},"required":false,"kind":"roster"},{"slug":"contact_email","names":{"en":"Contact email","sv":"Kontaktmejl","ru":"Контактный email"},"required":true,"kind":"text"}]}
 ` + "```" + `
 - slug: short lowercase ascii id, stable.
 - paths: 2-4 lowercase substrings that will appear in the file names or routes
@@ -159,10 +159,17 @@ customer's language. Exact shape:
 - included: one short phrase, customer's language, of what that page contains.
 - not_included: plain-language things you are deliberately NOT building.
 - content_needed: real things the customer must give us. names in all three
-  languages (en/sv/ru); required=false for nice-to-haves. Set kind: "file" for
-  things they upload (a logo, photos, a hero image) and "text" for things they
-  simply type in (a contact email, opening hours, the About copy, a route
-  list). Don't ask for a file when the answer is a sentence.
+  languages (en/sv/ru); required=false for nice-to-haves. Set kind to:
+    "text"   they type it in (a contact email, opening hours, the About copy)
+    "file"   ONE image they upload (a logo, a hero/background image)
+    "files"  SEVERAL images (a product or project gallery)
+    "roster" a list of PEOPLE (a team/staff) — each person has a name, role,
+             short bio and their own photo. ALWAYS use this for team/staff
+             content, never a single free-text box, so each photo pairs with
+             the right person.
+  For image kinds ("file"/"files") we could create ourselves — a logo, a
+  background/hero, decorative art — also set "generatable": true. Don't ask for
+  a file when the answer is a sentence.
 Emit valid JSON only inside that block. It must agree with the markdown.
 
 Begin the response with a single line: "NAME: <a short 2-4 word project name>".`
@@ -402,7 +409,7 @@ func (Fake) Plan(_ context.Context, brief string) (PlanResult, error) {
 		`{"slug":"om","paths":["om","about"],"names":{"en":"the about page","sv":"Om oss","ru":"страница «О нас»"},"included":"Er berättelse och bilder"},` +
 		`{"slug":"kontakt","paths":["kontakt","contact"],"names":{"en":"the contact page","sv":"Kontakt","ru":"контакты"},"included":"Kontaktformulär och karta"}],` +
 		`"not_included":["Onlinebetalning","Kundinloggning"],` +
-		`"content_needed":[{"slug":"logo","names":{"en":"Logo","sv":"Logotyp","ru":"Логотип"},"required":true,"kind":"file"},{"slug":"photos","names":{"en":"Photos","sv":"Bilder","ru":"Фотографии"},"required":false,"kind":"file"},{"slug":"contact_email","names":{"en":"Contact email","sv":"Kontaktmejl","ru":"Контактный email"},"required":true,"kind":"text"}]}` +
+		`"content_needed":[{"slug":"logo","names":{"en":"Logo","sv":"Logotyp","ru":"Логотип"},"required":true,"kind":"file","generatable":true},{"slug":"photos","names":{"en":"Photos","sv":"Bilder","ru":"Фотографии"},"required":false,"kind":"files"},{"slug":"team","names":{"en":"The team","sv":"Teamet","ru":"Команда"},"required":false,"kind":"roster"},{"slug":"contact_email","names":{"en":"Contact email","sv":"Kontaktmejl","ru":"Контактный email"},"required":true,"kind":"text"}]}` +
 		"\n```"
 	return PlanResult{Name: name, Plan: plan}, nil
 }

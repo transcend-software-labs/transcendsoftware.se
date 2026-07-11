@@ -501,10 +501,7 @@ label.design-option:hover { border-color: var(--accent); }
   background: var(--surface); color: var(--muted); cursor: pointer;
 }
 .upload-other-h { margin-top: 1.5rem; margin-bottom: 0; }
-.content-mark { width: 1.1rem; text-align: center; }
 .content-have { color: var(--text); }
-.content-have .content-mark { color: var(--green); }
-.content-need .content-mark { color: var(--dim); }
 .content-name { font-weight: 500; }
 
 /* Human-language history. */
@@ -529,3 +526,25 @@ label.design-option:hover { border-color: var(--accent); }
 .btn.danger:hover { background: var(--red); color: var(--bg); filter: none; }
 .danger-zone { border-top: 1px solid var(--red); }
 .danger-zone h2 { color: var(--red); }
+
+/* Roster: one grouped card per person — name/role/bio + their own photo. */
+.roster-form { display: grid; gap: .75rem; margin-left: 1.7rem; }
+.roster-member {
+  border: 1px solid var(--border); border-radius: var(--radius); padding: .8rem;
+  display: grid; gap: .5rem; background: var(--bg-2);
+}
+.roster-member .roster-fields { display: flex; gap: .5rem; flex-wrap: wrap; }
+.roster-member .roster-fields input { flex: 1; min-width: 8rem; }
+.roster-member input[type=text], .roster-member textarea {
+  padding: .45rem .6rem; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-2); border-radius: var(--radius); font-family: inherit;
+}
+.roster-photo-row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; font-size: .85rem; color: var(--muted); }
+.roster-photo { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border-2); }
+.roster-photo-label { display: flex; align-items: center; gap: .4rem; }
+.slot-files { list-style: none; margin: .3rem 0 .3rem 1.7rem; padding: 0; font-size: .85rem; color: var(--muted); display: grid; gap: .2rem; }
+.ack-later { display: flex; align-items: flex-start; gap: .5rem; font-size: .9rem; }
+.ack-later input { width: auto; margin-top: .2rem; }
+.approve-gate .btn { margin-top: .5rem; }
+
+.content-done { color: var(--green); font-size: .8rem; font-weight: 600; }

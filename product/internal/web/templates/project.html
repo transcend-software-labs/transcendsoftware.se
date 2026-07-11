@@ -73,10 +73,99 @@
     {{range .Spec.NotIncluded}}<li class="muted small">{{.}}</li>{{end}}
   </ul>
   {{end}}
-  {{if .CanApprovePlan}}
-  <form method="post" action="/projects/{{.ID}}/approve-plan" class="scope-approve">
+</section>
+{{end}}
+
+<section class="panel">
+  <h2>{{$.T "prj.assets.h2"}}</h2>
+  <p class="muted small">{{$.T "prj.assets.intro"}}</p>
+  {{if .Spec.ContentNeeded}}
+  <ul class="content-checklist">
+    {{$pid := .ID}}
+    {{range .Spec.ContentNeeded}}
+    {{$slug := .Slug}}
+    {{$filled := index $.Data.FilledSlots $slug}}
+    <li class="content-{{if $filled}}have{{else}}need{{end}}">
+      <div class="content-row">
+        <span class="content-name">{{.Name $.Lang}}</span>
+        {{if $filled}}<span class="content-done">✓ {{$.T "prj.content.provided"}}</span>{{end}}
+        {{if not .Required}}<span class="muted small">({{$.T "prj.content.optional"}})</span>{{end}}
+      </div>
+      {{if .IsText}}
+      <form method="post" action="/projects/{{$pid}}/content" class="content-answer">
+        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+        <input type="hidden" name="slot" value="{{$slug}}">
+        <input type="text" name="value" maxlength="2000" value="{{index $.Data.Project.ContentAnswers $slug}}" placeholder="{{.Name $.Lang}}…">
+        <button class="btn btn-sm" type="submit">{{$.T "prj.content.save"}}</button>
+      </form>
+      {{else if .IsRoster}}
+      <form method="post" action="/projects/{{$pid}}/roster" enctype="multipart/form-data" class="roster-form">
+        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+        <input type="hidden" name="slot" value="{{$slug}}">
+        {{range $i, $m := index $.Data.Rosters $slug}}
+        <fieldset class="roster-member">
+          <div class="roster-fields">
+            <input type="text" name="name_{{$i}}" value="{{$m.Name}}" placeholder="{{$.T "prj.roster.name"}}">
+            <input type="text" name="role_{{$i}}" value="{{$m.Role}}" placeholder="{{$.T "prj.roster.role"}}">
+          </div>
+          <textarea name="bio_{{$i}}" rows="2" placeholder="{{$.T "prj.roster.bio"}}">{{$m.Bio}}</textarea>
+          <div class="roster-photo-row">
+            {{if $m.PhotoURL}}<img class="roster-photo" src="{{$m.PhotoURL}}" alt="" loading="lazy">{{end}}
+            <input type="hidden" name="photokey_{{$i}}" value="{{$m.PhotoKey}}">
+            <label class="roster-photo-label">{{$.T "prj.roster.photo"}} <input type="file" name="photo_{{$i}}" accept="image/png,image/jpeg,image/webp"></label>
+          </div>
+        </fieldset>
+        {{end}}
+        <button class="btn btn-sm" type="submit">{{$.T "prj.content.save"}}</button>
+      </form>
+      {{else}}
+      {{with index $.Data.SlotAssets $slug}}
+      <ul class="slot-files">
+        {{range .}}<li>{{if .URL}}<a href="{{.URL}}" target="_blank" rel="noopener">{{.Filename}}</a>{{else}}{{.Filename}}{{end}}</li>{{end}}
+      </ul>
+      {{end}}
+      <form method="post" action="/projects/{{$pid}}/assets" enctype="multipart/form-data" class="content-upload">
+        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+        <input type="hidden" name="slot" value="{{$slug}}">
+        <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf"{{if .IsFiles}} multiple{{end}} required>
+        <button class="btn btn-sm" type="submit">{{$.T "prj.assets.upload"}}</button>
+      </form>
+      {{end}}
+    </li>
+    {{end}}
+  </ul>
+  {{end}}
+  {{if $.Data.Assets}}
+  <ul class="asset-list">
+    {{range $.Data.Assets}}
+    <li><span class="asset-name">{{.Filename}}</span>{{if .Description}}<span class="muted small">— {{.Description}}</span>{{end}}</li>
+    {{end}}
+  </ul>
+  {{end}}
+  {{if .Spec.ContentNeeded}}<h3 class="muted small upload-other-h">{{$.T "prj.assets.other"}}</h3>{{end}}
+  <form method="post" action="/projects/{{.ID}}/assets" enctype="multipart/form-data" class="upload-form">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-    <p class="muted small">{{$.T "prj.scope.approve_intro"}}</p>
+    <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" required>
+    <input type="text" name="description" maxlength="300" placeholder="{{$.T "prj.assets.desc_ph"}}">
+    <button class="btn btn-sm" type="submit">{{$.T "prj.assets.upload"}}</button>
+  </form>
+</section>
+
+{{if .CanApprovePlan}}
+<section class="panel approve-gate">
+  <h2>{{$.T "prj.approve.h2"}}</h2>
+  {{if $.Data.MissingReq}}
+  <p class="muted small">{{$.T "prj.approve.missing_intro"}}</p>
+  <ul class="scope-list scope-not">{{range $.Data.MissingReq}}<li class="muted small">{{.}}</li>{{end}}</ul>
+  <form method="post" action="/projects/{{.ID}}/approve-plan" class="stack">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <label class="ack-later"><input type="checkbox" name="ack" required> {{$.T "prj.approve.ack"}}</label>
+    <button class="btn" type="submit">{{$.T "prj.scope.approve_btn"}}</button>
+  </form>
+  {{else}}
+  <p class="muted small">{{$.T "prj.scope.approve_intro"}}</p>
+  <form method="post" action="/projects/{{.ID}}/approve-plan">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
     <button class="btn" type="submit">{{$.T "prj.scope.approve_btn"}}</button>
   </form>
   {{end}}
@@ -88,64 +177,6 @@
   <p class="brief">{{.Brief}}</p>
   {{if .Answers}}<h3 class="muted small" style="margin-top:1rem">{{$.T "prj.brief.answers"}}</h3><p class="brief">{{.Answers}}</p>{{end}}
   {{if .DesignBrief}}<h3 class="muted small" style="margin-top:1rem">{{$.T "prj.brief.design"}}</h3><p class="brief">{{.DesignBrief}}</p>{{end}}
-</section>
-
-<section class="panel">
-  <h2>{{$.T "prj.assets.h2"}}</h2>
-  <p class="muted small">{{$.T "prj.assets.intro"}}</p>
-  {{if .Spec.ContentNeeded}}
-  <ul class="content-checklist">
-    {{$proj := .}}
-    {{range .Spec.ContentNeeded}}
-    {{$filled := false}}
-    {{if .IsFile}}{{if index $.Data.FilledSlots .Slug}}{{$filled = true}}{{end}}
-    {{else}}{{if index $proj.ContentAnswers .Slug}}{{$filled = true}}{{end}}{{end}}
-    <li class="content-{{if $filled}}have{{else}}need{{end}}">
-      <div class="content-row">
-        <span class="content-mark">{{if $filled}}✓{{else}}○{{end}}</span>
-        <span class="content-name">{{.Name $.Lang}}</span>
-        {{if not .Required}}<span class="muted small">({{$.T "prj.content.optional"}})</span>{{end}}
-      </div>
-      {{if .IsFile}}
-      {{/* Each file item uploads directly against its own slot — no "what is
-           this?" needed, the row already says what it is. */}}
-      <form method="post" action="/projects/{{$proj.ID}}/assets" enctype="multipart/form-data" class="content-upload">
-        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-        <input type="hidden" name="slot" value="{{.Slug}}">
-        <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" required>
-        <button class="btn btn-sm" type="submit">{{$.T "prj.assets.upload"}}</button>
-      </form>
-      {{else}}
-      <form method="post" action="/projects/{{$proj.ID}}/content" class="content-answer">
-        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-        <input type="hidden" name="slot" value="{{.Slug}}">
-        <input type="text" name="value" maxlength="2000" value="{{index $proj.ContentAnswers .Slug}}"
-          placeholder="{{.Name $.Lang}}…">
-        <button class="btn btn-sm" type="submit">{{$.T "prj.content.save"}}</button>
-      </form>
-      {{end}}
-    </li>
-    {{end}}
-  </ul>
-  {{end}}
-  {{if $.Data.Assets}}
-  <ul class="asset-list">
-    {{range $.Data.Assets}}
-    <li><span class="asset-name">{{.Filename}}</span>
-      {{if .Description}}<span class="muted small">— {{.Description}}</span>{{end}}</li>
-    {{end}}
-  </ul>
-  {{end}}
-  {{/* One general uploader for anything not on the list — here the free-text
-       note is the only thing that says what the file is. */}}
-  {{if .Spec.ContentNeeded}}<h3 class="muted small upload-other-h">{{$.T "prj.assets.other"}}</h3>{{end}}
-  <form method="post" action="/projects/{{.ID}}/assets" enctype="multipart/form-data" class="upload-form">
-    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-    <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" required>
-    <input type="text" name="description" maxlength="300"
-      placeholder="{{$.T "prj.assets.desc_ph"}}">
-    <button class="btn btn-sm" type="submit">{{$.T "prj.assets.upload"}}</button>
-  </form>
 </section>
 
 {{if .CanRetry}}

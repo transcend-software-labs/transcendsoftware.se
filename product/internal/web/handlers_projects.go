@@ -1,9 +1,11 @@
 package web
 
 import (
+	"context"
 	"fmt"
 	"html/template"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"path/filepath"
 	"regexp"
@@ -161,36 +163,123 @@ func (s *Server) quotaBlock(r *http.Request, u *user.User) string {
 type projectView struct {
 	Project     *project.Project
 	Iterations  []*project.Iteration
-	Assets      []*project.Asset
-	Shots       []reviewShot    // presigned page screenshots of the current build
-	Status      statusView      // the live status box (also re-rendered by the poll)
-	FilledSlots map[string]bool // content-slot slug → an asset fills it
+	Assets      []*project.Asset            // general (un-slotted) uploads
+	Shots       []reviewShot                // presigned page screenshots of the current build
+	Status      statusView                  // the live status box (also re-rendered by the poll)
+	FilledSlots map[string]bool             // content-slot slug → provided (file/text/roster)
+	Rosters     map[string][]rosterMember   // roster slug → its people (presigned photos)
+	SlotAssets  map[string][]slotAssetView  // file/files slug → its uploaded assets (presigned)
+	Candidates  map[string][]candidateImage // slot → pending AI-image candidates awaiting pick
+	MissingReq  []string                    // localized names of required, unprovided content (for the approve gate)
+}
+
+// rosterMember is one team person for the template, with a presigned photo URL.
+type rosterMember struct {
+	Name, Role, Bio string
+	PhotoKey        string
+	PhotoURL        string // presigned, "" when no photo
+}
+
+// slotAssetView is one uploaded file shown under its content slot.
+type slotAssetView struct {
+	Filename string
+	URL      string // presigned
+}
+
+// candidateImage is one pending AI-generated image awaiting the customer's pick.
+type candidateImage struct {
+	Index int
+	URL   string // presigned
 }
 
 func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.User) {
+	ctx := r.Context()
 	p, ok := s.ownedProject(w, r, u)
 	if !ok {
 		return
 	}
-	its, err := s.store.IterationsByProject(r.Context(), p.ID)
+	its, err := s.store.IterationsByProject(ctx, p.ID)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	assets, err := s.store.AssetsByProject(r.Context(), p.ID)
+	assets, err := s.store.AssetsByProject(ctx, p.ID)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	presign := func(key string) string {
+		if key == "" {
+			return ""
+		}
+		if u, err := s.storage.PresignGet(ctx, key, 30*time.Minute); err == nil {
+			return u
+		}
+		return ""
+	}
+
+	// Split assets: slot-tagged ones sit under their content item; the rest are
+	// "other files". Slotted slots count as filled.
 	filled := map[string]bool{}
+	slotAssets := map[string][]slotAssetView{}
+	var general []*project.Asset
 	for _, a := range assets {
-		if a.Slot != "" {
-			filled[a.Slot] = true
+		if a.Slot == "" {
+			general = append(general, a)
+			continue
+		}
+		filled[a.Slot] = true
+		slotAssets[a.Slot] = append(slotAssets[a.Slot], slotAssetView{Filename: a.Filename, URL: presign(a.Key)})
+	}
+	// Text answers and roster people also fill their slots.
+	for slug, v := range p.ContentAnswers {
+		if v != "" {
+			filled[slug] = true
 		}
 	}
+	// For each roster slot, render its existing people plus a few blank rows to
+	// add more. The row's index in this slice is its form index (name_<i>, …).
+	rosters := map[string][]rosterMember{}
+	for _, c := range p.Spec.ContentNeeded {
+		if !c.IsRoster() {
+			continue
+		}
+		entries := p.ContentRosters[c.Slug]
+		if len(entries) > 0 {
+			filled[c.Slug] = true
+		}
+		rows := make([]rosterMember, 0, len(entries)+3)
+		for _, e := range entries {
+			rows = append(rows, rosterMember{Name: e.Name, Role: e.Role, Bio: e.Bio, PhotoKey: e.PhotoKey, PhotoURL: presign(e.PhotoKey)})
+		}
+		for i := 0; i < 3 && len(rows) < maxRosterEntries; i++ {
+			rows = append(rows, rosterMember{}) // blank rows for adding people
+		}
+		rosters[c.Slug] = rows
+	}
+	// Pending AI-image candidates awaiting a pick.
+	candidates := map[string][]candidateImage{}
+	for slug, set := range p.PendingImages {
+		for i, key := range set.Keys {
+			candidates[slug] = append(candidates[slug], candidateImage{Index: i, URL: presign(key)})
+		}
+	}
+
+	// Required content the customer hasn't provided — surfaced at the approve
+	// gate so they consciously choose "provide now" or "build with placeholders".
+	lang := s.lang(r)
+	var missing []string
+	for _, c := range p.Spec.ContentNeeded {
+		if c.Required && !filled[c.Slug] {
+			missing = append(missing, c.Name(lang))
+		}
+	}
+
 	s.render(w, http.StatusOK, "project", s.view(r, p.Name, projectView{
-		Project: p, Iterations: its, Assets: assets,
-		Shots: s.withScreenshots(r.Context(), p).Shots, Status: s.statusOf(r, p), FilledSlots: filled,
+		Project: p, Iterations: its, Assets: general,
+		Shots: s.withScreenshots(ctx, p).Shots, Status: s.statusOf(r, p),
+		FilledSlots: filled, Rosters: rosters, SlotAssets: slotAssets, Candidates: candidates,
+		MissingReq: missing,
 	}))
 }
 
@@ -215,56 +304,138 @@ func sanitizeFilename(name string) string {
 	return name
 }
 
-// handleUploadAsset stores a customer-uploaded file (photo, logo, content) in
-// object storage and records its metadata.
+// handleUploadAsset stores customer-uploaded file(s) — one, or several at once
+// for a gallery slot — in object storage and records their metadata.
 func (s *Server) handleUploadAsset(w http.ResponseWriter, r *http.Request, u *user.User) {
 	p, ok := s.ownedProject(w, r, u)
 	if !ok {
 		return
 	}
-	file, hdr, err := r.FormFile("file")
-	if err != nil {
+	if err := r.ParseMultipartForm(maxUpload + (1 << 20)); err != nil {
 		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 		return
 	}
-	defer file.Close()
-
-	ct := hdr.Header.Get("Content-Type")
-	if !allowedAssetTypes[ct] || hdr.Size > maxUpload {
-		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
-		return
-	}
-
-	filename := sanitizeFilename(hdr.Filename)
-	key := fmt.Sprintf("projects/%s/assets/%s", p.ID, filename)
-	if err := s.storage.Put(r.Context(), key, ct, file, hdr.Size); err != nil {
-		s.log.Error("asset put", "err", err)
-		http.Error(w, "upload failed", http.StatusInternalServerError)
-		return
-	}
-
-	// The customer's one-liner about what the file is — it steers where the
-	// build agent uses it, so it matters more than the filename.
+	// The customer's one-liner (general uploader) and the optional content-slot
+	// this fills. For a named slot, its label doubles as the description.
 	desc := strings.TrimSpace(r.FormValue("description"))
 	if len(desc) > 300 {
 		desc = desc[:300]
 	}
-	// Optional content-slot this upload fills (from the plan's "we need"
-	// checklist). When a slot is chosen, its label doubles as the description.
 	slot := slotID(r.FormValue("slot"))
 	if slot != "" && desc == "" {
 		desc = slotLabel(p, slot)
 	}
 
-	a := &project.Asset{
-		ID: id.New(), ProjectID: p.ID, Key: key, Filename: filename,
-		ContentType: ct, Description: desc, Slot: slot, Size: hdr.Size, CreatedAt: time.Now().UTC(),
+	files := r.MultipartForm.File["file"]
+	if len(files) == 0 {
+		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+		return
 	}
-	if err := s.store.CreateAsset(r.Context(), a); err != nil {
+	for _, hdr := range files {
+		if _, err := s.storeUpload(r.Context(), p.ID, hdr, slot, desc, false); err != nil {
+			s.log.Error("asset upload", "err", err)
+			http.Error(w, "upload failed", http.StatusInternalServerError)
+			return
+		}
+	}
+	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+}
+
+// storeUpload validates and stores one uploaded file as a project asset,
+// returning its object-storage key (or "" if skipped as disallowed/oversized).
+func (s *Server) storeUpload(ctx context.Context, projectID string, hdr *multipart.FileHeader, slot, desc string, generated bool) (string, error) {
+	ct := hdr.Header.Get("Content-Type")
+	if !allowedAssetTypes[ct] || hdr.Size > maxUpload {
+		return "", nil // silently skip a disallowed/oversized file among a batch
+	}
+	file, err := hdr.Open()
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	filename := sanitizeFilename(hdr.Filename)
+	key := fmt.Sprintf("projects/%s/assets/%s", projectID, filename)
+	if err := s.storage.Put(ctx, key, ct, file, hdr.Size); err != nil {
+		return "", err
+	}
+	return key, s.store.CreateAsset(ctx, &project.Asset{
+		ID: id.New(), ProjectID: projectID, Key: key, Filename: filename,
+		ContentType: ct, Description: desc, Slot: slot, Generated: generated, Size: hdr.Size, CreatedAt: time.Now().UTC(),
+	})
+}
+
+// maxRosterEntries caps how many people a roster slot renders/accepts.
+const maxRosterEntries = 12
+
+// handleRoster saves the structured people for a roster-kind content slot — a
+// team, where each person's name, role, bio AND photo are kept together in one
+// entry so the build never has to guess which face goes with which bio. Rows
+// with no name are dropped; a row's existing photo is preserved unless replaced.
+func (s *Server) handleRoster(w http.ResponseWriter, r *http.Request, u *user.User) {
+	p, ok := s.ownedProject(w, r, u)
+	if !ok {
+		return
+	}
+	if err := r.ParseMultipartForm(maxUpload + (1 << 20)); err != nil {
+		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+		return
+	}
+	slot := slotID(r.FormValue("slot"))
+	if !isRosterSlot(p, slot) {
+		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+		return
+	}
+	clip := func(s string, n int) string {
+		s = strings.TrimSpace(s)
+		if len(s) > n {
+			s = s[:n]
+		}
+		return s
+	}
+	var entries []project.RosterEntry
+	for i := 0; i < maxRosterEntries; i++ {
+		name := clip(r.FormValue(fmt.Sprintf("name_%d", i)), 120)
+		if name == "" {
+			continue // a person is defined by having a name
+		}
+		e := project.RosterEntry{
+			Name:     name,
+			Role:     clip(r.FormValue(fmt.Sprintf("role_%d", i)), 120),
+			Bio:      clip(r.FormValue(fmt.Sprintf("bio_%d", i)), 600),
+			PhotoKey: r.FormValue(fmt.Sprintf("photokey_%d", i)), // preserve existing
+		}
+		// A newly uploaded photo replaces it — stored as an asset (so the build
+		// gets the file) tagged to this slot and described with the person.
+		if fhs := r.MultipartForm.File[fmt.Sprintf("photo_%d", i)]; len(fhs) > 0 {
+			if key, err := s.storeUpload(r.Context(), p.ID, fhs[0], slot, name, false); err == nil && key != "" {
+				e.PhotoKey = key
+			}
+		}
+		entries = append(entries, e)
+	}
+	if p.ContentRosters == nil {
+		p.ContentRosters = map[string][]project.RosterEntry{}
+	}
+	if len(entries) == 0 {
+		delete(p.ContentRosters, slot)
+	} else {
+		p.ContentRosters[slot] = entries
+	}
+	if err := s.store.UpdateProject(r.Context(), p); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+}
+
+// isRosterSlot reports whether slot is a roster-kind content item in the plan.
+func isRosterSlot(p *project.Project, slot string) bool {
+	for _, c := range p.Spec.ContentNeeded {
+		if c.Slug == slot {
+			return c.IsRoster()
+		}
+	}
+	return false
 }
 
 // handleProjectStatus returns the live status fragment for HTMX polling. When the
@@ -420,7 +591,7 @@ func slotLabel(p *project.Project, slot string) string {
 // handler only accepts answers for slots the plan actually asked to be typed.
 func textSlot(p *project.Project, slot string) (project.ContentItem, bool) {
 	for _, c := range p.Spec.ContentNeeded {
-		if c.Slug == slot && !c.IsFile() {
+		if c.Slug == slot && c.IsText() {
 			return c, true
 		}
 	}

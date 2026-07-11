@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"net"
 	"net/url"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -188,7 +189,8 @@ func (o *Orchestrator) assetContext(ctx context.Context, projectID string) strin
 	}
 	// Text the customer typed for text-kind content slots (contact email, copy,
 	// hours) — real values to put on the site, not placeholders.
-	if p, err := o.store.ProjectByID(ctx, projectID); err == nil && len(p.ContentAnswers) > 0 {
+	p, perr := o.store.ProjectByID(ctx, projectID)
+	if perr == nil && len(p.ContentAnswers) > 0 {
 		if b.Len() > 0 {
 			b.WriteString("\n\n")
 		}
@@ -196,6 +198,32 @@ func (o *Orchestrator) assetContext(ctx context.Context, projectID string) strin
 		for _, c := range p.Spec.ContentNeeded {
 			if v := p.ContentAnswers[c.Slug]; v != "" {
 				b.WriteString("\n- " + c.Name("en") + ": " + v)
+			}
+		}
+	}
+	// Structured people (roster slots) — real names/roles/bios to render, each
+	// with its own photo filename so faces pair with the right person.
+	if perr == nil && len(p.ContentRosters) > 0 {
+		for _, c := range p.Spec.ContentNeeded {
+			entries := p.ContentRosters[c.Slug]
+			if len(entries) == 0 {
+				continue
+			}
+			if b.Len() > 0 {
+				b.WriteString("\n\n")
+			}
+			b.WriteString("Real people for \"" + c.Name("en") + "\" — use these exact names/roles/bios (not placeholders):")
+			for _, e := range entries {
+				b.WriteString("\n- " + e.Name)
+				if e.Role != "" {
+					b.WriteString(", " + e.Role)
+				}
+				if e.Bio != "" {
+					b.WriteString(" — " + e.Bio)
+				}
+				if e.PhotoKey != "" {
+					b.WriteString(" (photo: " + path.Base(e.PhotoKey) + ")")
+				}
 			}
 		}
 	}
