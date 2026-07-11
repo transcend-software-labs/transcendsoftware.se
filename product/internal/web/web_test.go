@@ -856,3 +856,41 @@ func TestCaptionAsset_LabelsPhotoForPairing(t *testing.T) {
 		t.Error("captioning after a build should flag ContentPending for a rebuild")
 	}
 }
+
+// TestPickImage_HTMXClosesWithRedirect verifies the modal's "select" step: an
+// htmx pick promotes the candidate to the slot's asset and returns HX-Redirect
+// (so the dialog closes via a reload) rather than a body swap.
+func TestPickImage_HTMXClosesWithRedirect(t *testing.T) {
+	srv, st, _ := newTestServerAuth(t, config.Config{AdminEmail: "admin@example.com"}, nil)
+	defer srv.Close()
+	c := signedInClient(t, srv.URL)
+	ctx := context.Background()
+	u, _ := st.UserByEmail(ctx, "neighbour@example.com")
+	p := &project.Project{
+		ID: "proj-pick", UserID: u.ID, Name: "X", Status: project.StatusPreviewReady, IterationsUsed: 1,
+		PendingImages: map[string]project.ImageCandidates{
+			"logo": {Prompt: "a logo", Keys: []string{"projects/proj-pick/gen/logo/a.png"}},
+		},
+	}
+	if err := st.CreateProject(ctx, p); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	tok := csrfToken(t, c, srv.URL)
+
+	req, _ := http.NewRequest("POST", srv.URL+"/projects/proj-pick/content/pick",
+		strings.NewReader(url.Values{"csrf_token": {tok}, "slot": {"logo"}, "index": {"0"}}.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	noRedir := &http.Client{Jar: c.Jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := noRedir.Do(req)
+	if err != nil {
+		t.Fatalf("pick: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("HX-Redirect") != "/projects/proj-pick" {
+		t.Fatalf("htmx pick should 200 + HX-Redirect, got %d / %q", resp.StatusCode, resp.Header.Get("HX-Redirect"))
+	}
+	if assets, _ := st.AssetsByProject(ctx, "proj-pick"); len(assets) != 1 || !assets[0].Generated || assets[0].Slot != "logo" {
+		t.Fatalf("pick should create the generated slot asset: %+v", assets)
+	}
+}

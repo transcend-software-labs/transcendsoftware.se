@@ -485,7 +485,7 @@ label.design-option:hover { border-color: var(--accent); }
 .page-pending { color: var(--dim); }
 
 /* Scope card — the plain-language plan that replaces the raw markdown. */
-.scope-card .scope-list { list-style: none; margin: .5rem 0 0; padding: 0; display: grid; gap: .5rem; }
+.scope-list { list-style: none; margin: .5rem 0 0; padding: 0; display: grid; gap: .5rem; }
 .scope-list li { padding-left: 1.1rem; position: relative; }
 .scope-list li::before { content: "—"; position: absolute; left: 0; color: var(--accent); }
 .scope-not li::before { content: "×"; color: var(--dim); }
@@ -572,7 +572,12 @@ label.design-option:hover { border-color: var(--accent); }
   background: transparent; color: var(--accent);
   border: 1px solid var(--accent); box-shadow: none; white-space: nowrap;
 }
-.gen-open:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); filter: none; }
+/* Override the gold .btn:hover (dark text + gold glow), wrong on this
+   transparent bordered button — keep the accent text and drop the glow. */
+.gen-open:hover {
+  color: var(--accent); border-color: var(--accent); box-shadow: none;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
 
 .gen-modal {
   width: min(560px, 92vw); max-height: 88vh; margin: auto; padding: 0; overflow: auto;
