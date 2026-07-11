@@ -239,13 +239,14 @@ func (p *Postgres) CreateProject(ctx context.Context, pr *project.Project) error
 		`INSERT INTO projects
 		   (id, user_id, name, brief, status, questions, design_options, design_brief,
 		    answers, plan, verdict, reject_reason, preview_url, repo_url, snapshot_key,
-		    screenshots, findings, critique, iterations_used, created_at, updated_at, plan_spec, locale, content_answers, content_rosters, pending_images, image_gen_count)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`,
+		    screenshots, findings, critique, iterations_used, created_at, updated_at, plan_spec, locale, content_answers, content_rosters, pending_images, image_gen_count, paid, paid_at, paid_via)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)`,
 		pr.ID, pr.UserID, pr.Name, pr.Brief, pr.Status, marshalQuestions(pr.Questions),
 		marshalJSON(pr.DesignOptions), pr.DesignBrief,
 		pr.Answers, pr.Plan, pr.Verdict, pr.RejectReason, pr.PreviewURL, pr.RepoURL,
 		pr.SnapshotKey, marshalJSON(pr.Screenshots), marshalJSON(pr.Findings), pr.Critique, pr.IterationsUsed, pr.CreatedAt, pr.UpdatedAt,
-		marshalObj(pr.Spec), localeOr(pr.Locale), marshalObj(pr.ContentAnswers), marshalObj(pr.ContentRosters), marshalObj(pr.PendingImages), pr.ImageGenCount)
+		marshalObj(pr.Spec), localeOr(pr.Locale), marshalObj(pr.ContentAnswers), marshalObj(pr.ContentRosters), marshalObj(pr.PendingImages), pr.ImageGenCount,
+		pr.Paid, nullableTime(pr.PaidAt), pr.PaidVia)
 	return err
 }
 
@@ -254,13 +255,14 @@ func (p *Postgres) UpdateProject(ctx context.Context, pr *project.Project) error
 		`UPDATE projects SET
 		   name=$2, brief=$3, status=$4, questions=$5, design_options=$6, design_brief=$7,
 		   answers=$8, plan=$9, verdict=$10, reject_reason=$11, preview_url=$12,
-		   repo_url=$13, snapshot_key=$14, screenshots=$15, findings=$16, critique=$17, iterations_used=$18, updated_at=$19, plan_spec=$20, locale=$21, content_answers=$22, content_rosters=$23, pending_images=$24, image_gen_count=$25
+		   repo_url=$13, snapshot_key=$14, screenshots=$15, findings=$16, critique=$17, iterations_used=$18, updated_at=$19, plan_spec=$20, locale=$21, content_answers=$22, content_rosters=$23, pending_images=$24, image_gen_count=$25, paid=$26, paid_at=$27, paid_via=$28
 		 WHERE id=$1`,
 		pr.ID, pr.Name, pr.Brief, pr.Status, marshalQuestions(pr.Questions),
 		marshalJSON(pr.DesignOptions), pr.DesignBrief, pr.Answers,
 		pr.Plan, pr.Verdict, pr.RejectReason, pr.PreviewURL, pr.RepoURL,
 		pr.SnapshotKey, marshalJSON(pr.Screenshots), marshalJSON(pr.Findings), pr.Critique, pr.IterationsUsed, pr.UpdatedAt,
-		marshalObj(pr.Spec), localeOr(pr.Locale), marshalObj(pr.ContentAnswers), marshalObj(pr.ContentRosters), marshalObj(pr.PendingImages), pr.ImageGenCount)
+		marshalObj(pr.Spec), localeOr(pr.Locale), marshalObj(pr.ContentAnswers), marshalObj(pr.ContentRosters), marshalObj(pr.PendingImages), pr.ImageGenCount,
+		pr.Paid, nullableTime(pr.PaidAt), pr.PaidVia)
 	if err != nil {
 		return err
 	}
@@ -368,7 +370,7 @@ func (p *Postgres) EscalatedProjects(ctx context.Context) ([]*project.Project, e
 
 const projectColumns = `SELECT id, user_id, name, brief, status, questions, design_options, design_brief,
 	answers, plan, verdict, reject_reason, preview_url, repo_url, snapshot_key,
-	screenshots, findings, critique, iterations_used, created_at, updated_at, plan_spec, locale, content_answers, content_rosters, pending_images, image_gen_count
+	screenshots, findings, critique, iterations_used, created_at, updated_at, plan_spec, locale, content_answers, content_rosters, pending_images, image_gen_count, paid, paid_at, paid_via
 	FROM projects`
 
 // rowScanner is satisfied by both pgx.Row and pgx.Rows.
@@ -379,12 +381,16 @@ type rowScanner interface {
 func scanProject(row rowScanner) (*project.Project, error) {
 	var pr project.Project
 	var questionsJSON, designJSON, screenshotsJSON, findingsJSON, specJSON, contentJSON, rostersJSON, pendingJSON string
+	var paidAt *time.Time // NULL for unpaid projects
 	err := row.Scan(&pr.ID, &pr.UserID, &pr.Name, &pr.Brief, &pr.Status, &questionsJSON,
 		&designJSON, &pr.DesignBrief,
 		&pr.Answers, &pr.Plan, &pr.Verdict, &pr.RejectReason, &pr.PreviewURL, &pr.RepoURL,
-		&pr.SnapshotKey, &screenshotsJSON, &findingsJSON, &pr.Critique, &pr.IterationsUsed, &pr.CreatedAt, &pr.UpdatedAt, &specJSON, &pr.Locale, &contentJSON, &rostersJSON, &pendingJSON, &pr.ImageGenCount)
+		&pr.SnapshotKey, &screenshotsJSON, &findingsJSON, &pr.Critique, &pr.IterationsUsed, &pr.CreatedAt, &pr.UpdatedAt, &specJSON, &pr.Locale, &contentJSON, &rostersJSON, &pendingJSON, &pr.ImageGenCount, &pr.Paid, &paidAt, &pr.PaidVia)
 	if err != nil {
 		return nil, err
+	}
+	if paidAt != nil {
+		pr.PaidAt = *paidAt
 	}
 	if specJSON != "" && specJSON != "{}" {
 		_ = json.Unmarshal([]byte(specJSON), &pr.Spec)
@@ -419,6 +425,15 @@ func localeOr(l string) string {
 		return "en"
 	}
 	return l
+}
+
+// nullableTime writes NULL for a zero time so a nullable timestamptz column
+// stays semantically empty (rather than storing year 1) when unset.
+func nullableTime(t time.Time) any {
+	if t.IsZero() {
+		return nil
+	}
+	return t
 }
 
 // marshalObj renders v as a JSON object for a jsonb/text column, "{}" on failure.

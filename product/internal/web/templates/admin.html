@@ -85,11 +85,30 @@
       </details>
       {{end}}
       <p class="brief muted small">{{.Brief}}</p>
+      <div class="pay-row">
+        {{if .Paid}}
+        <span class="pay-badge pay-yes">💳 Paid{{if .PaidVia}} · {{.PaidVia}}{{end}}</span>
+        <form method="post" action="/admin/projects/{{.ID}}/mark-unpaid" class="inline">
+          <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+          <button class="linklike small" type="submit">mark unpaid</button>
+        </form>
+        {{else}}
+        <span class="pay-badge pay-no">Unpaid</span>
+        <form method="post" action="/admin/projects/{{.ID}}/mark-paid" class="inline">
+          <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+          <button class="btn btn-sm" type="submit">Mark paid</button>
+        </form>
+        {{end}}
+      </div>
       <div class="admin-actions">
+        {{if .Paid}}
         <form method="post" action="/admin/projects/{{.ID}}/deliver" class="inline">
           <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
           <button class="btn btn-sm" type="submit">Approve &amp; deliver</button>
         </form>
+        {{else}}
+        <span class="muted small">Mark as paid to enable delivery.</span>
+        {{end}}
         <form method="post" action="/admin/projects/{{.ID}}/return" class="inline-actions">
           <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
           <input type="text" name="note" placeholder="Send back with a note (optional)">

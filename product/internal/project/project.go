@@ -222,6 +222,9 @@ type Project struct {
 	PendingImages  map[string]ImageCandidates // AI images awaiting the customer's pick (slug → candidates)
 	ImageGenCount  int                        // AI image generations run (cost cap)
 	IterationsUsed int                        // number of build passes consumed (1..MaxIterations)
+	Paid           bool                       // payment settled — unlocks delivery (see MarkPaid)
+	PaidAt         time.Time                  // when payment was recorded (zero = unpaid)
+	PaidVia        string                     // how it was settled: "manual", later "stripe"; provenance for accounting
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }

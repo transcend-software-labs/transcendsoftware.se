@@ -177,21 +177,21 @@ func (s *Server) quotaBlock(r *http.Request, u *user.User) string {
 }
 
 type projectView struct {
-	Project     *project.Project
-	Iterations  []*project.Iteration
-	Assets      []*project.Asset            // general (un-slotted) uploads
-	Shots       []reviewShot                // presigned page screenshots of the current build
-	Status      statusView                  // the live status box (also re-rendered by the poll)
-	FilledSlots map[string]bool             // content-slot slug → provided (file/text/roster)
-	Rosters     map[string][]rosterMember   // roster slug → its people (presigned photos)
-	SlotAssets  map[string][]slotAssetView  // file/files slug → its uploaded assets (presigned)
-	Candidates  map[string][]candidateImage // slot → pending AI-image candidates awaiting pick
-	MissingReq  []string                    // localized names of required, unprovided content (for the approve gate)
-	ImageGen     bool              // "Generate with AI" is available
-	GenSlots     map[string]bool   // slug → has a chosen AI-generated image (offer "improve")
-	GenPrompts   map[string]string // slug → the auto-seeded prompt (shown, editable)
-	GenExhausted bool              // the project has hit its AI-generation cap
-	GenNotice    string            // localized notice for a failed/blocked generation attempt
+	Project      *project.Project
+	Iterations   []*project.Iteration
+	Assets       []*project.Asset            // general (un-slotted) uploads
+	Shots        []reviewShot                // presigned page screenshots of the current build
+	Status       statusView                  // the live status box (also re-rendered by the poll)
+	FilledSlots  map[string]bool             // content-slot slug → provided (file/text/roster)
+	Rosters      map[string][]rosterMember   // roster slug → its people (presigned photos)
+	SlotAssets   map[string][]slotAssetView  // file/files slug → its uploaded assets (presigned)
+	Candidates   map[string][]candidateImage // slot → pending AI-image candidates awaiting pick
+	MissingReq   []string                    // localized names of required, unprovided content (for the approve gate)
+	ImageGen     bool                        // "Generate with AI" is available
+	GenSlots     map[string]bool             // slug → has a chosen AI-generated image (offer "improve")
+	GenPrompts   map[string]string           // slug → the auto-seeded prompt (shown, editable)
+	GenExhausted bool                        // the project has hit its AI-generation cap
+	GenNotice    string                      // localized notice for a failed/blocked generation attempt
 }
 
 // rosterMember is one team person for the template, with a presigned photo URL.

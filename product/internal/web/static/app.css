@@ -277,6 +277,13 @@ details summary { cursor: pointer; }
 .inline-actions { display: flex; align-items: center; gap: .5rem; }
 .inline-actions input { width: auto; }
 
+/* Payment status (operator only) */
+.pay-row { display: flex; align-items: center; gap: .75rem; margin-top: 1rem; flex-wrap: wrap; }
+.pay-badge { font-weight: 700; font-size: .85rem; padding: .2rem .55rem; border-radius: 999px; }
+.pay-yes { color: var(--green); background: color-mix(in srgb, var(--green) 14%, transparent); }
+.pay-no { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
+.pay-panel .pay-badge { font-size: .95rem; }
+
 .design-options { display: flex; flex-direction: column; gap: .5rem; }
 label.design-option {
   display: flex; flex-direction: row; align-items: baseline; gap: .6rem;

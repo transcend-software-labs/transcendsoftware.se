@@ -132,6 +132,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /admin/projects/{id}/delete", s.requireAdmin(s.handleAdminDeleteProject))
 	mux.HandleFunc("POST /admin/purge-all", s.requireAdmin(s.handleAdminPurgeAll))
 	mux.HandleFunc("POST /admin/projects/{id}/deliver", s.requireAdmin(s.handleAdminDeliver))
+	mux.HandleFunc("POST /admin/projects/{id}/mark-paid", s.requireAdmin(s.handleAdminMarkPaid))
+	mux.HandleFunc("POST /admin/projects/{id}/mark-unpaid", s.requireAdmin(s.handleAdminMarkUnpaid))
 	mux.HandleFunc("POST /admin/projects/{id}/return", s.requireAdmin(s.handleAdminReturn))
 
 	return logRequests(s.log, langSelector(mux))
@@ -174,12 +176,12 @@ func templateFuncs() template.FuncMap {
 
 // View is the data passed to every page template.
 type View struct {
-	Title     string
-	User      *user.User
-	IsAdmin   bool
-	CSRF      string
-	Flash     string
-	Lang      string // resolved UI language ("en", "sv", "ru")
+	Title      string
+	User       *user.User
+	IsAdmin    bool
+	CSRF       string
+	Flash      string
+	Lang       string // resolved UI language ("en", "sv", "ru")
 	Data       any
 	Providers  []oauth.Provider // social-login buttons on auth pages
 	MagicLink  bool             // advertise passwordless email login

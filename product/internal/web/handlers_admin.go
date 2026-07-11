@@ -2,11 +2,13 @@ package web
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/transcend-software-labs/rasmus-ai/internal/orchestrator"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
 )
@@ -210,6 +212,9 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 		Stats: computeStats(recent, rate), Recent: builds,
 	})
 	v.Lang = "en" // operator pages are English regardless of the customer-facing selector
+	if r.URL.Query().Get("err") == "unpaid" {
+		v.Flash = "That project isn’t marked paid yet — mark it paid to enable delivery."
+	}
 	s.render(w, http.StatusOK, "admin", v)
 }
 
@@ -276,9 +281,14 @@ func (s *Server) handleAdminPurgeAll(w http.ResponseWriter, r *http.Request, _ *
 }
 
 // handleAdminDeliver completes the handover: Rasmus has reviewed + guaranteed
-// an accepted project.
+// an accepted project. Refused until the project is paid.
 func (s *Server) handleAdminDeliver(w http.ResponseWriter, r *http.Request, _ *user.User) {
-	if err := s.orch.DeliverProject(r.PathValue("id")); err != nil {
+	err := s.orch.DeliverProject(r.PathValue("id"))
+	if errors.Is(err, orchestrator.ErrNotPaid) {
+		http.Redirect(w, r, "/admin?err=unpaid", http.StatusSeeOther)
+		return
+	}
+	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -293,6 +303,34 @@ func (s *Server) handleAdminReturn(w http.ResponseWriter, r *http.Request, _ *us
 		return
 	}
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
+// handleAdminMarkPaid records a manual payment (comps for Rasmus + friends; the
+// same choke-point a Stripe webhook will hit). handleAdminMarkUnpaid reverses a
+// mistaken mark. Both return to wherever the operator clicked from.
+func (s *Server) handleAdminMarkPaid(w http.ResponseWriter, r *http.Request, _ *user.User) {
+	if err := s.orch.MarkPaid(r.PathValue("id"), "manual"); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, adminBackTo(r), http.StatusSeeOther)
+}
+
+func (s *Server) handleAdminMarkUnpaid(w http.ResponseWriter, r *http.Request, _ *user.User) {
+	if err := s.orch.MarkUnpaid(r.PathValue("id")); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, adminBackTo(r), http.StatusSeeOther)
+}
+
+// adminBackTo returns the operator to the page they acted from (the project
+// detail page or the dashboard), defaulting to /admin.
+func adminBackTo(r *http.Request) string {
+	if ref := r.Referer(); strings.Contains(ref, "/admin/projects/") {
+		return "/admin/projects/" + r.PathValue("id")
+	}
+	return "/admin"
 }
 
 // handleAdminApprove clears an escalated project to build.

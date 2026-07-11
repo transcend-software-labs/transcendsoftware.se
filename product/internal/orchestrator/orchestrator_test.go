@@ -491,6 +491,24 @@ func TestHandover_AcceptReviewDeliver(t *testing.T) {
 		t.Errorf("operator not notified on accept; sent: %+v", rec.all())
 	}
 
+	// Delivery is gated on payment: an unpaid accepted project is refused.
+	if err := orch.DeliverProject(id); !errors.Is(err, ErrNotPaid) {
+		t.Fatalf("unpaid deliver should return ErrNotPaid, got %v", err)
+	}
+	p, _ = st.ProjectByID(context.Background(), id)
+	if p.Status == project.StatusDelivered {
+		t.Fatal("unpaid project must not be delivered")
+	}
+
+	// Mark it paid (Rasmus comping a friend / a Stripe webhook) → deliver works.
+	if err := orch.MarkPaid(id, "manual"); err != nil {
+		t.Fatalf("mark paid: %v", err)
+	}
+	p, _ = st.ProjectByID(context.Background(), id)
+	if !p.Paid || p.PaidVia != "manual" || p.PaidAt.IsZero() {
+		t.Fatalf("mark paid did not record state: %+v", p)
+	}
+
 	// Rasmus delivers → terminal + customer notified.
 	if err := orch.DeliverProject(id); err != nil {
 		t.Fatalf("deliver: %v", err)
@@ -501,6 +519,14 @@ func TestHandover_AcceptReviewDeliver(t *testing.T) {
 	}
 	if !sentTo(rec, "customer@example.com", "delivered") {
 		t.Errorf("customer not notified on delivery; sent: %+v", rec.all())
+	}
+
+	// MarkUnpaid reverses the flag (for a mistaken mark).
+	if err := orch.MarkUnpaid(id); err != nil {
+		t.Fatalf("mark unpaid: %v", err)
+	}
+	if p, _ = st.ProjectByID(context.Background(), id); p.Paid {
+		t.Error("mark unpaid should clear the flag")
 	}
 }
 

@@ -680,3 +680,69 @@ func TestContentAnswer_TextSlotSavedFileSlotRejected(t *testing.T) {
 		t.Error("saved contact email not shown on the project page")
 	}
 }
+
+// TestAdmin_PaidGateAndDelivery covers the manual-payment flow end to end: an
+// accepted project shows as unpaid, delivery is refused until it's marked paid,
+// the admin toggle settles it, and delivery then goes through.
+func TestAdmin_PaidGateAndDelivery(t *testing.T) {
+	srv, st, _ := newTestServerAuth(t, config.Config{AdminEmail: "admin@example.com"}, nil)
+	defer srv.Close()
+	adm := signedInAdminClient(t, srv.URL)
+	ctx := context.Background()
+	u, err := st.UserByEmail(ctx, "admin@example.com")
+	if err != nil {
+		t.Fatalf("user: %v", err)
+	}
+	p := &project.Project{ID: "pay1", UserID: u.ID, Name: "Bakery",
+		Status: project.StatusAccepted, PreviewURL: "https://forge-pay1.fly.dev"}
+	if err := st.CreateProject(ctx, p); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	tok := csrfToken(t, adm, srv.URL)
+
+	// The dashboard shows it unpaid, with a Mark-paid control and no deliver button.
+	dash, _ := adm.Get(srv.URL + "/admin")
+	db, _ := io.ReadAll(dash.Body)
+	dash.Body.Close()
+	if !strings.Contains(string(db), "Unpaid") || !strings.Contains(string(db), "mark-paid") {
+		t.Error("dashboard should show the unpaid project with a Mark-paid control")
+	}
+	if strings.Contains(string(db), "/admin/projects/pay1/deliver") {
+		t.Error("deliver button must be hidden until the project is paid")
+	}
+
+	// Delivering while unpaid is refused and bounces back with the notice.
+	resp, _ := adm.PostForm(srv.URL+"/admin/projects/pay1/deliver", url.Values{"csrf_token": {tok}})
+	rb, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if got, _ := st.ProjectByID(ctx, "pay1"); got.Status == project.StatusDelivered {
+		t.Fatal("unpaid project must not be delivered")
+	}
+	if !strings.Contains(string(rb), "mark it paid") {
+		t.Error("expected the unpaid notice after a blocked delivery")
+	}
+
+	// Mark it paid → state recorded with provenance.
+	resp, _ = adm.PostForm(srv.URL+"/admin/projects/pay1/mark-paid", url.Values{"csrf_token": {tok}})
+	resp.Body.Close()
+	got, _ := st.ProjectByID(ctx, "pay1")
+	if !got.Paid || got.PaidVia != "manual" || got.PaidAt.IsZero() {
+		t.Fatalf("mark-paid did not settle: %+v", got)
+	}
+
+	// The operator detail page renders the Payment panel (exercises paid-at
+	// formatting) and reads as paid.
+	detail, _ := adm.Get(srv.URL + "/admin/projects/pay1")
+	dtb, _ := io.ReadAll(detail.Body)
+	detail.Body.Close()
+	if !strings.Contains(string(dtb), "Payment") || !strings.Contains(string(dtb), "Paid") {
+		t.Error("admin project page should render the Payment panel as paid")
+	}
+
+	// Delivery now goes through.
+	resp, _ = adm.PostForm(srv.URL+"/admin/projects/pay1/deliver", url.Values{"csrf_token": {tok}})
+	resp.Body.Close()
+	if got, _ := st.ProjectByID(ctx, "pay1"); got.Status != project.StatusDelivered {
+		t.Fatalf("paid project should deliver, got %q", got.Status)
+	}
+}

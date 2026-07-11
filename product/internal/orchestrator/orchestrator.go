@@ -529,8 +529,44 @@ func (o *Orchestrator) AcceptPreview(projectID string) error {
 	return nil
 }
 
+// ErrNotPaid is returned when an operation requires a settled payment that the
+// project doesn't have yet — currently, delivery.
+var ErrNotPaid = errors.New("project is not paid")
+
+// MarkPaid records that a project's payment has settled. This is the single
+// choke-point for "paid": the admin toggle calls it now, and a Stripe (or other)
+// webhook will call it later with via="stripe". Idempotent.
+func (o *Orchestrator) MarkPaid(projectID, via string) error {
+	ctx := context.Background()
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if p.Paid {
+		return nil
+	}
+	p.Paid = true
+	p.PaidAt = time.Now().UTC()
+	p.PaidVia = via
+	return o.save(ctx, p)
+}
+
+// MarkUnpaid reverses MarkPaid — for correcting a mistaken manual mark.
+func (o *Orchestrator) MarkUnpaid(projectID string) error {
+	ctx := context.Background()
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	p.Paid = false
+	p.PaidAt = time.Time{}
+	p.PaidVia = ""
+	return o.save(ctx, p)
+}
+
 // DeliverProject is the operator action completing the handover: Rasmus has
-// reviewed and guaranteed the site. Terminal.
+// reviewed and guaranteed the site. Terminal. Gated on payment — the preview is
+// free, delivery is what money unlocks.
 func (o *Orchestrator) DeliverProject(projectID string) error {
 	ctx := context.Background()
 	p, err := o.store.ProjectByID(ctx, projectID)
@@ -539,6 +575,9 @@ func (o *Orchestrator) DeliverProject(projectID string) error {
 	}
 	if p.Status != project.StatusAccepted {
 		return nil
+	}
+	if !p.Paid {
+		return ErrNotPaid
 	}
 	p.Status = project.StatusDelivered
 	if err := o.save(ctx, p); err != nil {

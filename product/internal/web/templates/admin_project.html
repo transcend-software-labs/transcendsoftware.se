@@ -14,6 +14,23 @@
   {{if .RepoURL}} <a class="muted small" href="{{.RepoURL}}" target="_blank" rel="noopener">source ↗</a>{{end}}</p>
 {{end}}
 
+<section class="panel pay-panel">
+  <h2>Payment</h2>
+  {{if .Paid}}
+  <p><span class="pay-badge pay-yes">💳 Paid{{if .PaidVia}} · {{.PaidVia}}{{end}}</span>{{if not .PaidAt.IsZero}} <span class="muted small">{{.PaidAt.Format "2 Jan 2006"}}</span>{{end}}</p>
+  <form method="post" action="/admin/projects/{{.ID}}/mark-unpaid" class="inline">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <button class="linklike small" type="submit">Mark unpaid</button>
+  </form>
+  {{else}}
+  <p><span class="pay-badge pay-no">Unpaid</span> <span class="muted small">— delivery is blocked until this is paid.</span></p>
+  <form method="post" action="/admin/projects/{{.ID}}/mark-paid" class="inline">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <button class="btn btn-sm" type="submit">Mark paid</button>
+  </form>
+  {{end}}
+</section>
+
 {{if or (eq .Status "planning") (eq .Status "screening") (eq .Status "building")}}
 {{/* The live build log lives OUTSIDE the polled #status box on purpose: the
      status poll swaps #status every few seconds, and if the log were inside it
