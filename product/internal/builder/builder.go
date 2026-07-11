@@ -634,20 +634,17 @@ to confirm. Do at most TWO polish passes: land the clear wins, then stop — don
 chase subjective nitpicks. If it can't run (prints that it's skipping), just rely
 on audit.js. Treat SHIP as the goal.
 
-Run fly deploy only once audit.js is clean (or down to such a noted exception)
-and you've done the local visual review.
+The site you serve locally IS what deploys — Fly serves the same baked-in static
+files and the app seeds its own database, so what audit.js and design-review.js
+see on localhost is exactly what the customer will get. There is no meaningful
+"review it after it's live"; get it right here. Concretely: wire the customer's
+real assets in BEFORE you review — their uploaded and AI-generated images are
+already downloaded in /workspace/assets/ — so the review judges the real page
+(real logo, real photos in place), not placeholders. A review of a site still
+showing stand-in images is worthless.
 
-AFTER DEPLOY — one required final pass, on the LIVE site. The deployed site can
-differ from what you saw locally: real uploaded and AI-generated images resolve
-from storage, the production database fills the pages, and it's the real domain —
-so a broken, missing or misplaced image, and prod-only layout defects, only show
-here. This is the pass that used to be a whole separate build; do it in this one.
-Once fly deploy succeeds, review the deployed URL itself:
-  node scripts/design-review.js "https://$FLY_APP.fly.dev"
-If it reports a real problem — a missing/wrong image, low contrast, a POLISH
-note — fix it (CSS/templates/where an image is wired) and run fly deploy again.
-Repeat at most twice. You are done when the LIVE site is clean, not when it
-merely built locally.`
+Run fly deploy only once audit.js is clean (or down to such a noted exception)
+and the local visual review — with the real images in place — is done.`
 
 // resumePreamble tells the agent the workspace holds an interrupted build's
 // progress: finish and deploy, don't redo completed work.
