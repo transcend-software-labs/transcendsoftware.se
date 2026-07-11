@@ -229,18 +229,34 @@ textarea { resize: vertical; }
 .asset-list { list-style: none; display: flex; flex-direction: column; gap: .35rem; margin-bottom: 1rem; }
 .asset-list li { display: flex; align-items: baseline; gap: .6rem; }
 .asset-name { color: var(--text); }
-.upload-form { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-top: 1rem; margin-bottom: .5rem; }
-.upload-form input[type=file] {
-  width: auto; flex: 1; min-width: 12rem;
-  padding: .7rem .8rem; border: 1px dashed var(--border-2); border-radius: var(--radius);
-  background: var(--bg-2); color: var(--muted); cursor: pointer;
+/* The general "something else" uploader: a single grouped block — the file
+   picker, its note and the button all full-width and aligned so they read as
+   one control, not three scattered rows. */
+.upload-form {
+  display: grid; gap: .55rem; max-width: 32rem;
+  margin-top: .75rem; margin-bottom: .5rem;
+  padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--bg-2);
 }
-.upload-form input[type=file]::file-selector-button {
+.upload-form input[type=file] {
+  width: 100%;
+  padding: .7rem .8rem; border: 1px dashed var(--border-2); border-radius: var(--radius);
+  background: var(--surface); color: var(--muted); cursor: pointer;
+}
+.upload-form input[type=text] {
+  width: 100%;
+  padding: .55rem .7rem; border: 1px solid var(--border-2); border-radius: var(--radius);
+  background: var(--surface); color: var(--text); font-family: inherit;
+}
+.upload-form button { justify-self: start; }
+.upload-form input[type=file]::file-selector-button,
+.content-upload input[type=file]::file-selector-button {
   margin-right: .8rem; padding: .4rem .8rem; border: 1px solid var(--border-2);
   border-radius: var(--radius); background: var(--surface-2); color: var(--text);
   font: inherit; font-size: .85rem; cursor: pointer;
 }
-.upload-form input[type=file]::file-selector-button:hover { border-color: var(--accent); }
+.upload-form input[type=file]::file-selector-button:hover,
+.content-upload input[type=file]::file-selector-button:hover { border-color: var(--accent); }
 
 .iterations { list-style: none; display: flex; flex-direction: column; gap: 1rem; }
 .iterations li { border-left: 2px solid var(--border-2); padding-left: .9rem; }
@@ -479,22 +495,17 @@ label.design-option:hover { border-color: var(--accent); }
   border-radius: var(--radius);
   font-family: inherit;
 }
-.content-upload input[type=file] { flex: 1; min-width: 0; font-size: .85rem; }
-.upload-other-h { margin-top: 1.5rem; }
+.content-upload input[type=file] {
+  flex: 1; min-width: 0; font-size: .85rem;
+  padding: .45rem .6rem; border: 1px dashed var(--border-2); border-radius: var(--radius);
+  background: var(--surface); color: var(--muted); cursor: pointer;
+}
+.upload-other-h { margin-top: 1.5rem; margin-bottom: 0; }
 .content-mark { width: 1.1rem; text-align: center; }
 .content-have { color: var(--text); }
 .content-have .content-mark { color: var(--green); }
 .content-need .content-mark { color: var(--dim); }
 .content-name { font-weight: 500; }
-.upload-slot { display: flex; flex-direction: column; gap: .3rem; font-size: .85rem; color: var(--muted); }
-.upload-slot select {
-  padding: .5rem .6rem;
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius);
-  font-family: inherit;
-}
 
 /* Human-language history. */
 .history { list-style: none; margin: 0; padding: 0; display: grid; gap: .75rem; }

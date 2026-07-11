@@ -139,7 +139,7 @@
   {{/* One general uploader for anything not on the list — here the free-text
        note is the only thing that says what the file is. */}}
   {{if .Spec.ContentNeeded}}<h3 class="muted small upload-other-h">{{$.T "prj.assets.other"}}</h3>{{end}}
-  <form method="post" action="/projects/{{.ID}}/assets" enctype="multipart/form-data" class="upload-form stack">
+  <form method="post" action="/projects/{{.ID}}/assets" enctype="multipart/form-data" class="upload-form">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
     <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" required>
     <input type="text" name="description" maxlength="300"

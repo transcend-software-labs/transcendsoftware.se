@@ -145,23 +145,24 @@ and content-upload slots, so write its text for a non-technical customer, in the
 customer's language. Exact shape:
 
 ` + "```json" + `
-{"pages":[{"slug":"start","paths":["index","home","landing"],"names":{"sv":"Startsidan","en":"the home page"},"included":"Hero, om oss, utvalda produkter och kontakt"}],
+{"pages":[{"slug":"start","paths":["index","home","landing"],"names":{"en":"the home page","sv":"Startsidan","ru":"главная страница"},"included":"Hero, om oss, utvalda produkter och kontakt"}],
  "not_included":["Onlinebetalning","Kundinloggning"],
- "content_needed":[{"slug":"logo","names":{"sv":"Logotyp","en":"Logo"},"required":true,"kind":"file"},{"slug":"contact_email","names":{"sv":"Kontaktmejl","en":"Contact email"},"required":true,"kind":"text"}]}
+ "content_needed":[{"slug":"logo","names":{"en":"Logo","sv":"Logotyp","ru":"Логотип"},"required":true,"kind":"file"},{"slug":"contact_email","names":{"en":"Contact email","sv":"Kontaktmejl","ru":"Контактный email"},"required":true,"kind":"text"}]}
 ` + "```" + `
 - slug: short lowercase ascii id, stable.
 - paths: 2-4 lowercase substrings that will appear in the file names or routes
   the builder creates for this page (e.g. "maskiner","machines","catalog") —
   used only to track build progress, so guess the likely names.
-- names: the page's display name, at minimum the customer's language AND "en",
-  each phrased to drop into a sentence like "Building the home page".
+- names: the display name in ALL THREE interface languages — keys "en", "sv"
+  and "ru" — so the customer can switch dashboard language and still read it.
+  Phrase each to drop into a sentence like "Building the home page".
 - included: one short phrase, customer's language, of what that page contains.
 - not_included: plain-language things you are deliberately NOT building.
-- content_needed: real things the customer must give us. names per-locale;
-  required=false for nice-to-haves. Set kind: "file" for things they upload (a
-  logo, photos, a hero image) and "text" for things they simply type in (a
-  contact email, opening hours, the final About copy, a route list). Don't ask
-  for a file when the answer is a sentence.
+- content_needed: real things the customer must give us. names in all three
+  languages (en/sv/ru); required=false for nice-to-haves. Set kind: "file" for
+  things they upload (a logo, photos, a hero image) and "text" for things they
+  simply type in (a contact email, opening hours, the About copy, a route
+  list). Don't ask for a file when the answer is a sentence.
 Emit valid JSON only inside that block. It must agree with the markdown.
 
 Begin the response with a single line: "NAME: <a short 2-4 word project name>".`
@@ -391,11 +392,11 @@ func (Fake) Plan(_ context.Context, brief string) (PlanResult, error) {
 		"## Open questions\n- Brochure only, or online ordering?\n\n" +
 		"_(dev-mode plan — set ANTHROPIC_API_KEY for real planning)_\n\n" +
 		"```json\n" + `{"pages":[` +
-		`{"slug":"start","paths":["index","home","landing"],"names":{"sv":"Startsidan","en":"the home page"},"included":"Hero, kort presentation och kontaktknapp"},` +
-		`{"slug":"om","paths":["om","about"],"names":{"sv":"Om oss","en":"the about page"},"included":"Er berättelse och bilder"},` +
-		`{"slug":"kontakt","paths":["kontakt","contact"],"names":{"sv":"Kontakt","en":"the contact page"},"included":"Kontaktformulär och karta"}],` +
+		`{"slug":"start","paths":["index","home","landing"],"names":{"en":"the home page","sv":"Startsidan","ru":"главная страница"},"included":"Hero, kort presentation och kontaktknapp"},` +
+		`{"slug":"om","paths":["om","about"],"names":{"en":"the about page","sv":"Om oss","ru":"страница «О нас»"},"included":"Er berättelse och bilder"},` +
+		`{"slug":"kontakt","paths":["kontakt","contact"],"names":{"en":"the contact page","sv":"Kontakt","ru":"контакты"},"included":"Kontaktformulär och karta"}],` +
 		`"not_included":["Onlinebetalning","Kundinloggning"],` +
-		`"content_needed":[{"slug":"logo","names":{"sv":"Logotyp","en":"Logo"},"required":true,"kind":"file"},{"slug":"photos","names":{"sv":"Bilder","en":"Photos"},"required":false,"kind":"file"},{"slug":"contact_email","names":{"sv":"Kontaktmejl","en":"Contact email"},"required":true,"kind":"text"}]}` +
+		`"content_needed":[{"slug":"logo","names":{"en":"Logo","sv":"Logotyp","ru":"Логотип"},"required":true,"kind":"file"},{"slug":"photos","names":{"en":"Photos","sv":"Bilder","ru":"Фотографии"},"required":false,"kind":"file"},{"slug":"contact_email","names":{"en":"Contact email","sv":"Kontaktmejl","ru":"Контактный email"},"required":true,"kind":"text"}]}` +
 		"\n```"
 	return PlanResult{Name: name, Plan: plan}, nil
 }
