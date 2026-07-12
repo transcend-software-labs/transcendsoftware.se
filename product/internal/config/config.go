@@ -103,7 +103,7 @@ type Config struct {
 	// feature (registration + DNS). Keys: cloud.hostup.se/api-management,
 	// scoped for domains, dns-zones and orders.
 	HostupAPIToken      string
-	HostupAPIURL        string  // API base (default https://api.hostup.se)
+	HostupAPIURL        string  // API base (default https://cloud.hostup.se — verified: serves the RFC 7807 v2 API)
 	HostupPaymentMethod string  // how registration orders settle (default "invoice")
 	MaxDomainSEK        float64 // Hostup buy cap, in SEK (default 300)
 
@@ -204,7 +204,7 @@ func Load() Config {
 		MaxDomainUSD:        envFloatOr("MAX_DOMAIN_USD", 100),
 
 		HostupAPIToken:      envOr("HOSTUP_API_TOKEN", os.Getenv("HOSTUP_API_KEY")), // both names accepted
-		HostupAPIURL:        envOr("HOSTUP_API_URL", "https://api.hostup.se"),
+		HostupAPIURL:        envOr("HOSTUP_API_URL", "https://cloud.hostup.se"),
 		HostupPaymentMethod: envOr("HOSTUP_PAYMENT_METHOD", "invoice"),
 		MaxDomainSEK:        envFloatOr("MAX_DOMAIN_SEK", 300),
 
