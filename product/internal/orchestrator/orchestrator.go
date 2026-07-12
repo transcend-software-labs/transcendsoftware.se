@@ -521,7 +521,7 @@ func (o *Orchestrator) AcceptPreview(projectID string) error {
 		return err
 	}
 	o.notifyOperator(ctx, "Forge: a project is ready for your review",
-		"\""+p.Name+"\" was accepted by the customer and is waiting for your final review + guarantee.\n\n"+
+		"\""+p.Name+"\" was accepted by the customer and is waiting for your final review.\n\n"+
 			"Preview: "+p.PreviewURL+"\nReview it: "+o.baseURLOr("/admin"))
 	return nil
 }

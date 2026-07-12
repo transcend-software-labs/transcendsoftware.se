@@ -406,7 +406,7 @@ func statusLabel(s project.Status) string {
 	case project.StatusAccepted:
 		return "Accepted — final review by Rasmus"
 	case project.StatusDelivered:
-		return "Delivered & guaranteed"
+		return "Delivered & working"
 	case project.StatusRejected:
 		return "Declined"
 	case project.StatusFailed:
