@@ -79,9 +79,9 @@
 <section class="panel">
   <h2>{{$.T "prj.assets.h2"}}</h2>
   <p class="muted small">{{$.T "prj.assets.intro"}}</p>
-  {{if $.Data.GenNotice}}<p class="gen-notice small">{{$.Data.GenNotice}}</p>{{end}}
+  {{if $.Data.GenNotice}}<p class="notice gen-notice small">{{$.Data.GenNotice}}</p>{{end}}
   {{if and .ContentPending .CanChange}}
-  <div class="apply-content">
+  <div class="notice apply-content">
     <p>{{$.T "prj.apply.intro"}}</p>
     <form method="post" action="/projects/{{.ID}}/apply-content" class="inline">
       <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
@@ -167,7 +167,7 @@
           {{else}}
           {{$cands := index $.Data.Candidates $slug}}
           {{$chosen := index $.Data.GenSlots $slug}}
-          <button type="button" class="btn btn-sm gen-open" onclick="document.getElementById('genm-{{$slug}}').showModal()"><span class="gen-spark">✦</span> {{if $cands}}{{$.T "prj.gen.review"}}{{else if $chosen}}{{$.T "prj.gen.refine"}}{{else}}{{$.T "prj.gen.button"}}{{end}}</button>
+          <button type="button" class="btn btn-sm btn-ghost-accent gen-open" onclick="document.getElementById('genm-{{$slug}}').showModal()"><span class="gen-spark">✦</span> {{if $cands}}{{$.T "prj.gen.review"}}{{else if $chosen}}{{$.T "prj.gen.refine"}}{{else}}{{$.T "prj.gen.button"}}{{end}}</button>
           <dialog id="genm-{{$slug}}" class="gen-modal">
             <div class="gen-modal-head">
               <h3>{{$.T "prj.gen.modal_title"}}</h3>
@@ -261,7 +261,7 @@
 {{end}}
 
 {{if $.Data.CanSubscribe}}
-<section class="panel sub-panel">
+<section class="panel card sub-panel">
   <h2>{{$.T "sub.h2"}}</h2>
   <p class="muted small">{{$.T "sub.intro"}}{{if eq .Status "preview_ready"}} {{$.T "sub.accepts_note"}}{{end}}</p>
   <ul class="sub-incl">
@@ -302,13 +302,13 @@
   <p class="muted small sub-terms">{{$.T "sub.terms_pre"}}<a href="/terms" target="_blank" rel="noopener">{{$.T "sub.terms_link"}}</a>.</p>
 </section>
 {{else if $.Data.SubProcessing}}
-<section class="panel sub-panel">
+<section class="panel card sub-panel">
   <h2>{{$.T "sub.h2"}}</h2>
   <p class="muted small">{{$.T "sub.processing"}}</p>
 </section>
 {{else if $.Data.SubActive}}
-<section class="panel sub-panel sub-done">
-  <p><span class="pay-badge pay-yes">✓ {{$.T "sub.active"}}</span></p>
+<section class="panel card sub-panel sub-done">
+  <p><span class="badge badge-paid badge-lg">✓ {{$.T "sub.active"}}</span></p>
   <form method="post" action="/projects/{{.ID}}/billing" class="inline">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
     <button class="linklike" type="submit">{{$.T "sub.manage"}}</button>
@@ -366,7 +366,7 @@
     <p class="muted small">{{$.T "domain.verifying_note"}} <span class="spinner"></span></p>
     {{template "domain_detach" $}}
   {{else if eq $.Data.DomainStatus "active"}}
-    <p><span class="pay-badge pay-yes">✓ {{$.T "domain.active"}}</span></p>
+    <p><span class="badge badge-paid">✓ {{$.T "domain.active"}}</span></p>
     <p><a class="btn btn-sm" href="https://{{$.Data.DomainName}}" target="_blank" rel="noopener">{{$.Data.DomainName}} ↗</a></p>
     {{template "domain_detach" $}}
   {{else if eq $.Data.DomainStatus "failed"}}
@@ -414,7 +414,7 @@
     {{range .Data.Iterations}}
     {{if gt .Number 0}}
     <li>
-      <span class="hist-label">{{if eq .Number 1}}{{$.T "prj.hist.first"}}{{else}}{{$.T "prj.hist.change"}}{{end}}</span>
+      <span class="badge badge-accent">{{if eq .Number 1}}{{$.T "prj.hist.first"}}{{else}}{{$.T "prj.hist.change"}}{{end}}</span>
       {{if .Prompt}}<span class="muted small">“{{.Prompt}}”</span>{{end}}
       {{if .PreviewURL}}<a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{$.T "prj.hist.preview"}}</a>{{end}}
     </li>
@@ -439,8 +439,8 @@
 
 {{/* Domain DNS records table. Called with $ (the root View) so it can range
      .Data.DomainRecords and still translate headers. */}}
-{{define "domain_records"}}<div class="domain-records-wrap">
-<table class="domain-records">
+{{define "domain_records"}}<div class="table-scroll">
+<table class="table">
   <thead><tr><th>{{.T "domain.rec_type"}}</th><th>{{.T "domain.rec_name"}}</th><th>{{.T "domain.rec_value"}}</th></tr></thead>
   <tbody>
   {{range .Data.DomainRecords}}<tr><td>{{.Type}}</td><td class="mono">{{.Name}}</td><td class="mono">{{.Value}}</td></tr>

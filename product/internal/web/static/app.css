@@ -41,6 +41,9 @@
   --sp-6: 2rem;
   --sp-7: 3rem;
   --sp-8: 4rem;
+  /* Control padding — buttons/inputs need finer steps than the layout grid. */
+  --control-py: .55rem;
+  --control-px: .8rem;
 
   /* Type scale — every UI size comes from these eight steps (12px floor). */
   --fs-xs: .75rem;
@@ -185,6 +188,23 @@ h3 {
 .btn:active { transform: translateY(0); filter: brightness(.96); }
 .btn-sm { padding: .38rem .8rem; font-size: var(--fs-sm); }
 .btn-lg { padding: .8rem 1.6rem; font-size: var(--fs-lg); }
+/* Ghost buttons: bordered + transparent, for secondary actions. One base driven
+   by a custom property; variants recolor it. Undoes the gold gradient/glow the
+   .btn base sets (compose as "btn btn-ghost …"). */
+.btn-ghost {
+  --ghost: var(--text);
+  background: none; box-shadow: none;
+  color: var(--ghost); border: 1px solid var(--border-2);
+}
+.btn-ghost:hover {
+  color: var(--ghost); border-color: var(--accent);
+  background: color-mix(in srgb, var(--ghost) 8%, transparent);
+  box-shadow: none;
+}
+.btn-ghost-accent { --ghost: var(--accent); border-color: var(--accent); }
+.btn-ghost-danger { --ghost: var(--red); border-color: var(--red); }
+/* Destructive hover fills solid — the affordance should feel loaded. */
+.btn-ghost-danger:hover { background: var(--red); color: var(--bg); border-color: var(--red); }
 
 /* Hero / landing */
 .hero { padding: var(--sp-7) 0 var(--sp-6); }
@@ -203,7 +223,7 @@ h3 {
 .how .steps li {
   counter-increment: step; color: var(--muted);
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
-  padding: 1.25rem 1.35rem;
+  padding: var(--sp-5);
 }
 .how .steps li::before {
   content: counter(step); display: flex; align-items: center; justify-content: center;
@@ -227,8 +247,8 @@ h3 {
 .stack { display: flex; flex-direction: column; gap: var(--sp-4); margin: var(--sp-5) 0; }
 .stack label { display: flex; flex-direction: column; gap: .35rem; font-size: var(--fs-md); }
 input, textarea {
-  background: var(--surface); border: 1px solid var(--border); color: var(--text);
-  font: inherit; padding: .6rem .7rem; border-radius: var(--radius); width: 100%;
+  background: var(--surface); border: 1px solid var(--border-2); color: var(--text);
+  font: inherit; padding: var(--control-py) var(--control-px); border-radius: var(--radius); width: 100%;
   transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
 }
 input:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
@@ -241,11 +261,17 @@ textarea { resize: vertical; }
 }
 
 /* Email-verification banner: informational, not an error — uses the accent. */
-.verify-banner {
-  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-4);
-  padding: .7rem .9rem; border-radius: var(--radius); margin-bottom: var(--sp-5);
+/* Notice: the accent-tinted callout box. Compose with a keeper class for
+   layout extras (verify-banner, apply-content, gen-notice). */
+.notice {
   background: var(--accent-fill);
   border: 1px solid var(--accent-border);
+  border-radius: var(--radius);
+  padding: .7rem .9rem;
+}
+.verify-banner {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-4);
+  margin-bottom: var(--sp-5);
   animation: fadeInUp .3s var(--ease) both;
 }
 .verify-banner .linklike { color: var(--accent); font-weight: 600; }
@@ -256,33 +282,47 @@ textarea { resize: vertical; }
 /* Project list */
 .project-list { list-style: none; display: flex; flex-direction: column; gap: .8rem; }
 .project-row {
-  border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.1rem 1.25rem;
+  border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--sp-4) var(--sp-5);
   background: var(--surface); transition: transform .14s var(--ease), border-color .14s var(--ease), box-shadow .2s var(--ease);
 }
 .project-row:hover { transform: translateY(-2px); border-color: var(--border-2); box-shadow: var(--shadow); }
 .project-row > a { display: flex; align-items: center; gap: var(--sp-3); color: var(--text); }
 .project-name { font-weight: 500; }
-/* Admin cards (delivery/review) are list items that reuse .panel — render
-   them as self-contained bordered cards, not top-border-only sections. */
-.project-list > li.panel {
-  border: 1px solid var(--border); border-radius: var(--radius-lg);
-  padding: 1.35rem 1.4rem; margin-top: 0; background: var(--surface);
+/* Admin card titles are project names — real titles, not eyebrow kickers. */
+.project-list .card h3 {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-lg);
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text);
 }
-.project-list > li.panel > h3 { margin-bottom: var(--sp-2); }
 .empty { margin-top: var(--sp-6); }
 
-/* Badges & status */
+/* Badges & status. ONE family: .badge is the pill base, modifiers recolor or
+   resize it. The badge-<status> variants map to project statuses (rendered
+   dynamically by the templates). */
 .badge {
-  font-size: var(--fs-xs); padding: .15rem .55rem; border-radius: 999px;
+  display: inline-block;
+  font-size: var(--fs-xs); font-weight: 500;
+  padding: .15rem .55rem; border-radius: 999px;
   border: 1px solid var(--border-2); color: var(--muted); white-space: nowrap;
 }
 .badge-preview_ready, .badge-delivered { color: var(--green); border-color: var(--green); }
 .badge-rejected, .badge-failed { color: var(--red); border-color: var(--red); }
 .badge-building, .badge-planning, .badge-screening, .badge-clarifying, .badge-needs_input, .badge-escalated, .badge-accepted { color: var(--accent); border-color: var(--accent); }
+/* Filled variants: payment state reads at a glance. */
+.badge-paid { color: var(--green); border-color: transparent; background: var(--green-fill); font-weight: 600; }
+.badge-unpaid { color: var(--red); border-color: transparent; background: var(--red-fill); font-weight: 600; }
+/* Accent pill (history rows). */
+.badge-accent { color: var(--accent); font-weight: 600; }
+/* Severity tag (design-audit findings) — squared + uppercase; colored by the
+   parent .finding-error/.finding-warning context below. */
+.badge-sev { text-transform: uppercase; letter-spacing: .04em; border-radius: var(--radius); padding: .05rem .4rem; border-color: var(--border); }
+.badge-lg { font-size: var(--fs-base); padding: .3rem .8rem; }
 
 .statusbox {
   border: 1px solid var(--border-2); border-radius: var(--radius-lg);
-  padding: 1.1rem 1.25rem; margin-bottom: var(--sp-5); background: var(--surface);
+  padding: var(--sp-4) var(--sp-5); margin-bottom: var(--sp-5); background: var(--surface);
   transition: border-color .3s var(--ease);
 }
 .status-line { font-size: var(--fs-lg); display: flex; align-items: center; gap: var(--sp-2); }
@@ -312,13 +352,22 @@ button.is-busy::after {
 .btn.is-busy::after { border-color: rgba(0,0,0,.6); border-right-color: transparent; }
 .btn.is-busy, button:disabled { opacity: .9; }
 
-/* Panels */
+/* Panels & cards. .panel is pure section rhythm (top hairline + breathing
+   room); .card is a self-contained bordered surface. Compose them — e.g.
+   class="panel card" — to keep the rhythm AND render as a card; .card is
+   defined after .panel so the composition wins by source order. */
 .panel { border-top: 1px solid var(--border); padding-top: var(--sp-6); margin-top: var(--sp-6); }
 /* A section's intro/description text needs space before the content it
    introduces (lists, tables) — otherwise cards butt right against it. */
 .panel > p { margin-bottom: 1.1rem; }
 .panel > p:last-child { margin-bottom: 0; }
 .panel > h2 + p, .panel > h3 + p { margin-top: -.25rem; }
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-5);
+  background: var(--surface);
+}
 .brief { color: var(--muted); }
 
 .questions { margin: var(--sp-3) 0 var(--sp-4) 1.1rem; display: flex; flex-direction: column; gap: var(--sp-2); }
@@ -351,11 +400,7 @@ button.is-busy::after {
   padding: .7rem .8rem; border: 1px dashed var(--border-2); border-radius: var(--radius);
   background: var(--surface); color: var(--muted); cursor: pointer;
 }
-.upload-form input[type=text] {
-  width: 100%;
-  padding: .55rem .7rem; border: 1px solid var(--border-2); border-radius: var(--radius);
-  background: var(--surface); color: var(--text); font-family: inherit;
-}
+.upload-form input[type=text] { width: 100%; } /* appearance from the input base */
 .upload-form button { justify-self: start; }
 .upload-form input[type=file]::file-selector-button,
 .content-upload input[type=file]::file-selector-button {
@@ -377,18 +422,11 @@ details summary { cursor: pointer; }
 
 /* Payment status (operator only) */
 .pay-row { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-4); flex-wrap: wrap; }
-.pay-badge { font-weight: 600; font-size: var(--fs-md); padding: .2rem .55rem; border-radius: 999px; }
-.pay-yes { color: var(--green); background: var(--green-fill); }
-.pay-no { color: var(--red); background: var(--red-fill); }
-.pay-panel .pay-badge { font-size: var(--fs-base); }
 
-/* Subscription paywall (customer) — a self-contained pricing card. It reuses
-   .panel for vertical rhythm but overrides the top-border-only look with a full
-   rounded, padded, accent-tinted card (later source order beats .panel). */
+/* Subscription paywall (customer) — a pricing card ("panel card sub-panel"):
+   .card provides the surface, this adds the accent tint + shadow. */
 .sub-panel {
-  border: 1px solid var(--accent-border);
-  border-radius: var(--radius-lg);
-  padding: 1.6rem var(--sp-5);
+  border-color: var(--accent-border);
   background:
     radial-gradient(140% 120% at 0% 0%, var(--accent-fill), transparent 55%),
     var(--surface);
@@ -439,23 +477,13 @@ details summary { cursor: pointer; }
     radial-gradient(140% 120% at 0% 0%, color-mix(in srgb, var(--green) 10%, transparent), transparent 55%),
     var(--surface);
 }
-.sub-done .pay-badge { font-size: var(--fs-lg); }
 .sub-done form.inline { margin-top: .9rem; }
 
 /* Custom domain panel */
 .xsmall { font-size: var(--fs-xs); }
 .mono { font-family: var(--font-mono); word-break: break-all; }
 .domain-row { display: flex; gap: var(--sp-2); align-items: center; flex-wrap: wrap; margin: var(--sp-2) 0; }
-.domain-row input[type=text], .domain-search {
-  flex: 1;
-  min-width: 12rem;
-  padding: var(--sp-2) .6rem;
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius);
-  font: inherit;
-}
+.domain-row input[type=text], .domain-search { flex: 1; min-width: 12rem; }
 .domain-attach .muted { margin-top: .1rem; }
 .domain-buy { margin-top: 1.4rem; border-top: 1px solid var(--border); padding-top: 1.1rem; }
 .domain-buy-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-2); }
@@ -471,14 +499,6 @@ details summary { cursor: pointer; }
   border-radius: var(--radius);
 }
 .domain-hit-name { flex: 1; min-width: 8rem; }
-.domain-records-wrap { overflow-x: auto; margin: .7rem 0; }
-.domain-records { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
-.domain-records th, .domain-records td {
-  text-align: left; padding: .4rem .6rem;
-  border-bottom: 1px solid var(--border);
-  vertical-align: top;
-}
-.domain-records th { color: var(--muted); font-weight: 500; }
 .domain-flash { color: var(--accent-2); font-size: var(--fs-md); margin: -.2rem 0 .9rem; }
 #domain-searching, #sub-domain-searching { margin-left: var(--sp-2); vertical-align: middle; }
 /* Subscribe-panel "add a domain" chooser (Phase B): radio options as card rows,
@@ -579,12 +599,8 @@ label.design-option:hover { border-color: var(--accent); }
 }
 .finding-warning { border-left-color: var(--accent); }
 .finding-error { border-left-color: var(--red); }
-.finding-sev {
-  font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em;
-  padding: .05rem .4rem; border: 1px solid var(--border); border-radius: 6px; color: var(--muted);
-}
-.finding-error .finding-sev { color: var(--red); border-color: var(--red); }
-.finding-warning .finding-sev { color: var(--accent); border-color: var(--accent); }
+.finding-error .badge-sev { color: var(--red); border-color: var(--red); }
+.finding-warning .badge-sev { color: var(--accent); border-color: var(--accent); }
 .finding-name { font-weight: 600; cursor: help; }
 .finding-where { margin-left: auto; font-family: var(--font-mono); }
 .audit-flag { color: var(--accent); font-size: var(--fs-md); white-space: nowrap; }
@@ -595,28 +611,20 @@ label.design-option:hover { border-color: var(--accent); }
 .stat-num { font-size: var(--fs-2xl); font-weight: 600; color: var(--text); line-height: 1; }
 
 .oauth-buttons { display: flex; flex-direction: column; gap: .6rem; margin-bottom: var(--sp-4); }
-.btn-oauth {
-  display: block; text-align: center; text-decoration: none;
-  background: var(--surface); color: var(--text); border: 1px solid var(--border-2);
-  box-shadow: none;
-}
-/* Override the gold .btn:hover (dark text + gold glow) — wrong on a dark,
-   bordered button. Keep text light, lift the surface, accent the border. */
-.btn-oauth:hover {
-  color: var(--text); background: var(--surface-2);
-  border-color: var(--accent);
-  box-shadow: 0 6px 16px rgba(0,0,0,.22);
-}
+/* Layout only — appearance comes from .btn-ghost. */
+.btn-oauth { display: block; text-align: center; }
 .or-divider { display: flex; align-items: center; gap: .8rem; color: var(--muted); font-size: var(--fs-md); margin: .4rem 0 var(--sp-4); }
 .or-divider::before, .or-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 .password-login { margin-top: var(--sp-4); }
 .password-login summary { cursor: pointer; }
 .password-login .stack { margin-top: .6rem; }
 
+/* Tables: one component. Wrap in .table-scroll when columns may overflow. */
 .table-scroll { overflow-x: auto; margin-top: var(--sp-4); }
-.builds-table { width: 100%; border-collapse: collapse; font-size: var(--fs-md); }
-.builds-table th, .builds-table td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
-.builds-table th { color: var(--muted); font-weight: 500; }
+.table { width: 100%; border-collapse: collapse; font-size: var(--fs-md); }
+.table th, .table td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+.table th { color: var(--muted); font-weight: 500; }
+.table-nowrap th, .table-nowrap td { white-space: nowrap; }
 
 .foot { border-top: 1px solid var(--border); padding: 1.75rem 1.25rem; text-align: center; font-size: var(--fs-sm); flex-shrink: 0; }
 
@@ -626,56 +634,6 @@ label.design-option:hover { border-color: var(--accent); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto; }
-}
-
-/* Mobile (≤720px). The nav collapses into an accessible CSS-only hamburger
-   (the #nav-toggle checkbox drives it — no JS), and the operator dashboard
-   reflows so review/approve works one-handed on a phone. */
-@media (max-width: 720px) {
-  .nav-burger {
-    display: flex; flex-direction: column; justify-content: center; gap: 5px;
-    width: 44px; height: 44px; padding: 11px; cursor: pointer;
-    border: 1px solid var(--border); border-radius: var(--radius); background: none;
-  }
-  .nav-burger span {
-    display: block; width: 100%; height: 2px; background: var(--text);
-    transition: transform .2s var(--ease), opacity .2s var(--ease);
-  }
-  .navlinks {
-    display: none;
-    position: absolute; top: 100%; left: 0; right: 0; z-index: var(--z-menu);
-    flex-direction: column; align-items: stretch; gap: 0; padding: .4rem 0;
-    background: var(--bg); border-bottom: 1px solid var(--border); box-shadow: var(--shadow);
-  }
-  .navlinks > * { padding: .8rem 1.25rem; }
-  .navlinks form.inline, .navlinks .linklike { display: block; width: 100%; text-align: left; }
-  .nav-toggle:checked ~ .navlinks { display: flex; }
-  .nav-toggle:checked ~ .nav-burger span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
-  .nav-toggle:checked ~ .nav-burger span:nth-child(2) { opacity: 0; }
-  .nav-toggle:checked ~ .nav-burger span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
-  /* Keyboard focus lands on the sr-only checkbox — surface it on the burger. */
-  .nav-toggle:focus-visible + .nav-burger { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-  /* Every primary action is a comfortable thumb target. */
-  .btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
-  .linklike { min-height: 44px; display: inline-flex; align-items: center; }
-
-  /* Operator dashboard + shared layout */
-  .container { padding-left: var(--sp-4); padding-right: var(--sp-4); }
-  h1 { font-size: var(--fs-2xl); }
-  .page-head { flex-direction: column; align-items: flex-start; gap: var(--sp-2); }
-  .stat-row { gap: var(--sp-4) var(--sp-5); }
-  .admin-actions { flex-direction: column; align-items: stretch; gap: .6rem; }
-  .admin-actions .inline, .admin-actions form { width: 100%; }
-  .admin-actions .btn, .admin-actions button { width: 100%; min-height: 44px; }
-  .inline-actions { flex-direction: column; align-items: stretch; gap: var(--sp-2); width: 100%; }
-  .inline-actions input { width: 100%; }
-  .inline-actions button, .inline-actions .btn { width: 100%; min-height: 44px; }
-  .table-scroll { -webkit-overflow-scrolling: touch; }
-  .review-shot, .review-thumb { max-width: 100%; height: auto; }
-  .timeline { gap: 0; }
-  /* .tl-label keeps its base size — 10px text was below the readability floor;
-     labels may wrap to two lines on narrow phones, which is fine. */
 }
 
 /* ── Redesign: timeline, live checklist, scope card, content slots ─────── */
@@ -764,20 +722,12 @@ label.design-option:hover { border-color: var(--accent); }
 /* Content checklist — what we still need from the customer. File-kind items
    are satisfied by the upload form; text-kind items get an inline field. */
 .content-checklist { list-style: none; margin: 0 0 1.25rem; padding: 0; display: grid; gap: .8rem; }
-.content-checklist li { display: grid; gap: .4rem; }
+.content-checklist li { display: grid; gap: var(--sp-2); }
 .content-row { display: flex; align-items: center; gap: .6rem; }
 .content-kind { margin-left: .1rem; }
 .content-answer, .content-upload { display: flex; gap: var(--sp-2); align-items: center; flex-wrap: wrap; }
 .content-saved { color: var(--green); font-size: var(--fs-sm); white-space: nowrap; }
-.content-answer input[type=text] {
-  flex: 1;
-  padding: var(--sp-2) .6rem;
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius);
-  font-family: inherit;
-}
+.content-answer input[type=text] { flex: 1; }
 .content-upload input[type=file] {
   flex: 1; min-width: 0; font-size: var(--fs-md);
   padding: .45rem .6rem; border: 1px dashed var(--border-2); border-radius: var(--radius);
@@ -790,23 +740,9 @@ label.design-option:hover { border-color: var(--accent); }
 /* Human-language history. */
 .history { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-3); }
 .history li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-2); }
-.hist-label {
-  font-weight: 600;
-  color: var(--accent);
-  border: 1px solid var(--border-2);
-  border-radius: 999px;
-  padding: .1rem .7rem;
-  font-size: var(--fs-sm);
-}
-
 /* Operator destructive actions. */
 .linklike.danger { color: var(--red); }
 .linklike.danger:hover { color: var(--red-soft); text-decoration: underline; }
-.btn.danger {
-  background: transparent; color: var(--red);
-  border: 1px solid var(--red); box-shadow: none;
-}
-.btn.danger:hover { background: var(--red); color: var(--bg); filter: none; }
 .danger-zone { border-top: 1px solid var(--red); }
 .danger-zone h2 { color: var(--red); }
 
@@ -818,14 +754,16 @@ label.design-option:hover { border-color: var(--accent); }
 }
 .roster-member .roster-fields { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
 .roster-member .roster-fields input { flex: 1; min-width: 8rem; }
-.roster-member input[type=text], .roster-member textarea {
-  padding: .45rem .6rem; background: var(--surface); color: var(--text);
-  border: 1px solid var(--border-2); border-radius: var(--radius); font-family: inherit;
-}
 .roster-photo-row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; font-size: var(--fs-md); color: var(--muted); }
 .roster-photo { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border-2); }
 .roster-photo-label { display: flex; align-items: center; gap: .4rem; }
-.slot-files { list-style: none; margin: .3rem 0; padding: 0; font-size: var(--fs-md); color: var(--muted); display: grid; gap: .2rem; }
+/* Slot file list (uploads under a content item + caption rows). Single
+   definition — the margin matches what the later duplicate used to override. */
+.slot-files {
+  list-style: none; margin: 0 0 var(--sp-2); padding: 0;
+  font-size: var(--fs-md); color: var(--muted);
+  display: grid; gap: .2rem;
+}
 /* label.ack-later, not .ack-later, so it beats `.stack label { flex-direction:
    column }` (same specificity, later in the file) — otherwise the checkbox
    stacks above its text instead of sitting beside it. */
@@ -837,16 +775,8 @@ label.ack-later { display: flex; flex-direction: row; align-items: flex-start; g
 
 /* AI image generation: a "Create with AI" option beside upload, opening a modal. */
 .content-actions { display: flex; gap: var(--sp-2); align-items: center; flex-wrap: wrap; margin-top: var(--sp-2); }
-.gen-open {
-  background: transparent; color: var(--accent);
-  border: 1px solid var(--accent); box-shadow: none; white-space: nowrap;
-}
-/* Override the gold .btn:hover (dark text + gold glow), wrong on this
-   transparent bordered button — keep the accent text and drop the glow. */
-.gen-open:hover {
-  color: var(--accent); border-color: var(--accent); box-shadow: none;
-  background: var(--accent-fill);
-}
+/* Layout only — appearance comes from .btn-ghost-accent. */
+.gen-open { white-space: nowrap; }
 
 .gen-modal {
   width: min(680px, 94vw); max-height: 90vh; margin: auto; padding: 0; overflow: auto;
@@ -895,16 +825,11 @@ label.ack-later { display: flex; flex-direction: row; align-items: flex-start; g
 .gen-pick img { width: 140px; height: 140px; object-fit: cover; border-radius: calc(var(--radius) - 2px); display: block; }
 
 /* "You added content — update your site" call-to-action */
-.apply-content {
-  margin: var(--sp-1) 0 var(--sp-4); padding: var(--sp-4) 1.1rem; border-radius: var(--radius);
-  background: var(--accent-fill);
-  border: 1px solid var(--accent-border);
-}
+.apply-content { margin: var(--sp-1) 0 var(--sp-4); padding: var(--sp-4) 1.1rem; }
 .apply-content p { margin: 0 0 .6rem; }
 .apply-content .apply-note { margin: var(--sp-2) 0 0; }
 
 /* Per-photo caption rows (pair a photo to the right recipe/item) */
-.slot-files { list-style: none; padding: 0; margin: 0 0 var(--sp-2); }
 .slot-file { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: .4rem; }
 .slot-file-name { min-width: 8rem; }
 .caption-form { display: flex; gap: .4rem; align-items: center; flex: 1 1 16rem; }
@@ -913,17 +838,59 @@ label.ack-later { display: flex; flex-direction: row; align-items: flex-start; g
 
 .gen-spark { font-weight: 600; }
 .gen-exhausted { margin-top: var(--sp-2); font-style: italic; }
-.gen-notice {
-  margin: var(--sp-1) 0 0; padding: .55rem var(--sp-3); border-radius: var(--radius);
-  background: var(--accent-fill);
-  border: 1px solid var(--accent-border);
-}
-.content-checklist li { gap: var(--sp-2); }
+.gen-notice { margin: var(--sp-1) 0 0; padding: .55rem var(--sp-3); }
 
-/* Mobile fixes for the content + AI-prompt inputs. Placed at the END of the
-   file on purpose: media queries don't add specificity, so these overrides must
-   come after the component rules (e.g. .caption-form's desktop flex) to win. */
+/* Mobile (≤720px) — ONE block, kept at the END of the file on purpose: media
+   queries don't add specificity, so these overrides must come after every
+   component rule to win by source order. Contains: the accessible CSS-only
+   hamburger (the #nav-toggle checkbox drives it — no JS), operator-dashboard
+   reflow, 44px touch targets, and the content/AI-prompt form stacking. */
 @media (max-width: 720px) {
+  .nav-burger {
+    display: flex; flex-direction: column; justify-content: center; gap: 5px;
+    width: 44px; height: 44px; padding: 11px; cursor: pointer;
+    border: 1px solid var(--border); border-radius: var(--radius); background: none;
+  }
+  .nav-burger span {
+    display: block; width: 100%; height: 2px; background: var(--text);
+    transition: transform .2s var(--ease), opacity .2s var(--ease);
+  }
+  .navlinks {
+    display: none;
+    position: absolute; top: 100%; left: 0; right: 0; z-index: var(--z-menu);
+    flex-direction: column; align-items: stretch; gap: 0; padding: .4rem 0;
+    background: var(--bg); border-bottom: 1px solid var(--border); box-shadow: var(--shadow);
+  }
+  .navlinks > * { padding: .8rem 1.25rem; }
+  .navlinks form.inline, .navlinks .linklike { display: block; width: 100%; text-align: left; }
+  .nav-toggle:checked ~ .navlinks { display: flex; }
+  .nav-toggle:checked ~ .nav-burger span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+  .nav-toggle:checked ~ .nav-burger span:nth-child(2) { opacity: 0; }
+  .nav-toggle:checked ~ .nav-burger span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+  /* Keyboard focus lands on the sr-only checkbox — surface it on the burger. */
+  .nav-toggle:focus-visible + .nav-burger { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Every primary action is a comfortable thumb target. */
+  .btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+  .linklike { min-height: 44px; display: inline-flex; align-items: center; }
+
+  /* Operator dashboard + shared layout */
+  .container { padding-left: var(--sp-4); padding-right: var(--sp-4); }
+  h1 { font-size: var(--fs-2xl); }
+  .page-head { flex-direction: column; align-items: flex-start; gap: var(--sp-2); }
+  .stat-row { gap: var(--sp-4) var(--sp-5); }
+  .admin-actions { flex-direction: column; align-items: stretch; gap: .6rem; }
+  .admin-actions .inline, .admin-actions form { width: 100%; }
+  .admin-actions .btn, .admin-actions button { width: 100%; min-height: 44px; }
+  .inline-actions { flex-direction: column; align-items: stretch; gap: var(--sp-2); width: 100%; }
+  .inline-actions input { width: 100%; }
+  .inline-actions button, .inline-actions .btn { width: 100%; min-height: 44px; }
+  .table-scroll { -webkit-overflow-scrolling: touch; }
+  .review-shot, .review-thumb { max-width: 100%; height: auto; }
+  .timeline { gap: 0; }
+  /* .tl-label keeps its base size — 10px text was below the readability floor;
+     labels may wrap to two lines on narrow phones, which is fine. */
+
   /* 16px stops iOS Safari zooming the page when a field is focused. */
   input, textarea, select { font-size: 16px; }
   /* Stack input-above-button so the field gets the full width — long values were
@@ -951,9 +918,9 @@ label.ack-later { display: flex; flex-direction: row; align-items: flex-start; g
    controls, badges) and data (tables, logs, paths, prices, timeline). Kept at
    the end of the file so it outranks earlier `font: inherit` shorthands
    (.btn, .linklike targets) by source order. */
-h1, h2, h3, .brand, .btn, .badge, .pay-badge, .hist-label, .finding-sev,
+h1, h2, h3, .brand, .btn, .badge,
 .mono, .stat-num, .proof-stat, .sub-price, .tl-label, .timeline, table,
-.plan, .log, .finding-where, .domain-fee, .gen-open, code {
+.plan, .log, .finding-where, .domain-fee, code {
   font-family: var(--font-mono);
 }
 /* Numbers that get compared line-to-line align digit-for-digit. */

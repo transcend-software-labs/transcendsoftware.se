@@ -5,7 +5,7 @@
   {{if .Providers}}
   <div class="oauth-buttons">
     {{range .Providers}}
-    <a class="btn btn-oauth" href="/auth/{{.Name}}">{{$.T "auth.continue_with"}} {{.Label}}</a>
+    <a class="btn btn-ghost btn-oauth" href="/auth/{{.Name}}">{{$.T "auth.continue_with"}} {{.Label}}</a>
     {{end}}
   </div>
   <div class="or-divider"><span>{{.T "auth.or"}}</span></div>

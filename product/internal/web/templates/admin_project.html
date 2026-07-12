@@ -17,13 +17,13 @@
 <section class="panel pay-panel">
   <h2>Payment</h2>
   {{if .Paid}}
-  <p><span class="pay-badge pay-yes">💳 Paid{{if .PaidVia}} · {{.PaidVia}}{{end}}</span>{{if not .PaidAt.IsZero}} <span class="muted small">{{.PaidAt.Format "2 Jan 2006"}}</span>{{end}}</p>
+  <p><span class="badge badge-paid badge-lg">💳 Paid{{if .PaidVia}} · {{.PaidVia}}{{end}}</span>{{if not .PaidAt.IsZero}} <span class="muted small">{{.PaidAt.Format "2 Jan 2006"}}</span>{{end}}</p>
   <form method="post" action="/admin/projects/{{.ID}}/mark-unpaid" class="inline">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
     <button class="linklike small" type="submit">Mark unpaid</button>
   </form>
   {{else}}
-  <p><span class="pay-badge pay-no">Unpaid</span> <span class="muted small">— delivery is blocked until this is paid.</span></p>
+  <p><span class="badge badge-unpaid badge-lg">Unpaid</span> <span class="muted small">— delivery is blocked until this is paid.</span></p>
   <form method="post" action="/admin/projects/{{.ID}}/mark-paid" class="inline">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
     <button class="btn btn-sm" type="submit">Mark paid</button>
@@ -38,8 +38,8 @@
   <p><span class="mono">{{.DomainName}}</span> · {{.DomainStatus}} · {{.DomainKind}}{{if .DomainZoneID}} · zone {{.DomainZoneID}}{{end}}{{if .DomainIPv6}} · {{.DomainIPv6}}{{end}}</p>
   {{if .DomainSubItemID}}<p class="muted small">Stripe add-on item: {{.DomainSubItemID}}</p>{{end}}
   {{if .DomainRecords}}
-  <div class="domain-records-wrap">
-  <table class="domain-records">
+  <div class="table-scroll">
+  <table class="table">
     <thead><tr><th>Type</th><th>Name</th><th>Value</th></tr></thead>
     <tbody>{{range .DomainRecords}}<tr><td>{{.Type}}</td><td class="mono">{{.Name}}</td><td class="mono">{{.Value}}</td></tr>{{end}}</tbody>
   </table>
@@ -83,7 +83,7 @@
   <ul>
     {{range .Findings}}
     <li class="finding finding-{{.Severity}}">
-      <span class="finding-sev">{{.Severity}}</span>
+      <span class="badge badge-sev">{{.Severity}}</span>
       <span class="finding-name" title="{{.Description}}">{{.Name}}</span>
       {{if .Snippet}}<span class="finding-snippet muted small">— {{.Snippet}}</span>{{end}}
       <span class="finding-where muted small">{{.File}}{{if .Line}}:{{.Line}}{{end}}</span>

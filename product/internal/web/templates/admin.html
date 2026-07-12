@@ -18,7 +18,7 @@
   {{end}}
   {{if .Data.Recent}}
   <div class="table-scroll">
-    <table class="builds-table">
+    <table class="table table-nowrap">
       <thead><tr><th>Project</th><th>When</th><th>Duration</th><th>Tokens</th><th>Model</th><th>Est. cost</th><th>Status</th></tr></thead>
       <tbody>
         {{range .Data.Recent}}
@@ -45,7 +45,7 @@
   {{if .Data.Accepted}}
   <ul class="project-list">
     {{range .Data.Accepted}}
-    <li class="panel">
+    <li class="card">
       <h3><a href="/admin/projects/{{.ID}}">{{.Name}}</a></h3>
       <p><a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{.PreviewURL}} ↗</a>
         {{if .RepoURL}}· <a class="muted small" href="{{.RepoURL}}" target="_blank" rel="noopener">source ↗</a>{{end}}</p>
@@ -66,7 +66,7 @@
           <ul>
             {{range .Findings}}
             <li class="finding finding-{{.Severity}}">
-              <span class="finding-sev">{{.Severity}}</span>
+              <span class="badge badge-sev">{{.Severity}}</span>
               <span class="finding-name" title="{{.Description}}">{{.Name}}</span>
               {{if .Snippet}}<span class="finding-snippet muted small">— {{.Snippet}}</span>{{end}}
               <span class="finding-where muted small">{{.File}}{{if .Line}}:{{.Line}}{{end}}</span>
@@ -87,13 +87,13 @@
       <p class="brief muted small">{{.Brief}}</p>
       <div class="pay-row">
         {{if .Paid}}
-        <span class="pay-badge pay-yes">💳 Paid{{if .PaidVia}} · {{.PaidVia}}{{end}}</span>
+        <span class="badge badge-paid">💳 Paid{{if .PaidVia}} · {{.PaidVia}}{{end}}</span>
         <form method="post" action="/admin/projects/{{.ID}}/mark-unpaid" class="inline">
           <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
           <button class="linklike small" type="submit">mark unpaid</button>
         </form>
         {{else}}
-        <span class="pay-badge pay-no">Unpaid</span>
+        <span class="badge badge-unpaid">Unpaid</span>
         <form method="post" action="/admin/projects/{{.ID}}/mark-paid" class="inline">
           <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
           <button class="btn btn-sm" type="submit">Mark paid</button>
@@ -199,7 +199,7 @@
   {{if .Data.Escalated}}
   <ul class="project-list">
     {{range .Data.Escalated}}
-    <li class="panel">
+    <li class="card">
       <h3><a href="/admin/projects/{{.ID}}">{{.Name}}</a></h3>
       {{if .RejectReason}}<p class="reason small">Flagged: {{.RejectReason}}</p>{{end}}
       <p class="brief">{{.Brief}}</p>
@@ -229,7 +229,7 @@
   <form method="post" action="/admin/purge-all"
     onsubmit="return confirm('Delete ALL projects and destroy every preview app? This cannot be undone.')">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-    <button class="btn danger" type="submit">Delete all projects &amp; previews</button>
+    <button class="btn btn-ghost-danger" type="submit">Delete all projects &amp; previews</button>
   </form>
 </section>
 {{template "foot" .}}{{end}}

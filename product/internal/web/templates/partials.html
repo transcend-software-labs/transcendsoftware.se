@@ -22,7 +22,7 @@
 <body>
 {{template "nav" .}}
 <main class="container">
-{{if .Unverified}}<div class="verify-banner">{{.T "verify.banner"}}
+{{if .Unverified}}<div class="notice verify-banner">{{.T "verify.banner"}}
 <form method="post" action="/verify/resend" class="inline"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button class="linklike">{{.T "verify.resend"}}</button></form></div>{{end}}
 {{if .Flash}}<div class="flash">{{.Flash}}</div>{{end}}
 {{end}}
