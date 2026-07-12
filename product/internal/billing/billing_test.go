@@ -142,6 +142,39 @@ func TestAddSubscriptionItem(t *testing.T) {
 	}
 }
 
+func TestAddInvoiceItem(t *testing.T) {
+	var gotPath, gotMethod, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotMethod = r.URL.Path, r.Method
+		_ = r.ParseForm()
+		gotBody = r.Form.Encode()
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"ii_123","object":"invoiceitem"}`))
+	}))
+	defer srv.Close()
+
+	id, err := New(srv.URL, "sk_test_x").AddInvoiceItem(context.Background(), "cus_1", 4900, "sek", "Extra change")
+	if err != nil {
+		t.Fatalf("add invoice item: %v", err)
+	}
+	if id != "ii_123" {
+		t.Fatalf("id = %q", id)
+	}
+	if gotPath != "/v1/invoiceitems" || gotMethod != http.MethodPost {
+		t.Fatalf("path=%q method=%q", gotPath, gotMethod)
+	}
+	for _, want := range []string{
+		"customer=cus_1",
+		"amount=4900",
+		"currency=sek",
+		"description=Extra+change",
+	} {
+		if !strings.Contains(gotBody, want) {
+			t.Errorf("invoice-item body missing %q\nbody: %s", want, gotBody)
+		}
+	}
+}
+
 func TestRemoveSubscriptionItem(t *testing.T) {
 	var gotPath, gotMethod string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

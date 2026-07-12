@@ -193,11 +193,18 @@ type projectView struct {
 	GenExhausted bool                        // the project has hit its AI-generation cap
 	GenNotice    string                      // localized notice for a failed/blocked generation attempt
 
-	CanSubscribe  bool   // show the subscribe panel (billing on, unpaid, preview/accepted)
-	SubActive     bool   // paid via stripe — show "active" + manage-subscription
-	SubProcessing bool   // returned from Checkout success while the webhook is still in flight
-	PriceStr      string // formatted plan price ("99 kr"), "" if unavailable
-	ShowAccept    bool   // show the explicit accept step (paid/comped customers, or billing off — subscribing accepts implicitly otherwise)
+	CanSubscribe    bool   // show the subscribe panel (billing on, unpaid, preview/accepted)
+	SubActive       bool   // paid via stripe — show "active" + manage-subscription
+	SubProcessing   bool   // returned from Checkout success while the webhook is still in flight
+	PriceStr        string // formatted plan price ("99 kr"), "" if unavailable
+	IncludedChanges int    // monthly changes included in the plan, for the subscribe "what's included" list
+	ShowAccept      bool   // show the explicit accept step (paid/comped customers, or billing off — subscribing accepts implicitly otherwise)
+
+	// Forge Pro change model (see changes.go). Paid subscribers request site
+	// changes here: a monthly allowance is included, extra changes bill a flat fee.
+	ShowChange  bool   // the paid change panel is visible (CanRequestChange)
+	ChangesLeft int    // included changes remaining this month
+	OverageStr  string // formatted flat price of an extra change ("49 kr")
 
 	// Custom domain panel (see handlers_domains.go). Visible only to paying
 	// customers when the feature is wired.
@@ -347,6 +354,15 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 	// For an unpaid customer with billing on, "Prenumerera & få min sida" IS the
 	// accept — paying flips the project into Rasmus's review queue.
 	pv.ShowAccept = p.CanAccept() && (p.Paid || s.billing == nil)
+	// Forge Pro change model: a paying subscriber requests site changes here (the
+	// unpaid preview-refinement panel below is gated on CanReiterate, which is
+	// false once paid). A monthly allowance is included; extra changes bill a flat
+	// fee, disclosed in the panel copy.
+	if p.Paid {
+		pv.ShowChange = p.CanRequestChange()
+		pv.ChangesLeft = p.ChangesLeft(time.Now().UTC(), s.orch.ChangesPerMonth())
+		pv.OverageStr = formatPrice(int64(s.orch.OverageOre()), "sek")
+	}
 	if s.billing != nil {
 		pv.SubActive = p.Paid && p.PaidVia == "stripe" && p.StripeCustomerID != ""
 		pv.SubProcessing = !p.Paid && sub == "success" // paid on Stripe, webhook still in flight
@@ -355,6 +371,7 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 			if pr, err := s.billing.Price(ctx, s.cfg.StripePriceID); err == nil {
 				pv.PriceStr = formatPrice(pr.UnitAmount, pr.Currency)
 			}
+			pv.IncludedChanges = s.orch.ChangesPerMonth() // for the "what's included" list
 		}
 	}
 	// Domain panel: paying customers only, when the feature is wired. Everything
@@ -726,7 +743,7 @@ func (s *Server) handleReiterate(w http.ResponseWriter, r *http.Request, u *user
 		return
 	}
 	prompt := strings.TrimSpace(r.FormValue("prompt"))
-	if !p.CanReiterate() || prompt == "" || len(prompt) > maxBriefLen {
+	if !p.CanChange() || prompt == "" || len(prompt) > maxBriefLen {
 		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 		return
 	}
@@ -753,7 +770,7 @@ func (s *Server) handleApplyContent(w http.ResponseWriter, r *http.Request, u *u
 	if !ok {
 		return
 	}
-	if !p.ContentPending || !p.CanReiterate() {
+	if !p.ContentPending || !p.CanChange() {
 		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 		return
 	}

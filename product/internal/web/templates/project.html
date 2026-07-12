@@ -80,7 +80,7 @@
   <h2>{{$.T "prj.assets.h2"}}</h2>
   <p class="muted small">{{$.T "prj.assets.intro"}}</p>
   {{if $.Data.GenNotice}}<p class="gen-notice small">{{$.Data.GenNotice}}</p>{{end}}
-  {{if and .ContentPending .CanReiterate}}
+  {{if and .ContentPending .CanChange}}
   <div class="apply-content">
     <p>{{$.T "prj.apply.intro"}}</p>
     <form method="post" action="/projects/{{.ID}}/apply-content" class="inline">
@@ -264,6 +264,11 @@
 <section class="panel sub-panel">
   <h2>{{$.T "sub.h2"}}</h2>
   <p class="muted small">{{$.T "sub.intro"}}{{if eq .Status "preview_ready"}} {{$.T "sub.accepts_note"}}{{end}}</p>
+  <ul class="sub-incl">
+    <li>{{$.T "sub.incl.uptime"}}</li>
+    <li>{{if eq $.Data.IncludedChanges 1}}{{$.T "sub.incl.changes_one"}}{{else}}{{printf ($.T "sub.incl.changes_many") $.Data.IncludedChanges}}{{end}}</li>
+    <li>{{$.T "sub.incl.support"}}</li>
+  </ul>
   {{if $.Data.PriceStr}}<p class="sub-price">{{printf ($.T "sub.price") $.Data.PriceStr}}</p>{{end}}
   <form method="post" action="/projects/{{.ID}}/subscribe">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
@@ -355,6 +360,22 @@
     <textarea name="prompt" rows="4" required
       placeholder="{{$.T "prj.change.ph"}}"></textarea>
     <button class="btn" type="submit">{{$.T "prj.change.btn"}}</button>
+  </form>
+</section>
+{{else if $.Data.ShowChange}}
+<section class="panel">
+  <h2>{{$.T "prj.change.h2"}}</h2>
+  {{if gt $.Data.ChangesLeft 0}}
+  <p class="muted small">{{if eq $.Data.ChangesLeft 1}}{{$.T "prj.change.month_one"}}{{else}}{{printf ($.T "prj.change.month_many") $.Data.ChangesLeft}}{{end}}</p>
+  {{else}}
+  <p class="muted small">{{printf ($.T "prj.change.overage") $.Data.OverageStr}}</p>
+  {{end}}
+  <form method="post" action="/projects/{{.ID}}/reiterate" class="stack">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <textarea name="prompt" rows="4" required
+      placeholder="{{$.T "prj.change.ph"}}"></textarea>
+    <button class="btn" type="submit">{{$.T "prj.change.btn"}}</button>
+    <p class="muted small">{{$.T "prj.change.live_note"}}</p>
   </form>
 </section>
 {{end}}

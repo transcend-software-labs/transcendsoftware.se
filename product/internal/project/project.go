@@ -258,6 +258,15 @@ type Project struct {
 	StripeSubID      string                     // Stripe subscription; the webhook matches lifecycle events back to the project through it
 	ContentPending   bool                       // content was added/changed since the last build — offer a rebuild to apply it
 
+	// Forge Pro change model: a paying subscriber's monthly change allowance.
+	// ChangesThisPeriod counts changes used in the window starting at
+	// ChangePeriodStart (advances monthly); overage past the allowance is billed.
+	// DeliveredAt is set on the first delivery and stays — so a later self-serve
+	// change goes live on accept without routing back through operator review.
+	ChangesThisPeriod int
+	ChangePeriodStart time.Time
+	DeliveredAt       time.Time
+
 	// Custom domain (see internal/orchestrator/domains.go). Zero value = none.
 	DomainName       string         // the attached/purchased hostname, e.g. "acme.se"
 	DomainStatus     DomainStatus   // lifecycle of the domain
@@ -286,10 +295,70 @@ func (p *Project) EffectiveBrief() string {
 	return b
 }
 
-// CanReiterate reports whether the customer may request another build pass.
-// Accepting the site (or having it delivered) locks further changes.
+// CanReiterate reports whether an UNPAID customer may refine the preview before
+// subscribing — the free "try before you buy" passes (capped at MaxIterations).
+// Paid subscribers use the monthly change model (CanRequestChange) instead.
 func (p *Project) CanReiterate() bool {
-	return p.Status == StatusPreviewReady && p.IterationsUsed < MaxIterations
+	return !p.Paid && p.Status == StatusPreviewReady && p.IterationsUsed < MaxIterations
+}
+
+// CanRequestChange reports whether a paying subscriber may request a change now:
+// the site is in a settled, live state (the preview, or an already-delivered
+// site). There is no hard block — the monthly allowance decides free vs overage,
+// billed, never refused (see ChangesLeft / the orchestrator's metering).
+func (p *Project) CanRequestChange() bool {
+	return p.Paid && (p.Status == StatusPreviewReady || p.Status == StatusDelivered)
+}
+
+// CanChange reports whether the customer may request a build change right now,
+// by EITHER path: an unpaid preview refinement (CanReiterate) or a paid monthly
+// change (CanRequestChange). The web handlers gate on this; the orchestrator's
+// Reiterate picks the right path and enforces the per-path specifics.
+func (p *Project) CanChange() bool {
+	return p.CanReiterate() || p.CanRequestChange()
+}
+
+// currentChangePeriodStart returns the start of the monthly change window that
+// contains `now`, advancing ChangePeriodStart in whole months. An unset start
+// anchors the first window at `now`.
+func (p *Project) currentChangePeriodStart(now time.Time) time.Time {
+	if p.ChangePeriodStart.IsZero() {
+		return now
+	}
+	start := p.ChangePeriodStart
+	for !start.AddDate(0, 1, 0).After(now) {
+		start = start.AddDate(0, 1, 0)
+	}
+	return start
+}
+
+// ChangesUsed returns changes consumed in the window containing `now` — 0 once a
+// month has rolled over since the counter was last touched.
+func (p *Project) ChangesUsed(now time.Time) int {
+	if p.currentChangePeriodStart(now).After(p.ChangePeriodStart) {
+		return 0
+	}
+	return p.ChangesThisPeriod
+}
+
+// ChangesLeft returns included changes remaining this month (never negative).
+func (p *Project) ChangesLeft(now time.Time, perMonth int) int {
+	if left := perMonth - p.ChangesUsed(now); left > 0 {
+		return left
+	}
+	return 0
+}
+
+// RecordChange advances the change counter for `now`, rolling the monthly window
+// if needed, and reports whether THIS change is overage (past the allowance).
+func (p *Project) RecordChange(now time.Time, perMonth int) (overage bool) {
+	if start := p.currentChangePeriodStart(now); start.After(p.ChangePeriodStart) {
+		p.ChangePeriodStart = start
+		p.ChangesThisPeriod = 0
+	}
+	overage = p.ChangesThisPeriod >= perMonth
+	p.ChangesThisPeriod++
+	return overage
 }
 
 // CanApprovePlan reports whether the customer is at the plan-approval gate: the

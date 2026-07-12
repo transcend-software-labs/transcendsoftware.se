@@ -322,6 +322,28 @@ details summary { cursor: pointer; }
 }
 .sub-panel .btn { width: 100%; }
 .sub-terms { margin-top: 1rem; }
+/* What the subscription includes: a tight checklist above the price. */
+.sub-incl {
+  list-style: none;
+  margin: 0 0 1.2rem;
+  padding: 0;
+  display: grid;
+  gap: .5rem;
+}
+.sub-incl li {
+  position: relative;
+  padding-left: 1.5rem;
+  font-size: .9rem;
+  line-height: 1.4;
+}
+.sub-incl li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--green);
+  font-weight: 700;
+}
 /* Active subscription: the card reads as "settled" — a calm green accent
    instead of the gold call-to-action tint. */
 .sub-panel.sub-done {

@@ -561,6 +561,132 @@ func TestHandover_ReturnToCustomerRestoresChanges(t *testing.T) {
 	}
 }
 
+// fakeChangeBiller records the flat overage invoice items the change model adds.
+type fakeChangeBiller struct {
+	mu    sync.Mutex
+	items []struct {
+		customer string
+		amount   int
+		currency string
+	}
+}
+
+func (b *fakeChangeBiller) AddInvoiceItem(_ context.Context, customerID string, amountMinor int, currency, _ string) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.items = append(b.items, struct {
+		customer string
+		amount   int
+		currency string
+	}{customerID, amountMinor, currency})
+	return "ii", nil
+}
+
+func (b *fakeChangeBiller) count() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.items)
+}
+
+func countSentTo(rec *recordingNotifier, to, subjectSubstr string) int {
+	n := 0
+	for _, m := range rec.all() {
+		if m.To == to && strings.Contains(strings.ToLower(m.Subject), subjectSubstr) {
+			n++
+		}
+	}
+	return n
+}
+
+// TestChangeModel_AllowanceOverageAndSelfServeDelivery exercises the whole Forge
+// Pro change model: a delivered, paid site gets a monthly allowance of changes
+// (free), overage past it bills a flat invoice item, and each self-serve change
+// goes live the moment the customer accepts — no second operator review.
+func TestChangeModel_AllowanceOverageAndSelfServeDelivery(t *testing.T) {
+	st := store.NewMemory()
+	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
+	rec := &recordingNotifier{}
+	orch.SetNotifications(rec, "rasmus@example.com", "https://app.example")
+	biller := &fakeChangeBiller{}
+	orch.SetChangePolicy(biller, 1, 4900) // 1 included change/month, 49 kr overage
+	if err := st.CreateUser(context.Background(),
+		&user.User{ID: "u1", Email: "customer@example.com", CreatedAt: time.Now().UTC()}); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	id := seedProject(t, st, "A small site for an apple farm")
+	startThroughIntake(t, orch, st, id)
+	waitFor(t, st, id, project.StatusPreviewReady)
+
+	// Give it a Stripe customer so overage can bill, then take it through the paid
+	// handover to delivered (stamps DeliveredAt).
+	p, _ := st.ProjectByID(context.Background(), id)
+	p.StripeCustomerID = "cus_1"
+	if err := st.UpdateProject(context.Background(), p); err != nil {
+		t.Fatalf("set customer: %v", err)
+	}
+	if err := orch.AcceptPreview(id); err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+	if err := orch.MarkPaid(id, "manual"); err != nil {
+		t.Fatalf("mark paid: %v", err)
+	}
+	if err := orch.DeliverProject(id); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	p, _ = st.ProjectByID(context.Background(), id)
+	if p.Status != project.StatusDelivered {
+		t.Fatalf("expected delivered, got %q", p.Status)
+	}
+	if p.DeliveredAt.IsZero() {
+		t.Fatal("DeliveredAt must be stamped on first delivery")
+	}
+	base := p.IterationsUsed
+	if left := p.ChangesLeft(time.Now().UTC(), orch.ChangesPerMonth()); left != 1 {
+		t.Fatalf("expected 1 change left, got %d", left)
+	}
+	reviewEmails := countSentTo(rec, "rasmus@example.com", "review") // from the initial accept
+
+	// Free change #1: metered, no bill, builds, then accept → live with no review.
+	orch.Reiterate(id, "make the hero bigger")
+	waitForIterations(t, st, id, base+1)
+	if biller.count() != 0 {
+		t.Fatalf("a change within the allowance must not bill; items=%d", biller.count())
+	}
+	if err := orch.AcceptPreview(id); err != nil {
+		t.Fatalf("accept change 1: %v", err)
+	}
+	p, _ = st.ProjectByID(context.Background(), id)
+	if p.Status != project.StatusDelivered {
+		t.Fatalf("self-serve change should go live on accept, got %q", p.Status)
+	}
+	if p.ChangesThisPeriod != 1 {
+		t.Fatalf("changes used = %d, want 1", p.ChangesThisPeriod)
+	}
+	if !sentTo(rec, "customer@example.com", "live") {
+		t.Errorf("customer not told the change went live; sent: %+v", rec.all())
+	}
+	if got := countSentTo(rec, "rasmus@example.com", "review"); got != reviewEmails {
+		t.Errorf("self-serve change must not queue an operator review (was %d, now %d)", reviewEmails, got)
+	}
+
+	// Overage change #2: past the allowance → exactly one flat invoice item.
+	orch.Reiterate(id, "add a contact form")
+	waitForIterations(t, st, id, base+2)
+	if biller.count() != 1 {
+		t.Fatalf("overage change must bill once; items=%d", biller.count())
+	}
+	if it := biller.items[0]; it.customer != "cus_1" || it.amount != 4900 || it.currency != "sek" {
+		t.Fatalf("bad overage invoice item: %+v", it)
+	}
+	if err := orch.AcceptPreview(id); err != nil {
+		t.Fatalf("accept change 2: %v", err)
+	}
+	p, _ = st.ProjectByID(context.Background(), id)
+	if p.Status != project.StatusDelivered || p.ChangesThisPeriod != 2 {
+		t.Fatalf("after overage change: status=%q used=%d", p.Status, p.ChangesThisPeriod)
+	}
+}
+
 func TestVerifyFailure_InitialBuildFails(t *testing.T) {
 	st := store.NewMemory()
 	orch, _ := newTestOrchWithVerifier(st, &countingVerifier{okCalls: 0}) // always fails

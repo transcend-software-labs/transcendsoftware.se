@@ -182,6 +182,32 @@ func (c *Client) RemoveSubscriptionItem(ctx context.Context, itemID string) erro
 	return c.del(ctx, "/v1/subscription_items/"+itemID)
 }
 
+// AddInvoiceItem creates a pending invoice item on the customer for a flat,
+// one-off amount (an extra change beyond the monthly allowance). With no invoice
+// specified, Stripe attaches it to the customer's next scheduled invoice — so
+// overage rides along on the next monthly subscription charge, no separate
+// payment. amountMinor is in the currency's minor unit (öre for SEK). Returns the
+// invoice-item id.
+func (c *Client) AddInvoiceItem(ctx context.Context, customerID string, amountMinor int, currency, description string) (string, error) {
+	form := url.Values{}
+	form.Set("customer", customerID)
+	form.Set("amount", strconv.Itoa(amountMinor))
+	form.Set("currency", currency)
+	if description != "" {
+		form.Set("description", description)
+	}
+	var out struct {
+		ID string `json:"id"`
+	}
+	if err := c.post(ctx, "/v1/invoiceitems", form, &out); err != nil {
+		return "", err
+	}
+	if out.ID == "" {
+		return "", fmt.Errorf("billing: invoice item returned no id")
+	}
+	return out.ID, nil
+}
+
 func (c *Client) post(ctx context.Context, path string, form url.Values, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, strings.NewReader(form.Encode()))
 	if err != nil {

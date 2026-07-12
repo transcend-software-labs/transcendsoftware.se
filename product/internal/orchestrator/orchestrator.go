@@ -71,6 +71,14 @@ type Orchestrator struct {
 	biller         domainBiller    // Stripe sub-items for the monthly add-on (nil → comped)
 	domainPriceID  string          // Stripe recurring price for the domain add-on
 	maxDomainPrice float64         // refuse a self-serve buy above this (registrar currency)
+
+	// Forge Pro change model (see changes.go): a paying subscriber gets
+	// changesPerMonth included changes/month; each extra one adds a flat
+	// overageOre invoice item to their next bill. changeBiller is nil when Stripe
+	// isn't configured — then overage is comped with an operator note.
+	changeBiller    changeBiller
+	changesPerMonth int
+	overageOre      int
 }
 
 // Activity returns the language-neutral activity code of a project's running
@@ -469,6 +477,14 @@ func (o *Orchestrator) SubmitAnswers(projectID, answers, design string) {
 // eligibility guard and the flip to building happen synchronously (same
 // reasoning as SubmitAnswers/ApprovePlan): the customer's redirect must show
 // the build starting, and a double-submit becomes a clean no-op.
+//
+// Two change paths meet here:
+//   - Unpaid: the free "try before you buy" preview refinements, capped at
+//     MaxIterations (CanReiterate).
+//   - Paid: the Forge Pro monthly change model (CanRequestChange) — metered
+//     against the monthly allowance, overage billed, never refused. A change to
+//     an already-delivered site is allowed and goes live on the customer's next
+//     accept (AcceptPreview fast path).
 func (o *Orchestrator) Reiterate(projectID, prompt string) {
 	ctx := context.Background()
 	p, err := o.store.ProjectByID(ctx, projectID)
@@ -476,7 +492,15 @@ func (o *Orchestrator) Reiterate(projectID, prompt string) {
 		o.log.Error("reiterate: load", "err", err)
 		return
 	}
-	if !p.CanReiterate() {
+	if p.Paid {
+		if !p.CanRequestChange() {
+			return
+		}
+		if err := o.meterChange(ctx, p); err != nil {
+			o.log.Error("reiterate: meter change", "project", projectID, "err", err)
+			return
+		}
+	} else if !p.CanReiterate() {
 		return
 	}
 	if err := o.setStatus(ctx, p, project.StatusBuilding); err != nil {
@@ -550,6 +574,21 @@ func (o *Orchestrator) AcceptPreview(projectID string) error {
 	if !p.CanAccept() {
 		return nil
 	}
+	// Forge Pro change model: a site that has already been delivered once goes
+	// live the moment the customer accepts a self-serve change — no second trip
+	// through operator review. The single Fly app has already been redeployed by
+	// the build, so accepting is the customer's go-live confirmation.
+	if p.Paid && !p.DeliveredAt.IsZero() {
+		p.Status = project.StatusDelivered
+		if err := o.save(ctx, p); err != nil {
+			return err
+		}
+		o.notifyCustomer(ctx, p.UserID, "Your change is live",
+			"Your latest change to \""+p.Name+"\" is now live:\n\n"+p.PreviewURL+"\n\n"+o.projectLink(p.ID))
+		o.notifyOperator(ctx, "Forge: a self-serve change went live",
+			"\""+p.Name+"\" accepted a self-serve change (already delivered, no review needed).\n\n"+p.PreviewURL)
+		return nil
+	}
 	p.Status = project.StatusAccepted
 	if err := o.save(ctx, p); err != nil {
 		return err
@@ -611,6 +650,12 @@ func (o *Orchestrator) DeliverProject(projectID string) error {
 		return ErrNotPaid
 	}
 	p.Status = project.StatusDelivered
+	// Stamp the first delivery. This flag persists and is what lets later
+	// self-serve changes go live on the customer's accept, skipping operator
+	// review (see AcceptPreview / the Forge Pro change model).
+	if p.DeliveredAt.IsZero() {
+		p.DeliveredAt = time.Now().UTC()
+	}
 	if err := o.save(ctx, p); err != nil {
 		return err
 	}
@@ -794,9 +839,11 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string, i
 		return err
 	}
 	// Budget check only: the state guard (preview_ready) now runs synchronously
-	// in Reiterate, which has already flipped the project to building by the
-	// time this goroutine executes.
-	if prompt != "" && !internal && p.IterationsUsed >= project.MaxIterations {
+	// in Reiterate, which has already flipped the project to building by the time
+	// this goroutine executes. The MaxIterations cap applies to UNPAID preview
+	// refinements only — a paid subscriber's changes are governed by the monthly
+	// allowance (metered in Reiterate), not this lifetime cap.
+	if prompt != "" && !internal && !p.Paid && p.IterationsUsed >= project.MaxIterations {
 		return errors.New("no reiterations remaining")
 	}
 	// Prime the per-page build checklist (customer hero) from the plan.

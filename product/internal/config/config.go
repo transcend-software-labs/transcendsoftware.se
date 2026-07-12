@@ -44,6 +44,13 @@ type Config struct {
 	MaxProjectsPerDay   int // per user, rolling 24h (default 3)
 	MaxConcurrentBuilds int // across all users (default 3)
 
+	// Forge Pro change model: a subscriber gets ChangesPerMonth included changes
+	// (fixes/tweaks) that renew monthly; each change beyond that adds a flat
+	// OverageOre line to their next Stripe invoice. Expressed in "changes" — the
+	// customer never sees AI/token cost.
+	ChangesPerMonth int // included changes per month (default 3)
+	OverageOre      int // flat price per extra change, in öre (default 4900 = 49 kr)
+
 	// PreviewTTL is how long an untouched preview app stays up before the
 	// reaper destroys it and marks the project expired (default 14 days).
 	PreviewTTL time.Duration
@@ -174,6 +181,8 @@ func Load() Config {
 
 		MaxProjectsPerDay:   envIntOr("MAX_PROJECTS_PER_DAY", 3),
 		MaxConcurrentBuilds: envIntOr("MAX_CONCURRENT_BUILDS", 3),
+		ChangesPerMonth:     envIntOr("FORGE_CHANGES_PER_MONTH", 3),
+		OverageOre:          envIntOr("FORGE_OVERAGE_SEK", 49) * 100,
 		PreviewTTL:          time.Duration(envIntOr("PREVIEW_TTL_DAYS", 14)) * 24 * time.Hour,
 		SandboxCostPerHour:  envFloatOr("SANDBOX_COST_PER_HOUR", 0.02),
 		TemplateKey:         os.Getenv("TEMPLATE_KEY"),

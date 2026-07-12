@@ -138,6 +138,15 @@ func main() {
 		}
 		orch.StartDomainPoller(context.Background(), 3*time.Minute)
 	}
+	// Forge Pro change model: the monthly change allowance + flat overage price.
+	// Always active (core to the paid product). bill may be nil (Stripe off) —
+	// then overage is comped; pass untyped nil so the interface is truly nil.
+	log.Info("changes: policy", "per_month", cfg.ChangesPerMonth, "overage_ore", cfg.OverageOre)
+	if bill != nil {
+		orch.SetChangePolicy(bill, cfg.ChangesPerMonth, cfg.OverageOre)
+	} else {
+		orch.SetChangePolicy(nil, cfg.ChangesPerMonth, cfg.OverageOre)
+	}
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,
