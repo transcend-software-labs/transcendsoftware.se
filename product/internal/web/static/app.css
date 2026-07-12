@@ -338,7 +338,12 @@ textarea { resize: vertical; }
   border: 2px solid var(--dim); border-top-color: var(--accent); border-radius: 50%;
   animation: spin .7s linear infinite;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
+/* The independent `rotate` property, NOT transform: rotate(...) — it composes
+   with any transform already on the element (e.g. the chooser spinner's
+   translateY centering). A transform-based keyframe would REPLACE that
+   translate and decompose rotate(360°) to identity → a vertical jiggle with no
+   visible rotation. */
+@keyframes spin { to { rotate: 1turn; } }
 
 /* Global busy state for any submit button while its request is in flight
    (see the handler in partials.html). Keeps the label, appends a spinner, and
@@ -550,7 +555,10 @@ details summary { cursor: pointer; }
 .dc-search { position: relative; }
 .dc-search .domain-search { padding-right: 2.1rem; margin: 0; }
 .dc-search #sub-domain-searching {
-  position: absolute; right: .7rem; top: 50%; transform: translateY(-50%); margin: 0;
+  /* Centered with auto margins, NOT translateY(-50%): a transform on a spinning
+     element gets swept up in the rotation (the translate vector rotates with
+     it), so the spinner orbits instead of spinning in place. */
+  position: absolute; right: .7rem; top: 0; bottom: 0; margin: auto 0;
 }
 .domain-pick { list-style: none; display: grid; gap: .35rem; margin: 0; padding: 0; }
 .dc-pick {
