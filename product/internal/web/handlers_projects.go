@@ -207,6 +207,7 @@ type projectView struct {
 	DomainKind    string                 // "byod" | "purchased"
 	DomainRecords []project.DomainRecord // DNS records to show (pending_dns/verifying)
 	DomainMaxUSD  int                    // self-serve price cap, for the buy copy
+	DomainFlash   string                 // in-panel feedback after an action (rendered inside #domain-panel)
 }
 
 // rosterMember is one team person for the template, with a presigned photo URL.
@@ -360,6 +361,11 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		pv.DomainKind = p.DomainKind
 		pv.DomainRecords = p.DomainRecords
 		pv.DomainMaxUSD = int(s.orch.MaxDomainUSD())
+		// Feedback after an action shows inside the panel (which is what htmx
+		// swaps back in), not as a top-of-page banner that the swap wouldn't touch.
+		if code := r.URL.Query().Get("domain"); code != "" {
+			pv.DomainFlash = i18n.T(lang, domainFlashKey(code))
+		}
 	}
 	v := s.view(r, p.Name, pv)
 	switch sub {
@@ -369,9 +375,6 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		v.Flash = i18n.T(lang, "flash.sub_cancel")
 	case "error":
 		v.Flash = i18n.T(lang, "flash.sub_error")
-	}
-	if code := r.URL.Query().Get("domain"); code != "" {
-		v.Flash = i18n.T(lang, domainFlashKey(code))
 	}
 	s.render(w, http.StatusOK, "project", v)
 }

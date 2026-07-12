@@ -100,6 +100,7 @@
   "domain.or_buy": "Or buy a new domain",
   "domain.buy_ph": "Search for a domain…",
   "domain.buy_note": "Automatic setup and HTTPS included, plus a small monthly fee for the domain. Available up to $%d.",
+  "domain.buy_cc": "Country domains (like .se or .ru) can't be bought here — register one with your usual provider and attach it above instead.",
   "domain.registering_note": "We're registering %s — nothing you need to do.",
   "domain.pending_note": "Add these DNS records for %s at your domain provider, then verify:",
   "domain.verifying_note": "DNS found — issuing your certificate. This can take a few minutes.",

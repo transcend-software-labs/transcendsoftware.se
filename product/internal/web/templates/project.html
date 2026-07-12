@@ -285,15 +285,20 @@
 {{end}}
 
 {{if $.Data.ShowDomain}}
-<section class="panel domain-panel">
+{{/* The whole panel is the htmx swap target: each action posts, follows the
+     redirect, and re-selects #domain-panel — so the button spins in place and
+     the page never jumps to the top. method/action keep it working without JS. */}}
+<section class="panel domain-panel" id="domain-panel">
   <h2>{{$.T "domain.h2"}}</h2>
+  {{if $.Data.DomainFlash}}<p class="domain-flash">{{$.Data.DomainFlash}}</p>{{end}}
   {{if eq $.Data.DomainStatus ""}}
     <p class="muted small">{{$.T "domain.intro"}}</p>
     <div class="domain-attach">
-      <form method="post" action="/projects/{{.ID}}/domain/attach" class="domain-row">
+      <form method="post" action="/projects/{{.ID}}/domain/attach" class="domain-row"
+            hx-post="/projects/{{.ID}}/domain/attach" hx-target="#domain-panel" hx-select="#domain-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
         <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
         <input type="text" name="host" placeholder="{{$.T "domain.byod_ph"}}" autocapitalize="off" autocomplete="off" spellcheck="false">
-        <button class="btn btn-sm" type="submit">{{$.T "domain.byod_btn"}}</button>
+        <button class="btn btn-sm" type="submit">{{$.T "domain.byod_btn"}} <span class="spinner htmx-indicator"></span></button>
       </form>
       <p class="muted xsmall">{{$.T "domain.byod_note"}}</p>
     </div>
@@ -301,21 +306,25 @@
     <div class="domain-buy">
       <p class="domain-or">{{$.T "domain.or_buy"}}</p>
       <input class="domain-search" type="search" name="q" placeholder="{{$.T "domain.buy_ph"}}"
-             hx-get="/projects/{{.ID}}/domain/search" hx-target="#domain-results" hx-swap="innerHTML"
+             hx-get="/projects/{{.ID}}/domain/search" hx-target="#domain-results" hx-swap="innerHTML" hx-indicator="#domain-searching"
              hx-trigger="input changed delay:400ms, search" autocapitalize="off" autocomplete="off" spellcheck="false">
+      <span id="domain-searching" class="spinner htmx-indicator"></span>
       <div id="domain-results"></div>
+      <p class="muted xsmall">{{$.T "domain.buy_cc"}}</p>
       <p class="muted xsmall">{{printf ($.T "domain.buy_note") $.Data.DomainMaxUSD}}</p>
     </div>
     {{end}}
   {{else if eq $.Data.DomainStatus "registering"}}
     <p class="muted small">{{printf ($.T "domain.registering_note") $.Data.DomainName}} <span class="spinner"></span></p>
+    {{template "domain_detach" $}}
   {{else if eq $.Data.DomainStatus "pending_dns"}}
     <p class="muted small">{{printf ($.T "domain.pending_note") $.Data.DomainName}}</p>
     {{template "domain_records" $}}
     <div class="domain-row">
-      <form method="post" action="/projects/{{.ID}}/domain/verify" class="inline">
+      <form method="post" action="/projects/{{.ID}}/domain/verify" class="inline"
+            hx-post="/projects/{{.ID}}/domain/verify" hx-target="#domain-panel" hx-select="#domain-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
         <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-        <button class="btn btn-sm" type="submit">{{$.T "domain.verify_btn"}}</button>
+        <button class="btn btn-sm" type="submit">{{$.T "domain.verify_btn"}} <span class="spinner htmx-indicator"></span></button>
       </form>
       {{template "domain_detach" $}}
     </div>
@@ -390,9 +399,10 @@
 <p class="muted xsmall">{{.T "domain.rec_note"}}</p>{{end}}
 
 {{/* Small detach form. Called with $ (the root View). */}}
-{{define "domain_detach"}}<form method="post" action="/projects/{{.Data.Project.ID}}/domain/detach" class="inline">
+{{define "domain_detach"}}<form method="post" action="/projects/{{.Data.Project.ID}}/domain/detach" class="inline"
+  hx-post="/projects/{{.Data.Project.ID}}/domain/detach" hx-target="#domain-panel" hx-select="#domain-panel" hx-swap="outerHTML" hx-confirm="{{.T "domain.detach_confirm"}}" hx-disabled-elt="find button">
   <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-  <button class="linklike danger" type="submit" onclick="return confirm('{{.T "domain.detach_confirm"}}')">{{.T "domain.detach_btn"}}</button>
+  <button class="linklike danger" type="submit">{{.T "domain.detach_btn"}}</button>
 </form>{{end}}
 
 {{/* Domain search results fragment (htmx swap). Rendered View-less: uses .Lang,
@@ -403,11 +413,12 @@
   {{range .Data.Results}}<li>
     <span class="domain-hit-name mono">{{.Name}}</span>
     {{if .Buyable}}<span class="domain-hit-price">{{.Price}} {{tr $.Lang "domain.per_year"}}</span>
-      <form method="post" action="/projects/{{$.Data.PID}}/domain/buy" class="inline" onsubmit="return confirm('{{tr $.Lang "domain.buy_confirm"}} {{.Name}}?')">
+      <form method="post" action="/projects/{{$.Data.PID}}/domain/buy" class="inline"
+            hx-post="/projects/{{$.Data.PID}}/domain/buy" hx-target="#domain-panel" hx-select="#domain-panel" hx-swap="outerHTML" hx-confirm="{{tr $.Lang "domain.buy_confirm"}} {{.Name}}?" hx-disabled-elt="find button">
         <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
         <input type="hidden" name="domain" value="{{.Name}}">
         <input type="hidden" name="ack" value="1">
-        <button class="btn btn-sm" type="submit">{{tr $.Lang "domain.buy_btn"}}</button>
+        <button class="btn btn-sm" type="submit">{{tr $.Lang "domain.buy_btn"}} <span class="spinner htmx-indicator"></span></button>
       </form>
     {{else}}<span class="muted small">{{tr $.Lang "domain.taken"}}</span>{{end}}
   </li>
