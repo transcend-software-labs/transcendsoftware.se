@@ -278,6 +278,12 @@ type Project struct {
 	DomainCreatedAt  time.Time      // when the domain flow started (stuck-timeout clock)
 	DomainVerifiedAt time.Time      // when it went active (guards one-time emails/billing)
 
+	// Domain chosen at checkout (Phase B): captured before the Stripe redirect,
+	// then provisioned automatically once payment settles (attach for BYOD, buy
+	// for a purchase). Cleared when acted on. Empty DomainIntent = none.
+	DomainIntent    string // hostname the customer chose before paying
+	DomainIntentBuy bool   // true = buy it for them; false = their own (BYOD)
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

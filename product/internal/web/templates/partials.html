@@ -76,6 +76,28 @@
     var b = document.querySelectorAll('.is-busy');
     for (var i = 0; i < b.length; i++) idle(b[i]);
   });
+
+  // Subscribe-page domain chooser: reveal only the selected option's body, and
+  // keep Enter inside it (typing a host, searching) from submitting the pay form.
+  function syncDomainChoose() {
+    var root = document.getElementById('domain-choose');
+    if (!root) return;
+    var sel = root.querySelector('input[name=domain_mode]:checked');
+    var mode = sel ? sel.value : 'none';
+    var bodies = root.querySelectorAll('.dc-body');
+    for (var i = 0; i < bodies.length; i++) {
+      bodies[i].hidden = bodies[i].getAttribute('data-for') !== mode;
+    }
+  }
+  document.addEventListener('change', function (e) {
+    if (e.target && e.target.name === 'domain_mode') syncDomainChoose();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target.closest && e.target.closest('.domain-choose')) {
+      e.preventDefault(); // the explicit Subscribe button submits, not Enter here
+    }
+  });
+  syncDomainChoose();
 })();
 </script>
 </body>

@@ -241,8 +241,9 @@ func (p *Postgres) CreateProject(ctx context.Context, pr *project.Project) error
 		    answers, plan, verdict, reject_reason, preview_url, repo_url, snapshot_key,
 		    screenshots, findings, critique, iterations_used, created_at, updated_at, plan_spec, locale, content_answers, content_rosters, pending_images, image_gen_count, paid, paid_at, paid_via, content_pending, stripe_customer_id, stripe_sub_id,
 		    domain_name, domain_status, domain_kind, domain_zone_id, domain_ipv6, domain_sub_item_id, domain_records, domain_created_at, domain_verified_at,
-		    changes_this_period, change_period_start, delivered_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45)`,
+		    changes_this_period, change_period_start, delivered_at,
+		    domain_intent, domain_intent_buy)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47)`,
 		pr.ID, pr.UserID, pr.Name, pr.Brief, pr.Status, marshalQuestions(pr.Questions),
 		marshalJSON(pr.DesignOptions), pr.DesignBrief,
 		pr.Answers, pr.Plan, pr.Verdict, pr.RejectReason, pr.PreviewURL, pr.RepoURL,
@@ -250,7 +251,8 @@ func (p *Postgres) CreateProject(ctx context.Context, pr *project.Project) error
 		marshalObj(pr.Spec), localeOr(pr.Locale), marshalObj(pr.ContentAnswers), marshalObj(pr.ContentRosters), marshalObj(pr.PendingImages), pr.ImageGenCount,
 		pr.Paid, nullableTime(pr.PaidAt), pr.PaidVia, pr.ContentPending, pr.StripeCustomerID, pr.StripeSubID,
 		pr.DomainName, string(pr.DomainStatus), pr.DomainKind, pr.DomainZoneID, pr.DomainIPv6, pr.DomainSubItemID, marshalJSON(pr.DomainRecords), nullableTime(pr.DomainCreatedAt), nullableTime(pr.DomainVerifiedAt),
-		pr.ChangesThisPeriod, nullableTime(pr.ChangePeriodStart), nullableTime(pr.DeliveredAt))
+		pr.ChangesThisPeriod, nullableTime(pr.ChangePeriodStart), nullableTime(pr.DeliveredAt),
+		pr.DomainIntent, pr.DomainIntentBuy)
 	return err
 }
 
@@ -261,7 +263,8 @@ func (p *Postgres) UpdateProject(ctx context.Context, pr *project.Project) error
 		   answers=$8, plan=$9, verdict=$10, reject_reason=$11, preview_url=$12,
 		   repo_url=$13, snapshot_key=$14, screenshots=$15, findings=$16, critique=$17, iterations_used=$18, updated_at=$19, plan_spec=$20, locale=$21, content_answers=$22, content_rosters=$23, pending_images=$24, image_gen_count=$25, paid=$26, paid_at=$27, paid_via=$28, content_pending=$29, stripe_customer_id=$30, stripe_sub_id=$31,
 		   domain_name=$32, domain_status=$33, domain_kind=$34, domain_zone_id=$35, domain_ipv6=$36, domain_sub_item_id=$37, domain_records=$38, domain_created_at=$39, domain_verified_at=$40,
-		   changes_this_period=$41, change_period_start=$42, delivered_at=$43
+		   changes_this_period=$41, change_period_start=$42, delivered_at=$43,
+		   domain_intent=$44, domain_intent_buy=$45
 		 WHERE id=$1`,
 		pr.ID, pr.Name, pr.Brief, pr.Status, marshalQuestions(pr.Questions),
 		marshalJSON(pr.DesignOptions), pr.DesignBrief, pr.Answers,
@@ -401,7 +404,8 @@ const projectColumns = `SELECT id, user_id, name, brief, status, questions, desi
 	answers, plan, verdict, reject_reason, preview_url, repo_url, snapshot_key,
 	screenshots, findings, critique, iterations_used, created_at, updated_at, plan_spec, locale, content_answers, content_rosters, pending_images, image_gen_count, paid, paid_at, paid_via, content_pending, stripe_customer_id, stripe_sub_id,
 	domain_name, domain_status, domain_kind, domain_zone_id, domain_ipv6, domain_sub_item_id, domain_records, domain_created_at, domain_verified_at,
-	changes_this_period, change_period_start, delivered_at
+	changes_this_period, change_period_start, delivered_at,
+	domain_intent, domain_intent_buy
 	FROM projects`
 
 // rowScanner is satisfied by both pgx.Row and pgx.Rows.
@@ -418,7 +422,8 @@ func scanProject(row rowScanner) (*project.Project, error) {
 		&pr.Answers, &pr.Plan, &pr.Verdict, &pr.RejectReason, &pr.PreviewURL, &pr.RepoURL,
 		&pr.SnapshotKey, &screenshotsJSON, &findingsJSON, &pr.Critique, &pr.IterationsUsed, &pr.CreatedAt, &pr.UpdatedAt, &specJSON, &pr.Locale, &contentJSON, &rostersJSON, &pendingJSON, &pr.ImageGenCount, &pr.Paid, &paidAt, &pr.PaidVia, &pr.ContentPending, &pr.StripeCustomerID, &pr.StripeSubID,
 		&pr.DomainName, &pr.DomainStatus, &pr.DomainKind, &pr.DomainZoneID, &pr.DomainIPv6, &pr.DomainSubItemID, &domainRecordsJSON, &domainCreatedAt, &domainVerifiedAt,
-		&pr.ChangesThisPeriod, &changePeriodStart, &deliveredAt)
+		&pr.ChangesThisPeriod, &changePeriodStart, &deliveredAt,
+		&pr.DomainIntent, &pr.DomainIntentBuy)
 	if err != nil {
 		return nil, err
 	}

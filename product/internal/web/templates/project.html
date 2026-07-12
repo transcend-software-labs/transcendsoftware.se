@@ -272,6 +272,28 @@
   {{if $.Data.PriceStr}}<p class="sub-price">{{printf ($.T "sub.price") $.Data.PriceStr}}</p>{{end}}
   <form method="post" action="/projects/{{.ID}}/subscribe">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    {{if $.Data.DomainOffer}}
+    <fieldset class="domain-choose" id="domain-choose">
+      <legend>{{$.T "sub.domain.legend"}}</legend>
+      <label class="dc-opt"><input type="radio" name="domain_mode" value="none" checked> {{$.T "sub.domain.none"}}</label>
+      <label class="dc-opt"><input type="radio" name="domain_mode" value="byod"> {{$.T "sub.domain.byod"}}</label>
+      <div class="dc-body" data-for="byod" hidden>
+        <input type="text" name="byod_host" placeholder="{{$.T "domain.byod_ph"}}" autocapitalize="off" autocomplete="off" spellcheck="false">
+        <p class="muted xsmall">{{$.T "domain.byod_note"}}</p>
+      </div>
+      {{if $.Data.DomainOfferBuy}}
+      <label class="dc-opt"><input type="radio" name="domain_mode" value="buy"> {{$.T "sub.domain.buy"}}{{if $.Data.DomainAddonStr}} <span class="domain-fee">{{printf ($.T "domain.buy_fee") $.Data.DomainAddonStr}}</span>{{end}}</label>
+      <div class="dc-body" data-for="buy" hidden>
+        <input class="domain-search" type="search" name="q" placeholder="{{$.T "domain.buy_ph"}}"
+               hx-get="/projects/{{.ID}}/domain/search?select=1" hx-target="#sub-domain-results" hx-swap="innerHTML" hx-indicator="#sub-domain-searching"
+               hx-params="q" hx-trigger="input changed delay:400ms, search" autocapitalize="off" autocomplete="off" spellcheck="false">
+        <span id="sub-domain-searching" class="spinner htmx-indicator"></span>
+        <div id="sub-domain-results"></div>
+        <p class="muted xsmall">{{$.T "domain.buy_note"}}</p>
+      </div>
+      {{end}}
+    </fieldset>
+    {{end}}
     <button class="btn" type="submit">{{$.T "sub.btn"}}</button>
   </form>
   <p class="muted small sub-terms">{{$.T "sub.terms_pre"}}<a href="/terms" target="_blank" rel="noopener">{{$.T "sub.terms_link"}}</a>.</p>
@@ -434,7 +456,15 @@
      .CSRF, .Data{PID,Results,Error,None}. */}}
 {{define "domain_results"}}{{if .Data.Error}}<p class="reason">{{.Data.Error}}</p>{{end}}
 {{if .Data.None}}<p class="muted small">{{tr .Lang "domain.none"}}</p>{{end}}
-{{if .Data.Results}}<ul class="domain-hits">
+{{if .Data.Results}}
+{{if .Data.Select}}{{/* pre-checkout chooser: pick one, registered after payment */}}
+<ul class="domain-pick">
+  {{range .Data.Results}}<li>
+    <label class="dc-pick"><input type="radio" name="buy_domain" value="{{.Name}}"> <span class="mono">{{.Name}}</span></label>
+  </li>
+  {{end}}</ul>
+{{else}}{{/* post-pay panel: buy now */}}
+<ul class="domain-hits">
   {{range .Data.Results}}<li>
     <span class="domain-hit-name mono">{{.Name}}</span>
     <form method="post" action="/projects/{{$.Data.PID}}/domain/buy" class="inline"
@@ -446,4 +476,5 @@
     </form>
   </li>
   {{end}}</ul>
+{{end}}
 {{end}}{{end}}

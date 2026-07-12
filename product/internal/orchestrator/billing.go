@@ -49,6 +49,9 @@ func (o *Orchestrator) SubscriptionStarted(projectID, customerID, subID string) 
 	o.notifyOperator(ctx, "Forge: project paid — review & deliver",
 		fmt.Sprintf("%q is now paid (subscription). Review and deliver:\n\n%s",
 			p.Name, o.baseURLOr("/admin/projects/"+p.ID)))
+	// If the customer bundled a domain at checkout, provision it now that payment
+	// has settled — best-effort, off the webhook's critical path.
+	go o.provisionDomainIntent(projectID)
 	return nil
 }
 

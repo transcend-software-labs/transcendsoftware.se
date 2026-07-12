@@ -393,7 +393,29 @@ details summary { cursor: pointer; }
 }
 .domain-records th { color: var(--muted); font-weight: 500; }
 .domain-flash { color: var(--accent-2); font-size: .85rem; margin: -.2rem 0 .9rem; }
-#domain-searching { margin-left: .5rem; vertical-align: middle; }
+#domain-searching, #sub-domain-searching { margin-left: .5rem; vertical-align: middle; }
+/* Subscribe-panel "add a domain" chooser (Phase B): radio options, each with an
+   optional revealed body (host input, or a search + pickable results). */
+.domain-choose {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: .9rem 1rem;
+  margin: 0 0 1rem;
+  display: grid;
+  gap: .5rem;
+}
+.domain-choose legend {
+  font-weight: 600;
+  font-size: .9rem;
+  padding: 0 .4rem;
+}
+.dc-opt { display: flex; align-items: baseline; gap: .5rem; font-size: .92rem; cursor: pointer; }
+.dc-opt input { margin: 0; }
+.dc-body { padding: .1rem 0 .3rem 1.6rem; display: grid; gap: .4rem; }
+.dc-body input[type=text], .dc-body input[type=search] { width: 100%; }
+.domain-pick { list-style: none; display: grid; gap: .3rem; margin: .2rem 0 0; padding: 0; }
+.dc-pick { display: flex; align-items: center; gap: .5rem; cursor: pointer; padding: .35rem .5rem; border: 1px solid var(--border); border-radius: var(--radius); }
+.dc-pick input { margin: 0; }
 /* When hx-indicator points AT the spinner itself, it gets .htmx-request too. */
 .htmx-request.htmx-indicator { opacity: 1; }
 .terms-doc h2 { margin-top: 1.6rem; font-size: 1.05rem; }

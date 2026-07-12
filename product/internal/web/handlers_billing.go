@@ -17,7 +17,16 @@ func subscribable(p *project.Project) bool {
 	return p.Status == project.StatusPreviewReady || p.Status == project.StatusAccepted
 }
 
+// domainSelectable reports whether the customer may choose a domain now — either
+// after paying (the post-pay panel attaches immediately) or before paying (Phase
+// B: bundle it with the subscription). Both need a live preview and no domain yet.
+func domainSelectable(p *project.Project) bool {
+	return p.PreviewURL != "" && !p.HasDomain() && (p.Paid || subscribable(p))
+}
+
 // handleSubscribe starts a Stripe subscription Checkout for the customer's site.
+// If the customer bundled a domain choice (Phase B), it's recorded now and
+// provisioned automatically once the payment settles.
 func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request, u *user.User) {
 	p, ok := s.ownedProject(w, r, u)
 	if !ok {
@@ -27,6 +36,15 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request, u *user
 		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 		return
 	}
+	// Capture the (optional) bundled-domain choice before the Stripe redirect. A
+	// bad/unbuyable choice bounces the customer back to pick again rather than
+	// taking payment for something we can't deliver.
+	if s.orch.DomainsEnabled() && domainSelectable(p) {
+		if err := s.applyDomainChoice(r, p); err != nil {
+			http.Redirect(w, r, "/projects/"+p.ID+"?sub=domainbad", http.StatusSeeOther)
+			return
+		}
+	}
 	base := strings.TrimRight(s.cfg.BaseURL, "/")
 	url, err := s.billing.CreateCheckoutSession(r.Context(), billing.CheckoutParams{
 		ProjectID:     p.ID,
@@ -34,8 +52,7 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request, u *user
 		Locale:        s.lang(r),
 		SuccessURL:    base + "/projects/" + p.ID + "?sub=success",
 		CancelURL:     base + "/projects/" + p.ID + "?sub=cancel",
-		// A per-domain DNS line will be appended here once domains are provisioned.
-		LineItems: []billing.LineItem{{Price: s.cfg.StripePriceID}},
+		LineItems:     []billing.LineItem{{Price: s.cfg.StripePriceID}},
 	})
 	if err != nil {
 		s.log.Error("stripe checkout", "project", p.ID, "err", err)
@@ -43,6 +60,21 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request, u *user
 		return
 	}
 	http.Redirect(w, r, url, http.StatusSeeOther)
+}
+
+// applyDomainChoice reads the subscribe form's optional domain fields and records
+// the intent (buy or BYOD), to be provisioned once payment settles. "none" (or an
+// empty choice) clears any prior intent. The buy path is re-validated server-side
+// inside SetDomainIntent.
+func (s *Server) applyDomainChoice(r *http.Request, p *project.Project) error {
+	switch r.FormValue("domain_mode") {
+	case "byod":
+		return s.orch.SetDomainIntent(r.Context(), p.ID, r.FormValue("byod_host"), false)
+	case "buy":
+		return s.orch.SetDomainIntent(r.Context(), p.ID, r.FormValue("buy_domain"), true)
+	default:
+		return s.orch.SetDomainIntent(r.Context(), p.ID, "", false) // clear
+	}
 }
 
 // handleBillingPortal sends a subscribed customer to Stripe's self-serve portal

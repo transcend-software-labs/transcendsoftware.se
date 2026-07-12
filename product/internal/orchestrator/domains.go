@@ -85,6 +85,96 @@ func (o *Orchestrator) SearchDomains(ctx context.Context, query string) ([]regis
 // MaxDomainPrice is the self-serve price cap, in the registrar's currency.
 func (o *Orchestrator) MaxDomainPrice() float64 { return o.maxDomainPrice }
 
+// SetDomainIntent records the domain the customer picked on the subscribe page,
+// to be provisioned automatically once their payment settles (Phase B). buy=true
+// re-validates registrability + the price cap server-side, so we never start a
+// subscription for a domain we can't actually sell; buy=false (BYOD) validates
+// only the hostname shape. An empty hostname clears any prior choice.
+func (o *Orchestrator) SetDomainIntent(ctx context.Context, projectID, hostname string, buy bool) error {
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(hostname) == "" {
+		if p.DomainIntent == "" {
+			return nil // nothing to clear
+		}
+		p.DomainIntent, p.DomainIntentBuy = "", false
+		return o.save(ctx, p)
+	}
+	if o.domains == nil {
+		return ErrDomainsDisabled
+	}
+	host, ok := normalizeHostname(hostname)
+	if !ok {
+		return ErrBadHostname
+	}
+	if buy {
+		if !o.DomainBuyEnabled() {
+			return ErrBuyDisabled
+		}
+		offers, err := o.domains.CheckDomains(ctx, []string{host})
+		if err != nil {
+			return fmt.Errorf("domain intent: check: %w", err)
+		}
+		var offer registrar.Offer
+		for _, of := range offers {
+			if strings.EqualFold(of.Name, host) {
+				offer = of
+			}
+		}
+		if !offer.Registrable {
+			return ErrNotRegistrable
+		}
+		if !offer.Buyable(o.maxDomainPrice) {
+			return ErrDomainTooPricey
+		}
+	}
+	p.DomainIntent, p.DomainIntentBuy = host, buy
+	return o.save(ctx, p)
+}
+
+// provisionDomainIntent acts on a domain the customer chose at checkout, once
+// payment has settled: attach it (BYOD) or buy it. Best-effort, run in a
+// goroutine off SubscriptionStarted — the base subscription already succeeded,
+// so a domain failure only alerts the operator and leaves the customer to retry
+// from their project page. The intent is cleared first so a webhook retry can't
+// double-provision, and BuyDomain/AttachDomain's own "no existing domain" guard
+// makes a concurrent double-fire safe.
+func (o *Orchestrator) provisionDomainIntent(projectID string) {
+	ctx := context.Background()
+	if o.domains == nil {
+		return
+	}
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		o.log.Error("provision domain intent: load", "project", projectID, "err", err)
+		return
+	}
+	host, buy := p.DomainIntent, p.DomainIntentBuy
+	if host == "" {
+		return
+	}
+	p.DomainIntent, p.DomainIntentBuy = "", false
+	if err := o.save(ctx, p); err != nil {
+		o.log.Error("provision domain intent: clear", "project", projectID, "err", err)
+		return
+	}
+	var derr error
+	if buy {
+		derr = o.BuyDomain(ctx, projectID, host)
+	} else {
+		derr = o.AttachDomain(ctx, projectID, host)
+	}
+	if derr != nil {
+		o.log.Error("provision domain intent", "project", projectID, "host", host, "buy", buy, "err", derr)
+		o.notifyOperator(ctx, "Forge: bundled domain provisioning failed",
+			fmt.Sprintf("%q chose the domain %s at checkout, but provisioning it failed: %v\n"+
+				"Their subscription is active; they can retry from their project page.\n\n%s",
+				p.Name, host, derr, o.projectLink(projectID)))
+	}
+}
+
 // AttachDomain starts the BYOD flow: request a Fly certificate for the
 // customer's own hostname, allocate a dedicated IPv6 if it's an apex, and store
 // the DNS records for the customer to set. Synchronous — the customer sees the

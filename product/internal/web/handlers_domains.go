@@ -65,8 +65,12 @@ func (s *Server) handleDomainSearch(w http.ResponseWriter, r *http.Request, u *u
 		return
 	}
 	lang := s.lang(r)
-	data := map[string]any{"PID": p.ID}
-	if !s.orch.DomainBuyEnabled() || !p.CanAttachDomain() {
+	// select-mode renders the results as radio choices for the pre-checkout
+	// chooser (pick now, register after payment); default renders buy-now buttons
+	// for the post-pay domain panel.
+	selectMode := r.URL.Query().Get("select") == "1"
+	data := map[string]any{"PID": p.ID, "Select": selectMode}
+	if !s.orch.DomainBuyEnabled() || !domainSelectable(p) {
 		s.renderFragment(w, r, "domain_results", data)
 		return
 	}

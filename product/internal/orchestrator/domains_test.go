@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -11,6 +12,22 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
 )
+
+// waitForDomain polls until ok(project) holds or the deadline passes — for the
+// async domain provisioning fired off SubscriptionStarted.
+func waitForDomain(t *testing.T, st store.Store, id string, ok func(*project.Project) bool) *project.Project {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if p, err := st.ProjectByID(context.Background(), id); err == nil && ok(p) {
+			return p
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	p, _ := st.ProjectByID(context.Background(), id)
+	t.Fatalf("domain condition not met; status=%s kind=%s intent=%q", p.DomainStatus, p.DomainKind, p.DomainIntent)
+	return nil
+}
 
 // fakeCF is an in-memory DomainRegistrar for orchestrator tests.
 type fakeCF struct {
@@ -315,5 +332,84 @@ func TestAttachDomain_Guards(t *testing.T) {
 	seedDomainProject(t, st, func(p *project.Project) { p.Paid = false })
 	if err := orch.AttachDomain(ctx, "p1", "acme.se"); err != ErrNotEligible {
 		t.Fatalf("unpaid should be ineligible, got %v", err)
+	}
+}
+
+// TestSubscriptionStarted_ProvisionsBundledBYOD: a customer who chose to bring
+// their own domain at checkout has it attached automatically once they pay.
+func TestSubscriptionStarted_ProvisionsBundledBYOD(t *testing.T) {
+	st := store.NewMemory()
+	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
+	orch.SetNotifications(&recordingNotifier{}, "rasmus@example.com", "https://forge.example")
+	orch.SetDomains(&fakeCF{}, &fakeBiller{}, "price_dom", 100)
+	seedDomainProject(t, st, func(p *project.Project) {
+		p.Paid, p.PaidVia, p.StripeSubID = false, "", ""
+		p.DomainIntent, p.DomainIntentBuy = "acme.se", false
+	})
+
+	if err := orch.SubscriptionStarted("p1", "cus_1", "sub_1"); err != nil {
+		t.Fatalf("subscription started: %v", err)
+	}
+	got := waitForDomain(t, st, "p1", func(p *project.Project) bool {
+		return p.DomainStatus == project.DomainPendingDNS
+	})
+	if got.DomainKind != project.DomainKindBYOD {
+		t.Fatalf("expected BYOD attach, got kind %q", got.DomainKind)
+	}
+	if got.DomainIntent != "" {
+		t.Errorf("intent should be cleared after provisioning, got %q", got.DomainIntent)
+	}
+}
+
+// TestSubscriptionStarted_ProvisionsBundledBuy: a customer who chose to buy a
+// domain at checkout has it registered automatically once they pay.
+func TestSubscriptionStarted_ProvisionsBundledBuy(t *testing.T) {
+	st := store.NewMemory()
+	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
+	orch.SetNotifications(&recordingNotifier{}, "rasmus@example.com", "https://forge.example")
+	orch.SetDomains(&fakeCF{offers: []registrar.Offer{
+		{Name: "acme.se", Registrable: true, Price: 12, Renewal: 12, Currency: "USD"},
+	}}, &fakeBiller{}, "price_dom", 100)
+	seedDomainProject(t, st, func(p *project.Project) {
+		p.Paid, p.PaidVia, p.StripeSubID = false, "", ""
+		p.DomainIntent, p.DomainIntentBuy = "acme.se", true
+	})
+
+	if err := orch.SubscriptionStarted("p1", "cus_1", "sub_1"); err != nil {
+		t.Fatalf("subscription started: %v", err)
+	}
+	got := waitForDomain(t, st, "p1", func(p *project.Project) bool {
+		return p.DomainKind == project.DomainKindPurchased && p.DomainName == "acme.se"
+	})
+	if got.DomainIntent != "" {
+		t.Errorf("intent should be cleared after provisioning, got %q", got.DomainIntent)
+	}
+}
+
+// TestSetDomainIntent_Validation: a buy intent is price-cap-checked, BYOD is
+// stored on hostname shape alone, and an empty hostname clears the choice.
+func TestSetDomainIntent_Validation(t *testing.T) {
+	st := store.NewMemory()
+	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
+	orch.SetDomains(&fakeCF{offers: []registrar.Offer{
+		{Name: "acme.se", Registrable: true, Price: 200, Renewal: 200, Currency: "USD"}, // over the cap
+	}}, &fakeBiller{}, "price_dom", 100)
+	seedDomainProject(t, st, func(p *project.Project) { p.Paid = false })
+	ctx := context.Background()
+
+	if err := orch.SetDomainIntent(ctx, "p1", "acme.se", true); !errors.Is(err, ErrDomainTooPricey) {
+		t.Fatalf("over-cap buy intent should be refused, got %v", err)
+	}
+	if err := orch.SetDomainIntent(ctx, "p1", "myown.se", false); err != nil {
+		t.Fatalf("byod intent: %v", err)
+	}
+	if p, _ := st.ProjectByID(ctx, "p1"); p.DomainIntent != "myown.se" || p.DomainIntentBuy {
+		t.Fatalf("byod intent not stored: intent=%q buy=%v", p.DomainIntent, p.DomainIntentBuy)
+	}
+	if err := orch.SetDomainIntent(ctx, "p1", "", false); err != nil {
+		t.Fatalf("clear intent: %v", err)
+	}
+	if p, _ := st.ProjectByID(ctx, "p1"); p.DomainIntent != "" {
+		t.Fatalf("intent not cleared, got %q", p.DomainIntent)
 	}
 }

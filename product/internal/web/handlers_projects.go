@@ -198,7 +198,12 @@ type projectView struct {
 	SubProcessing   bool   // returned from Checkout success while the webhook is still in flight
 	PriceStr        string // formatted plan price ("99 kr"), "" if unavailable
 	IncludedChanges int    // monthly changes included in the plan, for the subscribe "what's included" list
-	ShowAccept      bool   // show the explicit accept step (paid/comped customers, or billing off — subscribing accepts implicitly otherwise)
+
+	// Bundle-a-domain chooser on the subscribe panel (Phase B): pick a domain
+	// before paying, provisioned after. DomainAddonStr (below) shows the buy fee.
+	DomainOffer    bool // show the domain chooser on the subscribe panel
+	DomainOfferBuy bool // the "buy a domain" option is available in the chooser
+	ShowAccept     bool // show the explicit accept step (paid/comped customers, or billing off — subscribing accepts implicitly otherwise)
 
 	// Forge Pro change model (see changes.go). Paid subscribers request site
 	// changes here: a monthly allowance is included, extra changes bill a flat fee.
@@ -373,6 +378,15 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 			}
 			pv.IncludedChanges = s.orch.ChangesPerMonth() // for the "what's included" list
 		}
+		// Bundle-a-domain chooser (Phase B): offer it right on the subscribe panel
+		// so the customer picks a domain before paying; it's provisioned after.
+		if pv.CanSubscribe && s.orch.DomainsEnabled() && domainSelectable(p) {
+			pv.DomainOffer = true
+			pv.DomainOfferBuy = s.orch.DomainBuyEnabled()
+			if pv.DomainOfferBuy {
+				pv.DomainAddonStr = s.domainAddonStr(ctx)
+			}
+		}
 	}
 	// Domain panel: paying customers only, when the feature is wired. Everything
 	// it renders comes from the cached project fields — no live API call here.
@@ -386,14 +400,8 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		// The flat monthly add-on price (same for every domain) — shown on the buy
 		// panel so the customer knows what buying costs, without exposing our
 		// per-domain wholesale cost. Only fetched when the buy panel is rendered.
-		if pv.DomainBuyable && p.DomainStatus == project.DomainNone && s.billing != nil && s.cfg.StripeDomainPriceID != "" {
-			if pr, err := s.billing.Price(ctx, s.cfg.StripeDomainPriceID); err == nil {
-				pv.DomainAddonStr = formatPrice(pr.UnitAmount, pr.Currency)
-			} else {
-				// Surface a misconfigured STRIPE_DOMAIN_PRICE_ID (e.g. a product id
-				// instead of a price id) — otherwise the price just silently vanishes.
-				s.log.Warn("domain add-on price fetch failed", "price_id", s.cfg.StripeDomainPriceID, "err", err)
-			}
+		if pv.DomainBuyable && p.DomainStatus == project.DomainNone {
+			pv.DomainAddonStr = s.domainAddonStr(ctx)
 		}
 		// Feedback after an action shows inside the panel (which is what htmx
 		// swaps back in), not as a top-of-page banner that the swap wouldn't touch.
@@ -409,6 +417,8 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		v.Flash = i18n.T(lang, "flash.sub_cancel")
 	case "error":
 		v.Flash = i18n.T(lang, "flash.sub_error")
+	case "domainbad":
+		v.Flash = i18n.T(lang, "flash.domain_unavailable")
 	}
 	s.render(w, http.StatusOK, "project", v)
 }
@@ -437,6 +447,22 @@ func domainFlashKey(code string) string {
 
 // formatPrice renders a Stripe unit amount (minor units) for display, e.g.
 // (9900,"sek") → "99 kr". Empty for a non-positive amount.
+// domainAddonStr returns the formatted flat monthly domain add-on price, or ""
+// when billing/the price id isn't configured or the fetch fails. Shared by the
+// subscribe chooser and the post-pay domain panel. A fetch error is logged so a
+// misconfigured STRIPE_DOMAIN_PRICE_ID (e.g. a product id) is visible.
+func (s *Server) domainAddonStr(ctx context.Context) string {
+	if s.billing == nil || s.cfg.StripeDomainPriceID == "" {
+		return ""
+	}
+	pr, err := s.billing.Price(ctx, s.cfg.StripeDomainPriceID)
+	if err != nil {
+		s.log.Warn("domain add-on price fetch failed", "price_id", s.cfg.StripeDomainPriceID, "err", err)
+		return ""
+	}
+	return formatPrice(pr.UnitAmount, pr.Currency)
+}
+
 func formatPrice(unitAmount int64, currency string) string {
 	if unitAmount <= 0 {
 		return ""
