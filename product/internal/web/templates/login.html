@@ -13,22 +13,22 @@
 
   {{if .MagicLink}}
   <form method="post" action="/auth/magic" class="stack">
-    <label>{{.T "login.magic_label"}}<input type="email" name="email" required autofocus placeholder="you@example.com"></label>
+    <label>{{.T "login.magic_label"}}<input type="email" name="email" required autofocus placeholder="you@example.com" autocomplete="email" spellcheck="false"></label>
     <button class="btn" type="submit">{{.T "login.magic_btn"}}</button>
   </form>
 
   <details class="password-login">
     <summary class="muted small">{{.T "login.pw_summary"}}</summary>
     <form method="post" action="/login" class="stack">
-      <label>{{.T "auth.email"}}<input type="email" name="email"></label>
-      <label>{{.T "auth.password"}}<input type="password" name="password"></label>
+      <label>{{.T "auth.email"}}<input type="email" name="email" autocomplete="email" spellcheck="false"></label>
+      <label>{{.T "auth.password"}}<input type="password" name="password" autocomplete="current-password"></label>
       <button class="btn btn-sm" type="submit">{{.T "login.btn"}}</button>
     </form>
   </details>
   {{else}}
   <form method="post" action="/login" class="stack">
-    <label>{{.T "auth.email"}}<input type="email" name="email" required autofocus></label>
-    <label>{{.T "auth.password"}}<input type="password" name="password" required></label>
+    <label>{{.T "auth.email"}}<input type="email" name="email" required autofocus autocomplete="email" spellcheck="false"></label>
+    <label>{{.T "auth.password"}}<input type="password" name="password" required autocomplete="current-password"></label>
     <button class="btn" type="submit">{{.T "login.btn"}}</button>
   </form>
   {{end}}

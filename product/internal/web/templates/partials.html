@@ -29,7 +29,9 @@
 
 {{define "nav"}}<header class="nav">
   <a class="brand" href="/">Transcend <span class="accent">Forge</span></a>
-  <input type="checkbox" id="nav-toggle" class="nav-toggle" hidden>
+  {{/* sr-only, NOT hidden: display:none would make the burger unreachable by
+       keyboard — the checkbox must stay focusable so Tab + Space opens the menu. */}}
+  <input type="checkbox" id="nav-toggle" class="nav-toggle sr-only">
   <label for="nav-toggle" class="nav-burger" aria-label="Toggle menu" aria-controls="site-nav"><span></span><span></span><span></span></label>
   <nav id="site-nav" class="navlinks" aria-label="Main navigation">
     {{if .User}}

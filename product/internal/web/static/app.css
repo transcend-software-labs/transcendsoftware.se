@@ -8,7 +8,7 @@
   --surface-2: #26241b;
   --text: #ece9dd;
   --muted: #a6a395;
-  --dim: #74715f;
+  --dim: #938f7c; /* small-text tertiary — 5.7:1 on --bg, AA even on --surface-2 */
   --accent: #e0a93c;
   --accent-2: #f0c46a;
   --green: #7cc04a;
@@ -48,6 +48,31 @@ body {
 a { color: var(--accent); text-decoration: none; transition: color .15s var(--ease); }
 a:hover { color: var(--accent-2); }
 
+/* Keyboard focus: one brand-gold ring for everything focusable. Text fields
+   opt out below — they signal focus with their border + soft ring instead. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+.btn:focus-visible { outline-color: var(--accent-2); outline-offset: 3px; border-radius: var(--radius); }
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline: none; }
+/* Card-shaped radio/checkbox rows: the ring goes on the card, not the tiny input. */
+.dc-opt:has(input:focus-visible), .dc-pick:has(input:focus-visible),
+label.design-option:has(input:focus-visible) {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(224,169,60,.14);
+}
+
+/* Visually hidden but focusable/announcable (burger checkbox, a11y labels). */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 .container {
   width: 100%;
   max-width: 760px;
@@ -77,6 +102,9 @@ a:hover { color: var(--accent-2); }
 .navlinks a:not(.btn) { color: var(--muted); }
 .navlinks a:not(.btn):hover { color: var(--accent); }
 .nav-burger { display: none; } /* shown only on mobile (see @media below) */
+/* Desktop: the burger UI doesn't exist, so its checkbox must not be a phantom
+   tab stop. On mobile it's .sr-only — focusable, driving the menu by keyboard. */
+@media (min-width: 721px) { .nav-toggle { display: none; } }
 .inline { display: inline; }
 .linklike { background: none; border: none; color: var(--muted); cursor: pointer; font: inherit; transition: color .15s var(--ease); }
 .linklike:hover { color: var(--accent); }
@@ -569,6 +597,12 @@ label.design-option:hover { border-color: var(--accent); }
   .nav-toggle:checked ~ .nav-burger span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
   .nav-toggle:checked ~ .nav-burger span:nth-child(2) { opacity: 0; }
   .nav-toggle:checked ~ .nav-burger span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+  /* Keyboard focus lands on the sr-only checkbox — surface it on the burger. */
+  .nav-toggle:focus-visible + .nav-burger { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Every primary action is a comfortable thumb target. */
+  .btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+  .linklike { min-height: 44px; display: inline-flex; align-items: center; }
 
   /* Operator dashboard + shared layout */
   .container { padding-left: 1rem; padding-right: 1rem; }
@@ -584,7 +618,8 @@ label.design-option:hover { border-color: var(--accent); }
   .table-scroll { -webkit-overflow-scrolling: touch; }
   .review-shot, .review-thumb { max-width: 100%; height: auto; }
   .timeline { gap: 0; }
-  .tl-label { font-size: .62rem; }
+  /* .tl-label keeps its base size — 10px text was below the readability floor;
+     labels may wrap to two lines on narrow phones, which is fine. */
 }
 
 /* ── Redesign: timeline, live checklist, scope card, content slots ─────── */
