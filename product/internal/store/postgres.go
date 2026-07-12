@@ -273,7 +273,8 @@ func (p *Postgres) UpdateProject(ctx context.Context, pr *project.Project) error
 		marshalObj(pr.Spec), localeOr(pr.Locale), marshalObj(pr.ContentAnswers), marshalObj(pr.ContentRosters), marshalObj(pr.PendingImages), pr.ImageGenCount,
 		pr.Paid, nullableTime(pr.PaidAt), pr.PaidVia, pr.ContentPending, pr.StripeCustomerID, pr.StripeSubID,
 		pr.DomainName, string(pr.DomainStatus), pr.DomainKind, pr.DomainZoneID, pr.DomainIPv6, pr.DomainSubItemID, marshalJSON(pr.DomainRecords), nullableTime(pr.DomainCreatedAt), nullableTime(pr.DomainVerifiedAt),
-		pr.ChangesThisPeriod, nullableTime(pr.ChangePeriodStart), nullableTime(pr.DeliveredAt))
+		pr.ChangesThisPeriod, nullableTime(pr.ChangePeriodStart), nullableTime(pr.DeliveredAt),
+		pr.DomainIntent, pr.DomainIntentBuy)
 	if err != nil {
 		return err
 	}
