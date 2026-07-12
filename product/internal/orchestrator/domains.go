@@ -358,6 +358,13 @@ func (o *Orchestrator) provisionPurchased(ctx context.Context, p *project.Projec
 	if err := o.ensureApexIPv6(ctx, p, app, req.IsApex); err != nil {
 		return err
 	}
+	// Persist the zone id + allocated IPv6 before the DNS writes. Otherwise a
+	// failed DNS write returns before the final save, and the next retry reloads
+	// the project with an empty DomainIPv6 and allocates a fresh address every
+	// pass (a dedicated-IP leak seen live when the CF token lacked DNS edit).
+	if err := o.save(ctx, p); err != nil {
+		return err
+	}
 	for _, rec := range req.Records {
 		if err := o.domains.EnsureDNSRecord(ctx, zoneID, cloudflare.DNSRecord{
 			Type: rec.Type, Name: rec.Name, Content: rec.Value,
