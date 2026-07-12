@@ -151,7 +151,9 @@
         {{end}}
       </ul>
       {{end}}
-      {{if .IsFiles}}<p class="muted small files-hint">{{$.T "prj.files.label_hint"}}</p>{{end}}
+      {{/* The label-your-photos hint only makes sense once there ARE photos —
+           the caption fields it refers to render per uploaded file. */}}
+      {{if and .IsFiles (index $.Data.SlotAssets $slug)}}<p class="muted small files-hint">{{$.T "prj.files.label_hint"}}</p>{{end}}
       <div class="content-actions">
         <form method="post" action="/projects/{{$pid}}/assets" enctype="multipart/form-data" class="content-upload">
           <input type="hidden" name="csrf_token" value="{{$.CSRF}}">

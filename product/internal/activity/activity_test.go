@@ -55,6 +55,7 @@ func mustPage(t *testing.T, tr *Tracker, slug string) PageStatus {
 func TestClassify(t *testing.T) {
 	cases := map[string]Code{
 		"→ bash: fly deploy --remote-only":                    Deploying,
+		"→ write /workspace/Dockerfile":                       Deploying,
 		"→ bash: node scripts/audit.js":                       Reviewing,
 		"Design audit: clean ✓":                               Reviewing,
 		"→ bash: go test ./...":                               Testing,
@@ -62,7 +63,14 @@ func TestClassify(t *testing.T) {
 		"→ write /workspace/migrations/0002_products.sql":     Database,
 		"→ write /workspace/internal/web/static/app.css":      Styling,
 		"→ write /workspace/internal/web/templates/menu.html": Building,
-		"→ edit /workspace/internal/web/handlers.go":          Building,
+		"→ edit /workspace/internal/web/handlers.go":          Backend,
+		"→ write /workspace/internal/store/store.go":          Backend,
+		"→ write /workspace/static/js/menu.js":                Interactive,
+		"→ write /workspace/static/img/hero.webp":             Images,
+		"→ write /workspace/static/favicon.ico":               Images,
+		"→ edit /workspace/go.mod":                            Dependencies,
+		"→ bash: go get github.com/mattn/go-sqlite3":          Dependencies,
+		"→ bash: go build ./...":                              Compiling,
 		"Preparing the Forge starter app…":                    Preparing,
 		"Sandbox ready, starting the agent…":                  Preparing,
 	}
@@ -72,8 +80,17 @@ func TestClassify(t *testing.T) {
 			t.Errorf("classify(%q) = %q,%v want %q", line, got, ok, want)
 		}
 	}
-	if _, ok := classify("some free text the agent wrote"); ok {
-		t.Error("free text should not classify")
+	// Unclassifiable lines bump liveness only. Crucially, plain /workspace/
+	// paths must NOT classify (a Preparing rule once matched "workspace", which
+	// turned every unmatched file line into a permanent "preparing").
+	for _, line := range []string{
+		"some free text the agent wrote",
+		"→ read /workspace/AGENTS.md",
+		"→ write /workspace/notes/plan.md",
+	} {
+		if got, ok := classify(line); ok {
+			t.Errorf("classify(%q) = %q, want no match", line, got)
+		}
 	}
 }
 

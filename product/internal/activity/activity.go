@@ -24,9 +24,14 @@ type Code string
 
 const (
 	Preparing    Code = "preparing"     // sandbox/template/workspace setup
-	Building     Code = "building"      // writing pages and application code
+	Building     Code = "building"      // writing pages (templates/HTML)
+	Backend      Code = "backend"       // Go application code
+	Interactive  Code = "interactive"   // client-side JS/TS touches
+	Images       Code = "images"        // placing images, icons, graphics
 	Styling      Code = "styling"       // CSS / design work
 	Database     Code = "database"      // schema and migrations
+	Dependencies Code = "dependencies"  // fetching modules/packages
+	Compiling    Code = "compiling"     // go build/vet — assembling the parts
 	Testing      Code = "testing"       // tests and browser checks
 	Reviewing    Code = "reviewing"     // design audit, screenshots
 	Deploying    Code = "deploying"     // publishing the preview
@@ -36,18 +41,30 @@ const (
 
 // rules are evaluated top-down against a log line; first match wins. Lines are
 // our own formats — toolLine's "→ write <path>" / "→ bash: <cmd>" plus the
-// builder's human emits — so the patterns key on those, not on free text.
+// builder's human emits — so the patterns key on file extensions and command
+// names, not free text. Order matters: test/review .js files must win before
+// the generic Interactive rule, and the file-type rules must all come before
+// Preparing (which must NOT match "workspace" — every sandbox path starts with
+// /workspace/, and matching it turned any unclassified file line into a
+// permanent "preparing", which is exactly the monotony customers noticed).
 var rules = []struct {
 	re   *regexp.Regexp
 	code Code
 }{
-	{regexp.MustCompile(`fly deploy|flyctl deploy|Deploying|fly\.toml`), Deploying},
-	{regexp.MustCompile(`audit\.js|impeccable|[Ss]creenshot|Design audit`), Reviewing},
-	{regexp.MustCompile(`_test\.go|go test|flow\.js|smoke\.js|[Vv]erif`), Testing},
-	{regexp.MustCompile(`migrations/|\.sql`), Database},
-	{regexp.MustCompile(`\.css`), Styling},
-	{regexp.MustCompile(`templates/|\.html|\.go|handlers|[Ss]caffold`), Building},
-	{regexp.MustCompile(`[Ss]andbox|starter app|session started|[Cc]loning|[Ww]orkspace|[Ii]nstalling`), Preparing},
+	{regexp.MustCompile(`fly deploy|flyctl|fly\.toml|Dockerfile|[Dd]eploying`), Deploying},
+	{regexp.MustCompile(`audit\.js|impeccable|[Ss]creenshot|crawl\.js|Design audit`), Reviewing},
+	{regexp.MustCompile(`_test\.go|go test|flow\.js|smoke\.js|[Vv]erif|healthz`), Testing},
+	// Dependencies before Database: "go get …/go-sqlite3" is fetching a module,
+	// not schema work, even though the package name mentions sqlite.
+	{regexp.MustCompile(`go\.(mod|sum)|go get|npm (i|install|ci)|pnpm|yarn add`), Dependencies},
+	{regexp.MustCompile(`migrations/|\.sql\b|[Ss]qlite`), Database},
+	{regexp.MustCompile(`\.css\b|[Tt]ailwind|[Ff]ont|[Pp]alette|[Ss]tyling`), Styling},
+	{regexp.MustCompile(`\.(png|jpe?g|webp|svg|gif|ico)\b|[Ff]avicon|images?/`), Images},
+	{regexp.MustCompile(`\.[tj]sx?\b`), Interactive},
+	{regexp.MustCompile(`go (build|vet|run)|gofmt|[Cc]ompil`), Compiling},
+	{regexp.MustCompile(`templates/|\.html\b|[Ss]caffold`), Building},
+	{regexp.MustCompile(`\.go\b|handlers`), Backend},
+	{regexp.MustCompile(`[Ss]andbox|starter app|session started|[Cc]loning|[Ii]nstalling`), Preparing},
 }
 
 // classify maps a log line to a code; ok=false means the line says nothing
@@ -63,7 +80,8 @@ func classify(line string) (Code, bool) {
 
 // Debounce: a status line that flips several times a second reads as glitchy.
 // A promoted code is held at least minHold before a different one replaces it.
-const minHold = 12 * time.Second
+// Short enough that the finer-grained codes actually cycle during a build.
+const minHold = 8 * time.Second
 
 // stallAfter with no events at all turns the status into TakingLonger — the
 // honest state when a build has gone quiet.
