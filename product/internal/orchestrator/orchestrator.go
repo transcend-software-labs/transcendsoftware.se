@@ -1008,10 +1008,11 @@ func (o *Orchestrator) finishBuild(ctx context.Context, p *project.Project, it *
 		}
 		p.Findings = fs
 	}
-	// The in-session visual review is the design verdict (the build agent ran
-	// design-review.js and applied its fixes before deploying); store it for the
-	// operator. There is no post-deploy review pass — polish happens inside the
-	// one sandbox execution, so the preview the customer sees is already final.
+	// The visual review is the final design verdict: the build agent ran
+	// design-review.js during the build, and builder.Build's bounded polish pass
+	// (audit → fix → redeploy → re-review) already ran and settled BEFORE it
+	// returned res — so res.Critique/PreviewURL describe the site in its final
+	// state. Store the verdict for the operator.
 	if c := strings.TrimSpace(res.Critique); c != "" {
 		p.Critique = c
 	}
@@ -1019,9 +1020,10 @@ func (o *Orchestrator) finishBuild(ctx context.Context, p *project.Project, it *
 	if err := o.save(ctx, p); err != nil {
 		return err
 	}
-	// Email the customer once, when the (already-polished) preview is genuinely
-	// ready. Guarded on a customer-facing pass so any future internal build can't
-	// fire a premature or duplicate "it's ready" notice.
+	// Email the customer once, only now — after the whole build (including any
+	// polish pass) has returned — so the "it's ready" notice never lands while
+	// the fix round is still changing the site. Guarded on a customer-facing
+	// pass so an internal build can't fire a premature or duplicate notice.
 	if it.Number > 0 {
 		pe := custEmail(p.Locale, "preview_ready")
 		o.notifyCustomer(ctx, p.UserID, pe.Subject,
