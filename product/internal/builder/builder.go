@@ -388,14 +388,46 @@ func (b *Sandbox) finalize(ctx context.Context, sb *fly.Sandbox, req Request, re
 	// app URL is deterministic.
 	preview := "https://" + DeployAppName(req.ProjectID) + ".fly.dev"
 
-	// Capture a screenshot of every page of the deployed site for Rasmus's
-	// review. Best-effort and done in-sandbox (it has Chromium); a miss just
-	// means no thumbnails.
+	// Post-deploy review: screenshots + the agent's visual critique + the
+	// orchestrator's own deterministic audit of the DEPLOYED site.
+	shots, critique, findings := b.review(ctx, sb, preview, req, hooks)
+
+	// Bounded polish pass: the independent audit and critique are what land in
+	// /admin, but if they still flag issues we hand them back to a fresh agent
+	// session in the same sandbox for ONE fix + redeploy, then re-review — so
+	// the residue is what survives enforcement, not what was skipped. Guarded on
+	// the quality gate being on and enough build time remaining.
+	if b.cfg.Impeccable && fixWorthwhile(findings, critique) {
+		if left := timeLeft(ctx); left >= minFixRoundTime {
+			emit(hooks.OnLog, fmt.Sprintf("Polishing: %d audit finding(s)%s — one fix pass, then redeploy…",
+				len(findings), map[bool]string{true: " + visual critique", false: ""}[critiqueSaysPolish(critique)]))
+			if b.runFixRound(ctx, sb, findings, critique, left, hooks, &res) {
+				shots, critique, findings = b.review(ctx, sb, preview, req, hooks)
+				// The workspace changed — re-snapshot so the next iteration
+				// continues from the polished site.
+				if req.SnapshotPutURL != "" {
+					if err := b.saveSnapshot(ctx, sb.MachineID, req.SnapshotPutURL); err == nil {
+						snapshotSaved = true
+					}
+				}
+			}
+		} else {
+			emit(hooks.OnLog, "Skipping the polish pass — not enough build time left; findings noted for review.")
+		}
+	}
+
+	return Result{PreviewURL: preview, Log: res.Log, Tokens: res.Tokens,
+		SnapshotSaved: snapshotSaved, Screenshots: shots, Findings: findings, Critique: critique}, nil
+}
+
+// review runs the post-deploy review of the DEPLOYED site: page screenshots,
+// the agent's in-session visual critique (design-review.js output), and the
+// orchestrator's own deterministic design audit. Re-runnable after a fix pass.
+func (b *Sandbox) review(ctx context.Context, sb *fly.Sandbox, preview string, req Request, hooks Hooks) ([]CapturedPage, string, []Finding) {
 	var shots []CapturedPage
 	if len(req.ScreenshotPutURLs) > 0 {
 		emit(hooks.OnLog, "Capturing screenshots of each page…")
-		captured, err := b.captureScreenshots(ctx, sb.MachineID, preview, req.ScreenshotPutURLs)
-		if err != nil {
+		if captured, err := b.captureScreenshots(ctx, sb.MachineID, preview, req.ScreenshotPutURLs); err != nil {
 			emit(hooks.OnLog, "Warning: could not capture screenshots.")
 		} else {
 			shots = captured
@@ -403,30 +435,20 @@ func (b *Sandbox) finalize(ctx context.Context, sb *fly.Sandbox, req Request, re
 		}
 	}
 
-	// Surface the in-session visual review (the design model's verdict on the
-	// agent's own screenshots) so the operator can see it — the agent ran
-	// design-review.js during the build (and applied its fixes before deploying),
-	// but the log only records the command, not its output. This verdict is the
-	// single source of the design critique now: there is no post-deploy pass.
 	critique := b.readDesignReview(ctx, sb.MachineID)
 	if critique != "" {
-		emit(hooks.OnLog, "In-session visual review (final pass):\n"+critique)
+		emit(hooks.OnLog, "Visual review:\n"+critique)
 	}
 
-	// Independent design audit for Rasmus's review — the deterministic detector
-	// on the deployed UI, recorded for the /admin checklist. Best-effort like
-	// screenshots; a nil result (audit didn't run) leaves prior findings intact.
 	findings, err := b.auditDesign(ctx, sb.MachineID, preview)
 	if err != nil {
 		emit(hooks.OnLog, "Warning: could not run the design audit.")
 	} else if len(findings) == 0 {
 		emit(hooks.OnLog, "Design audit: clean ✓")
 	} else {
-		emit(hooks.OnLog, fmt.Sprintf("Design audit: %d finding(s) noted for review.", len(findings)))
+		emit(hooks.OnLog, fmt.Sprintf("Design audit: %d finding(s).", len(findings)))
 	}
-
-	return Result{PreviewURL: preview, Log: res.Log, Tokens: res.Tokens,
-		SnapshotSaved: snapshotSaved, Screenshots: shots, Findings: findings, Critique: critique}, nil
+	return shots, critique, findings
 }
 
 // crawlerJS crawls a deployed site's same-origin pages and screenshots each
@@ -600,6 +622,102 @@ func emailFrom(siteName, address string) string {
 		name = name[:80]
 	}
 	return `"` + name + `" <` + address + `>`
+}
+
+// Fix-round budget. A polish pass runs a second agent session + redeploy, so
+// it only starts with real time to spare, gets its own bounded slice of what's
+// left, and is capped so it can't eat the whole remaining build window.
+const (
+	minFixRoundTime = 15 * time.Minute // don't start a fix round below this
+	fixRoundBuffer  = 6 * time.Minute  // reserve for the re-review + snapshot after
+	maxFixRound     = 30 * time.Minute // cap on the fix session itself
+)
+
+// fixWorthwhile decides whether the deployed site warrants one polish pass: the
+// independent audit found real defects, or the visual critic still says POLISH.
+func fixWorthwhile(findings []Finding, critique string) bool {
+	return len(findings) > 0 || critiqueSaysPolish(critique)
+}
+
+// critiqueSaysPolish reports whether the design critic's verdict is POLISH
+// (it replies SHIP or POLISH; SHIP contains no "polish").
+func critiqueSaysPolish(critique string) bool {
+	return strings.Contains(strings.ToUpper(critique), "POLISH")
+}
+
+// timeLeft is the build ctx's remaining time (a large value when it has no
+// deadline, e.g. tests).
+func timeLeft(ctx context.Context) time.Duration {
+	if dl, ok := ctx.Deadline(); ok {
+		return time.Until(dl)
+	}
+	return 999 * time.Hour
+}
+
+// runFixRound runs one targeted fix + redeploy agent session in the same
+// sandbox (workspace intact), bounded well inside the remaining build time.
+// Returns true when it completed (so the caller re-reviews). The agent's log
+// and token count fold into res.
+func (b *Sandbox) runFixRound(ctx context.Context, sb *fly.Sandbox, findings []Finding, critique string, left time.Duration, hooks Hooks, res *opencode.Result) bool {
+	budget := left - fixRoundBuffer
+	if budget > maxFixRound {
+		budget = maxFixRound
+	}
+	fctx, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+
+	fres, err := b.newDriver(sb.Addr).Run(fctx, opencode.Spec{
+		Workdir:      "/workspace",
+		SystemPrompt: b.cfg.SystemPrompt,
+		Instruction:  fixRoundInstruction(findings, critique),
+	}, hooks.OnLog, nil)
+	res.Log += "\n" + fres.Log
+	res.Tokens += fres.Tokens
+	if err != nil {
+		emit(hooks.OnLog, "Polish pass didn't finish cleanly — keeping the deployed site as-is.")
+		return false
+	}
+	return true
+}
+
+// fixRoundInstruction turns the leftover audit findings + visual critique into a
+// tight "fix only these, then redeploy" prompt — a polish pass, not a rebuild.
+func fixRoundInstruction(findings []Finding, critique string) string {
+	var b strings.Builder
+	b.WriteString("POLISH PASS — the deployed site was independently reviewed and still has issues. ")
+	b.WriteString("Fix ONLY the items below on the already-built site in /workspace, then redeploy. ")
+	b.WriteString("Make the smallest change that clears each item — do NOT redesign, restructure, or touch anything not listed.\n")
+
+	if len(findings) > 0 {
+		b.WriteString("\nDesign-audit findings (the impeccable detector on the RENDERED, deployed pages — real defects, not optional):\n")
+		for i, f := range findings {
+			fmt.Fprintf(&b, "%d.", i+1)
+			if f.Severity != "" {
+				fmt.Fprintf(&b, " [%s]", f.Severity)
+			}
+			if f.Description != "" {
+				fmt.Fprintf(&b, " %s", f.Description)
+			} else if f.Name != "" {
+				fmt.Fprintf(&b, " %s", f.Name)
+			}
+			if f.File != "" {
+				fmt.Fprintf(&b, " (%s", f.File)
+				if f.Line > 0 {
+					fmt.Fprintf(&b, ":%d", f.Line)
+				}
+				b.WriteString(")")
+			}
+			b.WriteString("\n")
+		}
+	}
+	if c := strings.TrimSpace(critique); c != "" && critiqueSaysPolish(c) {
+		b.WriteString("\nDesign director's visual critique — apply the concrete fixes it lists:\n")
+		b.WriteString(c + "\n")
+	}
+
+	b.WriteString("\nBefore redeploying: serve the app locally (./scripts/serve.sh), re-run `node scripts/audit.js` until it prints clean (or a genuinely-stuck item you note), and re-run `node scripts/design-review.js` and apply what it lists (one more pass, then stop). ")
+	b.WriteString("Wire the customer's real assets from /workspace/assets/ so the review judges the real page. Then run fly deploy exactly once. Keep it minimal — this is polish, not a rebuild.")
+	return b.String()
 }
 
 // impeccableStep appends a deterministic design-quality gate to the build when

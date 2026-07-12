@@ -365,3 +365,52 @@ func TestBuild_NoSnapshotURLsOnlyAudit(t *testing.T) {
 		t.Errorf("the sole exec should be the design audit, got: %s", got)
 	}
 }
+
+func TestFixWorthwhile(t *testing.T) {
+	cases := []struct {
+		name     string
+		findings []Finding
+		critique string
+		want     bool
+	}{
+		{"clean + ship", nil, "SHIP — looks intentional and balanced.", false},
+		{"clean + empty", []Finding{}, "", false},
+		{"findings", []Finding{{Name: "invisible button"}}, "SHIP", true},
+		{"polish critique", nil, "POLISH\n1. Fix the grid last row.", true},
+		{"polish lowercase", nil, "polish: tighten spacing", true},
+	}
+	for _, c := range cases {
+		if got := fixWorthwhile(c.findings, c.critique); got != c.want {
+			t.Errorf("%s: fixWorthwhile = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestFixRoundInstruction(t *testing.T) {
+	instr := fixRoundInstruction(
+		[]Finding{
+			{Severity: "warning", Description: "peach age bar has too little contrast", File: "recept.html", Line: 42},
+			{Name: "orphaned card in last grid row"},
+		},
+		"POLISH\n1. Standardise the age badge wording.",
+	)
+	for _, want := range []string{
+		"POLISH PASS",
+		"Fix ONLY the items",
+		"1.", "[warning] peach age bar has too little contrast (recept.html:42)",
+		"2. orphaned card in last grid row",
+		"Standardise the age badge wording", // critique folded in
+		"node scripts/audit.js",
+		"fly deploy exactly once",
+	} {
+		if !strings.Contains(instr, want) {
+			t.Errorf("instruction missing %q\n---\n%s", want, instr)
+		}
+	}
+
+	// A SHIP critique isn't appended (only findings drive the prompt then).
+	instr = fixRoundInstruction([]Finding{{Name: "x"}}, "SHIP — good to go")
+	if strings.Contains(instr, "good to go") {
+		t.Error("SHIP critique should not be included in the fix prompt")
+	}
+}

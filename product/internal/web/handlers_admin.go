@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,7 +52,10 @@ type reviewItem struct {
 	Shots []reviewShot
 }
 
-// reviewShot is one page screenshot with a presigned URL.
+// reviewShot is one page screenshot. URL points at the app's shot handler
+// (not a presigned link) so it never expires — the handler presigns fresh on
+// every request. Fixes "Request has expired" when a page sits open past the
+// presign TTL and the customer/operator clicks a thumbnail.
 type reviewShot struct {
 	Path string
 	URL  string
@@ -65,15 +69,40 @@ func (r reviewItem) Thumb() string {
 	return ""
 }
 
-// withScreenshots presigns short-lived GET URLs for each of p's page shots.
-func (s *Server) withScreenshots(ctx context.Context, p *project.Project) reviewItem {
+// withScreenshots attaches per-page shot URLs that route through handleShot,
+// which presigns on demand — so open pages and bookmarks never break.
+func (s *Server) withScreenshots(_ context.Context, p *project.Project) reviewItem {
 	item := reviewItem{Project: p}
-	for _, sc := range p.Screenshots {
-		if u, err := s.storage.PresignGet(ctx, sc.Key, 10*time.Minute); err == nil {
-			item.Shots = append(item.Shots, reviewShot{Path: sc.Path, URL: u})
-		}
+	for i, sc := range p.Screenshots {
+		item.Shots = append(item.Shots, reviewShot{Path: sc.Path, URL: fmt.Sprintf("/projects/%s/shots/%d", p.ID, i)})
 	}
 	return item
+}
+
+// handleShot redirects to a freshly presigned URL for one of a project's page
+// screenshots. Viewable by the project's owner or an operator. Because the
+// redirect is minted per request, the image link never expires.
+func (s *Server) handleShot(w http.ResponseWriter, r *http.Request, u *user.User) {
+	p, err := s.store.ProjectByID(r.Context(), r.PathValue("id"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if p.UserID != u.ID && !s.isAdmin(u) {
+		http.NotFound(w, r) // don't reveal the project exists
+		return
+	}
+	i, err := strconv.Atoi(r.PathValue("i"))
+	if err != nil || i < 0 || i >= len(p.Screenshots) {
+		http.NotFound(w, r)
+		return
+	}
+	url, err := s.storage.PresignGet(r.Context(), p.Screenshots[i].Key, 10*time.Minute)
+	if err != nil {
+		http.Error(w, "unavailable", http.StatusBadGateway)
+		return
+	}
+	http.Redirect(w, r, url, http.StatusFound)
 }
 
 // buildStats summarizes build activity over the last 24h.
