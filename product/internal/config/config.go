@@ -203,7 +203,7 @@ func Load() Config {
 		StripeDomainPriceID: os.Getenv("STRIPE_DOMAIN_PRICE_ID"),
 		MaxDomainUSD:        envFloatOr("MAX_DOMAIN_USD", 100),
 
-		HostupAPIToken:      os.Getenv("HOSTUP_API_TOKEN"),
+		HostupAPIToken:      envOr("HOSTUP_API_TOKEN", os.Getenv("HOSTUP_API_KEY")), // both names accepted
 		HostupAPIURL:        envOr("HOSTUP_API_URL", "https://api.hostup.se"),
 		HostupPaymentMethod: envOr("HOSTUP_PAYMENT_METHOD", "invoice"),
 		MaxDomainSEK:        envFloatOr("MAX_DOMAIN_SEK", 300),

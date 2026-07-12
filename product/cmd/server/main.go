@@ -125,12 +125,10 @@ func main() {
 		log.Info("domains: hostup enabled", "buy", cfg.DomainBuyEnabled(), "base", cfg.HostupAPIURL)
 		domainReg = hostup.New(cfg.HostupAPIURL, cfg.HostupAPIToken, cfg.HostupPaymentMethod)
 		domainCap = cfg.MaxDomainSEK
-		orch.SetDomainProvider("hostup")
 	case cfg.CloudflareEnabled():
 		log.Info("domains: cloudflare enabled", "buy", cfg.DomainBuyEnabled())
 		domainReg = cloudflare.New("https://api.cloudflare.com/client/v4", cfg.CloudflareAPIToken, cfg.CloudflareAccountID)
 		domainCap = cfg.MaxDomainUSD
-		orch.SetDomainProvider("cloudflare")
 	}
 	if domainReg != nil {
 		if bill != nil {

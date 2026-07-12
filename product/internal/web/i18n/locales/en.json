@@ -101,7 +101,6 @@
   "domain.buy_ph": "Search for a domain…",
   "domain.buy_note": "Setup, renewal and HTTPS are all included — the domain is added to your subscription.",
   "domain.buy_fee": "+%s/mo",
-  "domain.buy_cc": "Country domains (like .se or .ru) can't be bought here — register one with your usual provider and attach it above instead.",
   "domain.registering_note": "We're registering %s — nothing you need to do.",
   "domain.pending_note": "Add these DNS records for %s at your domain provider, then verify:",
   "domain.verifying_note": "DNS found — issuing your certificate. This can take a few minutes.",

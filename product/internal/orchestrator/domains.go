@@ -65,13 +65,6 @@ func (o *Orchestrator) SetDomains(reg DomainRegistrar, bill domainBiller, priceI
 	o.maxDomainPrice = maxPrice
 }
 
-// SetDomainProvider records which registrar backs the feature ("cloudflare" /
-// "hostup"), for provider-specific UI copy (e.g. the ccTLD caveat).
-func (o *Orchestrator) SetDomainProvider(name string) { o.domainProvider = name }
-
-// DomainProvider returns the wired registrar's name ("" when unset).
-func (o *Orchestrator) DomainProvider() string { return o.domainProvider }
-
 // DomainsEnabled reports whether the feature is wired.
 func (o *Orchestrator) DomainsEnabled() bool { return o.domains != nil }
 

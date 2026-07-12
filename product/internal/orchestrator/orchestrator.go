@@ -71,7 +71,6 @@ type Orchestrator struct {
 	biller         domainBiller    // Stripe sub-items for the monthly add-on (nil → comped)
 	domainPriceID  string          // Stripe recurring price for the domain add-on
 	maxDomainPrice float64         // refuse a self-serve buy above this (registrar currency)
-	domainProvider string          // "cloudflare" | "hostup" (UI copy differences)
 }
 
 // Activity returns the language-neutral activity code of a project's running

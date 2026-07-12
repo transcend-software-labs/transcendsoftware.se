@@ -101,7 +101,6 @@
   "domain.buy_ph": "Sök efter en domän…",
   "domain.buy_note": "Konfiguration, förnyelse och HTTPS ingår — domänen läggs till i din prenumeration.",
   "domain.buy_fee": "+%s/mån",
-  "domain.buy_cc": "Landsdomäner (som .se eller .ru) går inte att köpa här — registrera en hos din vanliga leverantör och koppla den ovan istället.",
   "domain.registering_note": "Vi registrerar %s — inget du behöver göra.",
   "domain.pending_note": "Lägg till dessa DNS-poster för %s hos din domänleverantör och verifiera sedan:",
   "domain.verifying_note": "DNS hittad — utfärdar ditt certifikat. Det kan ta några minuter.",
