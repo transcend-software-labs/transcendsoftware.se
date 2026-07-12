@@ -188,15 +188,16 @@ h3 {
 .btn:active { transform: translateY(0); filter: brightness(.96); }
 .btn-sm { padding: .38rem .8rem; font-size: var(--fs-sm); }
 .btn-lg { padding: .8rem 1.6rem; font-size: var(--fs-lg); }
-/* Ghost buttons: bordered + transparent, for secondary actions. One base driven
-   by a custom property; variants recolor it. Undoes the gold gradient/glow the
-   .btn base sets (compose as "btn btn-ghost …"). */
-.btn-ghost {
+/* Ghost buttons: bordered + transparent, for secondary actions. One base
+   driven by a custom property; each variant is self-sufficient — "btn
+   btn-ghost-danger" works without also writing btn-ghost. Undoes the gold
+   gradient/glow the .btn base sets. */
+.btn-ghost, .btn-ghost-accent, .btn-ghost-danger {
   --ghost: var(--text);
   background: none; box-shadow: none;
   color: var(--ghost); border: 1px solid var(--border-2);
 }
-.btn-ghost:hover {
+.btn-ghost:hover, .btn-ghost-accent:hover, .btn-ghost-danger:hover {
   color: var(--ghost); border-color: var(--accent);
   background: color-mix(in srgb, var(--ghost) 8%, transparent);
   box-shadow: none;
@@ -584,7 +585,7 @@ label.design-option:hover { border-color: var(--accent); }
 }
 .review-thumb {
   width: 8rem; height: 5rem; object-fit: cover; object-position: top;
-  border: 1px solid var(--border); border-radius: 6px; background: var(--bg-2);
+  border: 1px solid var(--border); border-radius: calc(var(--radius) - 2px); background: var(--bg-2);
 }
 
 /* Impeccable design-audit checklist (Ready for delivery) + preview flag. */
