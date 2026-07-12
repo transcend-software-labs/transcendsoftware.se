@@ -682,3 +682,66 @@ func TestBuild_PreviewReadyEmailsExactlyOnce(t *testing.T) {
 		t.Fatalf("expected exactly one preview email, got %d (%+v)", n, rec.all())
 	}
 }
+
+// Guards the "button did nothing" bug class: the status change a customer's
+// redirect renders must happen synchronously in the action, not inside the
+// async pipeline goroutine — otherwise the redirected page re-renders the old
+// step until the goroutine catches up (seen live on answers, approve, and
+// change-request submits).
+func TestCustomerActions_FlipStatusSynchronously(t *testing.T) {
+	ctx := context.Background()
+
+	// SubmitAnswers: needs_input → out of needs_input + answers saved, before return.
+	st := store.NewMemory()
+	orch := newTestOrch(st)
+	p := &project.Project{ID: "sync1", UserID: "u1", Name: "X", Brief: "a site",
+		Status: project.StatusNeedsInput, Questions: []string{"q1"},
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	if err := st.CreateProject(ctx, p); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	orch.SubmitAnswers("sync1", "brochure only", "warm & rustic")
+	got, _ := st.ProjectByID(ctx, "sync1")
+	if got.Status == project.StatusNeedsInput {
+		t.Fatal("SubmitAnswers must flip out of needs_input before returning")
+	}
+	if got.Answers != "brochure only" || got.DesignBrief != "warm & rustic" {
+		t.Fatalf("answers must be saved synchronously, got %+v", got)
+	}
+	orch.SubmitAnswers("sync1", "overwrite attempt", "")
+	if got, _ := st.ProjectByID(ctx, "sync1"); got.Answers == "overwrite attempt" {
+		t.Fatal("a second submit must be a no-op")
+	}
+
+	// Reiterate: preview_ready → out of preview_ready before return.
+	st2 := store.NewMemory()
+	orch2 := newTestOrch(st2)
+	p2 := &project.Project{ID: "sync2", UserID: "u1", Name: "X", Brief: "a site",
+		Status: project.StatusPreviewReady, Plan: "the plan", PreviewURL: "https://x",
+		IterationsUsed: 1, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	if err := st2.CreateProject(ctx, p2); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	orch2.Reiterate("sync2", "make it blue")
+	if got, _ := st2.ProjectByID(ctx, "sync2"); got.Status == project.StatusPreviewReady && got.IterationsUsed == 1 {
+		t.Fatal("Reiterate must flip out of preview_ready before returning")
+	}
+
+	// RetryBuild: failed → out of failed before return.
+	st3 := store.NewMemory()
+	orch3 := newTestOrch(st3)
+	p3 := &project.Project{ID: "sync3", UserID: "u1", Name: "X", Brief: "a site",
+		Status: project.StatusFailed, Plan: "the plan", RejectReason: "boom",
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	if err := st3.CreateProject(ctx, p3); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	orch3.RetryBuild("sync3")
+	got3, _ := st3.ProjectByID(ctx, "sync3")
+	if got3.Status == project.StatusFailed {
+		t.Fatal("RetryBuild must flip out of failed before returning")
+	}
+	if got3.RejectReason != "" {
+		t.Fatal("RetryBuild must clear the failure reason synchronously")
+	}
+}

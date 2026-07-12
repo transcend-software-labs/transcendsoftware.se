@@ -439,22 +439,50 @@ func (o *Orchestrator) StartIntake(projectID string) {
 // SubmitAnswers records the customer's answers and chosen design direction,
 // then proceeds to plan→gate→build.
 func (o *Orchestrator) SubmitAnswers(projectID, answers, design string) {
+	// Save the answers and flip out of needs_input synchronously, so the
+	// customer's redirect immediately shows planning underway — otherwise the
+	// redirected page re-renders the (now empty) questions form until the async
+	// pipeline gets around to saving, which reads as "the click did nothing and
+	// ate my answers". Also makes a double-submit a clean no-op.
+	ctx := context.Background()
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		o.log.Error("submit answers: load", "err", err)
+		return
+	}
+	if p.Status != project.StatusNeedsInput {
+		return // idempotent — already submitted
+	}
+	p.Answers = answers
+	p.DesignBrief = design
+	p.Status = project.StatusPlanning // runPlanGateBuild re-sets this; flipping now updates the UI
+	if err := o.save(ctx, p); err != nil {
+		o.log.Error("submit answers: save", "err", err)
+		return
+	}
 	o.async(projectID, func(ctx context.Context) error {
-		p, err := o.store.ProjectByID(ctx, projectID)
-		if err != nil {
-			return err
-		}
-		p.Answers = answers
-		p.DesignBrief = design
-		if err := o.save(ctx, p); err != nil {
-			return err
-		}
 		return o.runPlanGateBuild(ctx, projectID)
 	})
 }
 
-// Reiterate runs another build pass against a customer change request.
+// Reiterate runs another build pass against a customer change request. The
+// eligibility guard and the flip to building happen synchronously (same
+// reasoning as SubmitAnswers/ApprovePlan): the customer's redirect must show
+// the build starting, and a double-submit becomes a clean no-op.
 func (o *Orchestrator) Reiterate(projectID, prompt string) {
+	ctx := context.Background()
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		o.log.Error("reiterate: load", "err", err)
+		return
+	}
+	if !p.CanReiterate() {
+		return
+	}
+	if err := o.setStatus(ctx, p, project.StatusBuilding); err != nil {
+		o.log.Error("reiterate: set building", "err", err)
+		return
+	}
 	o.async(projectID, func(ctx context.Context) error {
 		return o.runBuild(ctx, projectID, prompt, false)
 	})
@@ -465,14 +493,24 @@ func (o *Orchestrator) Reiterate(projectID, prompt string) {
 // consumes no change credit (IterationsUsed only advances on success) and, if
 // planning never completed, redoes plan + safety gate first.
 func (o *Orchestrator) RetryBuild(projectID string) {
+	// Guard + flip out of failed synchronously so the customer's redirect shows
+	// the build restarting (not the failed screen with a dead-looking button),
+	// and a double-click is a no-op.
+	ctx := context.Background()
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		o.log.Error("retry: load", "err", err)
+		return
+	}
+	if !p.CanRetry() {
+		return // already recovered or not in a retryable state
+	}
+	p.RejectReason = ""
+	if err := o.setStatus(ctx, p, project.StatusBuilding); err != nil {
+		o.log.Error("retry: set building", "err", err)
+		return
+	}
 	o.async(projectID, func(ctx context.Context) error {
-		p, err := o.store.ProjectByID(ctx, projectID)
-		if err != nil {
-			return err
-		}
-		if !p.CanRetry() {
-			return nil // already recovered or not in a retryable state
-		}
 		// Defensive sweep: a crash race can leave a previous attempt 'building'
 		// with a live sandbox. Starting a new build then double-builds the same
 		// app and collides on the deterministic machine name (seen live as a
@@ -489,10 +527,6 @@ func (o *Orchestrator) RetryBuild(projectID string) {
 				old.Status = project.StatusFailed
 				_ = o.store.UpdateIteration(ctx, old)
 			}
-		}
-		p.RejectReason = ""
-		if err := o.save(ctx, p); err != nil {
-			return err
 		}
 		// If planning never produced a plan, redo the whole plan→gate→build;
 		// otherwise just re-run the build from the existing plan.
@@ -759,7 +793,10 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string, i
 	if err != nil {
 		return err
 	}
-	if prompt != "" && !internal && !p.CanReiterate() {
+	// Budget check only: the state guard (preview_ready) now runs synchronously
+	// in Reiterate, which has already flipped the project to building by the
+	// time this goroutine executes.
+	if prompt != "" && !internal && p.IterationsUsed >= project.MaxIterations {
 		return errors.New("no reiterations remaining")
 	}
 	// Prime the per-page build checklist (customer hero) from the plan.
