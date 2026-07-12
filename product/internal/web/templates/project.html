@@ -269,6 +269,7 @@
     <li>{{if eq $.Data.IncludedChanges 1}}{{$.T "sub.incl.changes_one"}}{{else}}{{printf ($.T "sub.incl.changes_many") $.Data.IncludedChanges}}{{end}}</li>
     <li>{{$.T "sub.incl.support"}}</li>
   </ul>
+  {{if $.Data.OverageStr}}<p class="muted xsmall sub-overage">{{printf ($.T "prj.change.overage_note") $.Data.OverageStr}}</p>{{end}}
   {{if $.Data.PriceStr}}<p class="sub-price">{{printf ($.T "sub.price") $.Data.PriceStr}}</p>{{end}}
   <form method="post" action="/projects/{{.ID}}/subscribe">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
@@ -391,6 +392,7 @@
   <h2>{{$.T "prj.change.h2"}}</h2>
   {{if gt $.Data.ChangesLeft 0}}
   <p class="muted small">{{if eq $.Data.ChangesLeft 1}}{{$.T "prj.change.month_one"}}{{else}}{{printf ($.T "prj.change.month_many") $.Data.ChangesLeft}}{{end}}</p>
+  {{if $.Data.OverageStr}}<p class="muted xsmall">{{printf ($.T "prj.change.overage_note") $.Data.OverageStr}}</p>{{end}}
   {{else}}
   <p class="muted small">{{printf ($.T "prj.change.overage") $.Data.OverageStr}}</p>
   {{end}}

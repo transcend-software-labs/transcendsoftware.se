@@ -330,6 +330,8 @@ details summary { cursor: pointer; }
   display: grid;
   gap: .5rem;
 }
+/* Overage disclosure tucked directly under the included-changes list. */
+.sub-overage { margin: -.7rem 0 1.2rem; }
 .sub-incl li {
   position: relative;
   padding-left: 1.5rem;

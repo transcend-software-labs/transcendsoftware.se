@@ -159,6 +159,7 @@
   "prj.change.month_many": "%d ändringar ingår denna månad.",
   "prj.change.month_one": "1 ändring ingår denna månad.",
   "prj.change.overage": "Du har använt månadens ingående ändringar. Varje extra ändring kostar %s och läggs på din nästa faktura.",
+  "prj.change.overage_note": "Behöver du fler under en månad? Varje extra ändring kostar %s och läggs på din nästa faktura.",
   "prj.change.ph": "Gör herobilden större och lägg till en sektion med öppettider.",
   "prj.content.optional": "valfritt",
   "prj.content.provided": "Lämnad",

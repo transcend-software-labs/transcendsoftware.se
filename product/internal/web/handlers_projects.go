@@ -363,10 +363,13 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 	// unpaid preview-refinement panel below is gated on CanReiterate, which is
 	// false once paid). A monthly allowance is included; extra changes bill a flat
 	// fee, disclosed in the panel copy.
+	// The flat overage price is disclosed wherever the change model is explained
+	// (the subscribe panel and the change panel), so populate it regardless of
+	// paid state.
+	pv.OverageStr = formatPrice(int64(s.orch.OverageOre()), "sek")
 	if p.Paid {
 		pv.ShowChange = p.CanRequestChange()
 		pv.ChangesLeft = p.ChangesLeft(time.Now().UTC(), s.orch.ChangesPerMonth())
-		pv.OverageStr = formatPrice(int64(s.orch.OverageOre()), "sek")
 	}
 	if s.billing != nil {
 		pv.SubActive = p.Paid && p.PaidVia == "stripe" && p.StripeCustomerID != ""

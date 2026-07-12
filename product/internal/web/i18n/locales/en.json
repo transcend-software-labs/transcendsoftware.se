@@ -159,6 +159,7 @@
   "prj.change.month_many": "%d changes included this month.",
   "prj.change.month_one": "1 change included this month.",
   "prj.change.overage": "You've used this month's included changes. Each extra change costs %s and is added to your next invoice.",
+  "prj.change.overage_note": "Need more in a month? Each extra change is %s, added to your next invoice.",
   "prj.change.ph": "Make the hero photo bigger and add an opening-hours section.",
   "prj.content.optional": "optional",
   "prj.content.provided": "Provided",
