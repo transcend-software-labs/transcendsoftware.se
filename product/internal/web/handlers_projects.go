@@ -360,11 +360,16 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		pv.DomainName = p.DomainName
 		pv.DomainKind = p.DomainKind
 		pv.DomainRecords = p.DomainRecords
-		// The flat monthly add-on price (same for every domain) — shown once, so
-		// the customer knows what buying costs without us exposing per-domain cost.
-		if pv.DomainBuyable && s.billing != nil && s.cfg.StripeDomainPriceID != "" {
+		// The flat monthly add-on price (same for every domain) — shown on the buy
+		// panel so the customer knows what buying costs, without exposing our
+		// per-domain wholesale cost. Only fetched when the buy panel is rendered.
+		if pv.DomainBuyable && p.DomainStatus == project.DomainNone && s.billing != nil && s.cfg.StripeDomainPriceID != "" {
 			if pr, err := s.billing.Price(ctx, s.cfg.StripeDomainPriceID); err == nil {
 				pv.DomainAddonStr = formatPrice(pr.UnitAmount, pr.Currency)
+			} else {
+				// Surface a misconfigured STRIPE_DOMAIN_PRICE_ID (e.g. a product id
+				// instead of a price id) — otherwise the price just silently vanishes.
+				s.log.Warn("domain add-on price fetch failed", "price_id", s.cfg.StripeDomainPriceID, "err", err)
 			}
 		}
 		// Feedback after an action shows inside the panel (which is what htmx

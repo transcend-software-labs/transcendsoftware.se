@@ -31,6 +31,16 @@ import (
 // paywall. Buying needs a price id, so the search UI is available too.
 func newDomainServer(t *testing.T, cfURL string) (*httptest.Server, store.Store) {
 	t.Helper()
+	// Fake Stripe that serves the domain add-on price (29 kr/mo) so the buy panel
+	// can display the flat fee.
+	stripe := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/v1/prices/") {
+			_, _ = w.Write([]byte(`{"unit_amount":2900,"currency":"sek","recurring":{"interval":"month"}}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(stripe.Close)
 	st := store.NewMemory()
 	fake := llm.NewFake()
 	machines := fly.NewFake()
@@ -40,14 +50,13 @@ func newDomainServer(t *testing.T, cfURL string) (*httptest.Server, store.Store)
 	assets := storage.NewMemory()
 	orch := orchestrator.New(st, fake, fake, fake, b, machines, assets, broker, orchestrator.NoopVerifier{}, log)
 	orch.SetDomains(cloudflare.New(cfURL, "tok", "acct"), nil, "price_dom", 100)
-	cfg := config.Config{AdminEmail: "admin@example.com", BaseURL: "https://forge.example"}
+	cfg := config.Config{AdminEmail: "admin@example.com", BaseURL: "https://forge.example", StripeDomainPriceID: "price_dom"}
 	sessions := auth.NewSessions(st, time.Hour)
 	srv, err := web.NewServer(cfg, st, sessions, orch, broker, assets, log)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
-	// A real (unused for BYOD) Stripe client so nothing nil-panics.
-	srv.SetBilling(billing.New(cfURL, "sk_test_x"))
+	srv.SetBilling(billing.New(stripe.URL, "sk_test_x"))
 	ts := httptest.NewServer(srv.Handler())
 	testStores.Store(ts.URL, st)
 	return ts, st
@@ -113,6 +122,19 @@ func TestDomainAttach_ShowsRecords(t *testing.T) {
 	body := getBody(t, c, srv.URL+"/projects/dom1")
 	if !strings.Contains(body, "_acme-challenge.acme.se") || !strings.Contains(body, "/projects/dom1/domain/verify") {
 		t.Fatalf("pending_dns page missing records or verify button")
+	}
+}
+
+func TestDomainBuy_ShowsFlatFee(t *testing.T) {
+	srv, st := newDomainServer(t, "http://127.0.0.1:1")
+	defer srv.Close()
+	c := signedInClient(t, srv.URL)
+	seedPaidProject(t, st, "domfee", true)
+
+	// The buy panel shows the flat monthly add-on, fetched from the domain price.
+	body := getBody(t, c, srv.URL+"/projects/domfee")
+	if !strings.Contains(body, "29 kr") {
+		t.Fatalf("buy panel should show the flat add-on price (29 kr) fetched from Stripe")
 	}
 }
 

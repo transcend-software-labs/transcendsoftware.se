@@ -100,7 +100,7 @@
   "domain.or_buy": "Or buy a new domain",
   "domain.buy_ph": "Search for a domain…",
   "domain.buy_note": "Setup, renewal and HTTPS are all included — the domain is added to your subscription.",
-  "domain.buy_fee": "Adds %s/month.",
+  "domain.buy_fee": "+%s/mo",
   "domain.available": "Available",
   "domain.buy_cc": "Country domains (like .se or .ru) can't be bought here — register one with your usual provider and attach it above instead.",
   "domain.registering_note": "We're registering %s — nothing you need to do.",

@@ -100,7 +100,7 @@
   "domain.or_buy": "Eller köp en ny domän",
   "domain.buy_ph": "Sök efter en domän…",
   "domain.buy_note": "Konfiguration, förnyelse och HTTPS ingår — domänen läggs till i din prenumeration.",
-  "domain.buy_fee": "Lägger till %s/mån.",
+  "domain.buy_fee": "+%s/mån",
   "domain.available": "Ledig",
   "domain.buy_cc": "Landsdomäner (som .se eller .ru) går inte att köpa här — registrera en hos din vanliga leverantör och koppla den ovan istället.",
   "domain.registering_note": "Vi registrerar %s — inget du behöver göra.",

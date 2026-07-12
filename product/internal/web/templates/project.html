@@ -304,14 +304,17 @@
     </div>
     {{if $.Data.DomainBuyable}}
     <div class="domain-buy">
-      <p class="domain-or">{{$.T "domain.or_buy"}}</p>
+      <div class="domain-buy-head">
+        <p class="domain-or">{{$.T "domain.or_buy"}}</p>
+        {{if $.Data.DomainAddonStr}}<span class="domain-fee">{{printf ($.T "domain.buy_fee") $.Data.DomainAddonStr}}</span>{{end}}
+      </div>
       <input class="domain-search" type="search" name="q" placeholder="{{$.T "domain.buy_ph"}}"
              hx-get="/projects/{{.ID}}/domain/search" hx-target="#domain-results" hx-swap="innerHTML" hx-indicator="#domain-searching"
              hx-trigger="input changed delay:400ms, search" autocapitalize="off" autocomplete="off" spellcheck="false">
       <span id="domain-searching" class="spinner htmx-indicator"></span>
       <div id="domain-results"></div>
       <p class="muted xsmall">{{$.T "domain.buy_cc"}}</p>
-      <p class="muted xsmall">{{$.T "domain.buy_note"}}{{if $.Data.DomainAddonStr}} {{printf ($.T "domain.buy_fee") $.Data.DomainAddonStr}}{{end}}</p>
+      <p class="muted xsmall">{{$.T "domain.buy_note"}}</p>
     </div>
     {{end}}
   {{else if eq $.Data.DomainStatus "registering"}}
