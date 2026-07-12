@@ -89,6 +89,11 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.Handle("GET /static/", http.FileServerFS(staticFS))
+	// Non-HTML clients (crawlers, curl, old bookmarks) ask for /favicon.ico
+	// directly; the pages themselves link the SVG in <head>.
+	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/static/favicon.svg", http.StatusMovedPermanently)
+	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))

@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* JetBrains Mono is loaded from the head partial (<link> + preconnect) — not
+   @import here, which would block rendering on a nested fetch. */
 
 :root {
   --bg: #14130d;
