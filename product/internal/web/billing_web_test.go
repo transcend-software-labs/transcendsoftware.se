@@ -265,3 +265,41 @@ func TestBilling_InvisibleWhenUnconfigured(t *testing.T) {
 		t.Errorf("unconfigured webhook should 404, got %d", r.StatusCode)
 	}
 }
+
+// With billing on, subscribing IS accepting: an unpaid customer sees only the
+// subscribe CTA, while a paid (comped) customer keeps the explicit accept step.
+func TestAcceptStep_HiddenWhenSubscribeIsTheCTA(t *testing.T) {
+	stripe := fakeStripe(t, nil)
+	defer stripe.Close()
+	srv, st := newBillingServer(t, stripe.URL)
+	defer srv.Close()
+	c := signedInClient(t, srv.URL)
+	ctx := t.Context()
+	u, _ := st.UserByEmail(ctx, "neighbour@example.com")
+
+	unpaid := &project.Project{ID: "acc1", UserID: u.ID, Name: "Bakery",
+		Status: project.StatusPreviewReady, PreviewURL: "https://x"}
+	if err := st.CreateProject(ctx, unpaid); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	body := getBody(t, c, srv.URL+"/projects/acc1")
+	if strings.Contains(body, "/projects/acc1/accept") {
+		t.Error("unpaid + billing: the accept form must be hidden (subscribe is the CTA)")
+	}
+	if !strings.Contains(body, "/projects/acc1/subscribe") {
+		t.Error("unpaid + billing: the subscribe panel must show")
+	}
+
+	comped := &project.Project{ID: "acc2", UserID: u.ID, Name: "Bakery",
+		Status: project.StatusPreviewReady, PreviewURL: "https://x", Paid: true, PaidVia: "manual"}
+	if err := st.CreateProject(ctx, comped); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	body = getBody(t, c, srv.URL+"/projects/acc2")
+	if !strings.Contains(body, "/projects/acc2/accept") {
+		t.Error("paid/comped: the explicit accept step must remain")
+	}
+	if strings.Contains(body, "/projects/acc2/subscribe") {
+		t.Error("paid: no subscribe panel expected")
+	}
+}

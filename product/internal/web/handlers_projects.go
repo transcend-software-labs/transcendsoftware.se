@@ -197,6 +197,7 @@ type projectView struct {
 	SubActive     bool   // paid via stripe — show "active" + manage-subscription
 	SubProcessing bool   // returned from Checkout success while the webhook is still in flight
 	PriceStr      string // formatted plan price ("99 kr"), "" if unavailable
+	ShowAccept    bool   // show the explicit accept step (paid/comped customers, or billing off — subscribing accepts implicitly otherwise)
 
 	// Custom domain panel (see handlers_domains.go). Visible only to paying
 	// customers when the feature is wired.
@@ -341,6 +342,11 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		GenExhausted: exhausted, GenNotice: genNotice,
 	}
 	sub := r.URL.Query().Get("sub")
+	// The explicit accept step only exists where subscribing can't stand in for
+	// it: paid/comped customers (nothing left to buy) and billing-off installs.
+	// For an unpaid customer with billing on, "Prenumerera & få min sida" IS the
+	// accept — paying flips the project into Rasmus's review queue.
+	pv.ShowAccept = p.CanAccept() && (p.Paid || s.billing == nil)
 	if s.billing != nil {
 		pv.SubActive = p.Paid && p.PaidVia == "stripe" && p.StripeCustomerID != ""
 		pv.SubProcessing = !p.Paid && sub == "success" // paid on Stripe, webhook still in flight

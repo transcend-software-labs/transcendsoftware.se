@@ -249,7 +249,7 @@
 </section>
 {{end}}
 
-{{if .CanAccept}}
+{{if $.Data.ShowAccept}}
 <section class="panel accept-panel">
   <h2>{{$.T "prj.accept.h2"}}</h2>
   <p class="muted small">{{$.T "prj.accept.intro"}}</p>
@@ -263,7 +263,7 @@
 {{if $.Data.CanSubscribe}}
 <section class="panel sub-panel">
   <h2>{{$.T "sub.h2"}}</h2>
-  <p class="muted small">{{$.T "sub.intro"}}</p>
+  <p class="muted small">{{$.T "sub.intro"}}{{if eq .Status "preview_ready"}} {{$.T "sub.accepts_note"}}{{end}}</p>
   {{if $.Data.PriceStr}}<p class="sub-price">{{printf ($.T "sub.price") $.Data.PriceStr}}</p>{{end}}
   <form method="post" action="/projects/{{.ID}}/subscribe">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">

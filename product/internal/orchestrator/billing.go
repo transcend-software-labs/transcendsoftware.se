@@ -3,6 +3,8 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+
+	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 )
 
 // SubscriptionStarted records a Stripe subscription for a project: it persists
@@ -30,6 +32,16 @@ func (o *Orchestrator) SubscriptionStarted(projectID, customerID, subID string) 
 	}
 	if wasPaid {
 		return nil // already paid (comp) — don't re-announce
+	}
+	// Paying IS accepting: subscribing is the customer's strongest "ship it"
+	// signal, so a preview_ready project moves straight into Rasmus's review
+	// queue — no separate accept click. (The paid email below already tells the
+	// operator to review & deliver, so no extra accept notification.)
+	if cur, err := o.store.ProjectByID(ctx, projectID); err == nil && cur.Status == project.StatusPreviewReady {
+		cur.Status = project.StatusAccepted
+		if err := o.save(ctx, cur); err != nil {
+			o.log.Error("subscription started: auto-accept", "project", projectID, "err", err)
+		}
 	}
 	pe := custEmail(p.Locale, "subscription_active")
 	o.notifyCustomer(ctx, p.UserID, pe.Subject,

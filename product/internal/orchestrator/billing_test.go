@@ -39,6 +39,10 @@ func TestSubscriptionStarted(t *testing.T) {
 	if !got.Paid || got.PaidVia != "stripe" || got.StripeCustomerID != "cus_1" || got.StripeSubID != "sub_1" {
 		t.Fatalf("state after started: %+v", got)
 	}
+	// Paying IS accepting: the preview moves into the review queue on payment.
+	if got.Status != project.StatusAccepted {
+		t.Fatalf("status after payment = %q, want accepted", got.Status)
+	}
 	if !sentTo(rec, "cust@example.com", "prenumeration") { // Swedish subject
 		t.Errorf("no localized customer email; sent: %+v", rec.all())
 	}
@@ -72,6 +76,11 @@ func TestSubscriptionStarted_Comped(t *testing.T) {
 	}
 	if len(rec.all()) != n {
 		t.Errorf("comped subscribe should not email; sent: %+v", rec.all())
+	}
+	// Auto-accept rides the unpaid→paid transition only: a comped project keeps
+	// its explicit accept step (the accept button stays visible for it).
+	if got.Status != project.StatusPreviewReady {
+		t.Fatalf("comped subscribe must not auto-accept, status = %q", got.Status)
 	}
 }
 

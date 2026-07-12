@@ -232,6 +232,7 @@
   "status.preview_ready": "Preview ready",
   "status.rejected": "Declined",
   "status.screening": "Reviewing the request…",
+  "sub.accepts_note": "Subscribing also accepts this version of your site — Rasmus takes it from there.",
   "sub.active": "Subscription active",
   "sub.btn": "Subscribe & get my site",
   "sub.h2": "Get your website delivered",
