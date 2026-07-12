@@ -437,6 +437,13 @@ details summary { cursor: pointer; }
    option's body visible at once — keep the unselected ones collapsed. */
 .dc-body[hidden] { display: none; }
 .dc-body input[type=text], .dc-body input[type=search] { width: 100%; }
+/* Keep the (idle, opacity:0) search spinner out of the grid flow so it doesn't
+   reserve an empty row under the field — sit it inside the input's right edge. */
+.dc-search { position: relative; }
+.dc-search .domain-search { padding-right: 2.1rem; margin: 0; }
+.dc-search #sub-domain-searching {
+  position: absolute; right: .7rem; top: 50%; transform: translateY(-50%); margin: 0;
+}
 .domain-pick { list-style: none; display: grid; gap: .35rem; margin: 0; padding: 0; }
 .dc-pick {
   display: flex; align-items: center; gap: .6rem; cursor: pointer;

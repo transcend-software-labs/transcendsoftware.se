@@ -284,10 +284,12 @@
       {{if $.Data.DomainOfferBuy}}
       <label class="dc-opt"><input type="radio" name="domain_mode" value="buy"> <span class="dc-label">{{$.T "sub.domain.buy"}}</span>{{if $.Data.DomainAddonStr}}<span class="domain-fee">{{printf ($.T "domain.buy_fee") $.Data.DomainAddonStr}}</span>{{end}}</label>
       <div class="dc-body" data-for="buy" hidden>
-        <input class="domain-search" type="search" name="q" placeholder="{{$.T "domain.buy_ph"}}"
-               hx-get="/projects/{{.ID}}/domain/search?select=1" hx-target="#sub-domain-results" hx-swap="innerHTML" hx-indicator="#sub-domain-searching"
-               hx-params="q" hx-trigger="input changed delay:400ms, search" autocapitalize="off" autocomplete="off" spellcheck="false">
-        <span id="sub-domain-searching" class="spinner htmx-indicator"></span>
+        <div class="dc-search">
+          <input class="domain-search" type="search" name="q" placeholder="{{$.T "domain.buy_ph"}}"
+                 hx-get="/projects/{{.ID}}/domain/search?select=1" hx-target="#sub-domain-results" hx-swap="innerHTML" hx-indicator="#sub-domain-searching"
+                 hx-params="q" hx-trigger="input changed delay:400ms, search" autocapitalize="off" autocomplete="off" spellcheck="false">
+          <span id="sub-domain-searching" class="spinner htmx-indicator"></span>
+        </div>
         <div id="sub-domain-results"></div>
         <p class="muted xsmall">{{$.T "domain.buy_note"}}</p>
       </div>
