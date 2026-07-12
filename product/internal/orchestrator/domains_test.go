@@ -215,6 +215,22 @@ func TestBuyDomain_PriceCap(t *testing.T) {
 	}
 }
 
+func TestBuyDomain_RenewalCap(t *testing.T) {
+	st := store.NewMemory()
+	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
+	// Cheap first year, pricey renewal — must be refused like an over-cap price.
+	cf := &fakeCF{offers: []registrar.Offer{{Name: "acme.se", Registrable: true, Price: 9, Renewal: 899, Currency: "SEK"}}}
+	orch.SetDomains(cf, &fakeBiller{}, "price_dom", 300)
+	seedDomainProject(t, st, nil)
+
+	if err := orch.BuyDomain(context.Background(), "p1", "acme.se"); err != ErrDomainTooPricey {
+		t.Fatalf("expected renewal-cap rejection, got %v", err)
+	}
+	if len(cf.registered) != 0 {
+		t.Fatal("must not register a domain whose renewal exceeds the cap")
+	}
+}
+
 func TestBuyDomain_NotRegistrable(t *testing.T) {
 	st := store.NewMemory()
 	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})

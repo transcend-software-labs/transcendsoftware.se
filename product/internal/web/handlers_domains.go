@@ -82,14 +82,15 @@ func (s *Server) handleDomainSearch(w http.ResponseWriter, r *http.Request, u *u
 		s.renderFragment(w, r, "domain_results", data)
 		return
 	}
-	// Show only domains the customer can actually buy — skip taken, premium,
-	// over-cap or unsupported ones rather than listing them as unavailable. The
-	// wholesale price gates this but is never shown (they pay the flat add-on).
+	// Show only domains the customer can actually buy — skip taken, over-cap
+	// (registration OR renewal) or unsupported ones rather than listing them as
+	// unavailable. The wholesale prices gate this but are never shown (the
+	// customer pays the flat add-on). Same Buyable check as the buy guard.
 	cap := s.orch.MaxDomainPrice()
 	type result struct{ Name string }
 	var results []result
 	for _, o := range offers {
-		if o.Registrable && o.Price > 0 && o.Price <= cap {
+		if o.Buyable(cap) {
 			results = append(results, result{Name: o.Name})
 		}
 	}

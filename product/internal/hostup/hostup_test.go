@@ -38,7 +38,7 @@ func TestCheckDomains(t *testing.T) {
 	if names, _ := gotBody["names"].([]any); len(names) != 2 || names[0] != "acme.se" {
 		t.Fatalf("request names = %v", gotBody["names"])
 	}
-	if o := offers[0]; !o.Registrable || o.Price != 99 || o.Currency != "SEK" {
+	if o := offers[0]; !o.Registrable || o.Price != 99 || o.Renewal != 169 || o.Currency != "SEK" {
 		t.Fatalf("offer[0] = %+v", o)
 	}
 	if o := offers[1]; o.Registrable {

@@ -82,8 +82,9 @@ type availabilityItem struct {
 		Amount       float64 `json:"amount"`
 		CurrencyCode string  `json:"currencyCode"`
 	} `json:"billing"`
-	ExistingDomainID            string `json:"existingDomainId"`
-	ExistingDomainServiceStatus string `json:"existingDomainServiceStatus"`
+	RenewalAmount               float64 `json:"renewalAmount"`
+	ExistingDomainID            string  `json:"existingDomainId"`
+	ExistingDomainServiceStatus string  `json:"existingDomainServiceStatus"`
 }
 
 // checkAvailability runs the availability check, following the async 202+poll
@@ -126,6 +127,7 @@ func (i availabilityItem) offer() registrar.Offer {
 		Registrable: i.Available && i.Actions.CanRegister.Allowed,
 		Premium:     i.Premium,
 		Price:       i.Billing.Amount,
+		Renewal:     i.RenewalAmount,        // first years are often discounted; the cap checks this too
 		Currency:    i.Billing.CurrencyCode, // SEK
 	}
 }

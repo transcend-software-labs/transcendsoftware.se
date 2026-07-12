@@ -39,7 +39,7 @@ func TestSearchDomains(t *testing.T) {
 	if len(offers) != 2 {
 		t.Fatalf("offers = %d", len(offers))
 	}
-	if o := offers[0]; !o.Registrable || o.Price != 10.44 || o.Currency != "USD" || o.Name != "acme.dev" {
+	if o := offers[0]; !o.Registrable || o.Price != 10.44 || o.Renewal != 10.44 || o.Currency != "USD" || o.Name != "acme.dev" {
 		t.Fatalf("offer[0] = %+v", o)
 	}
 	if o := offers[1]; o.Registrable || o.Price != 0 {

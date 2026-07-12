@@ -169,7 +169,7 @@ func (o *Orchestrator) BuyDomain(ctx context.Context, projectID, domain string) 
 	if !offer.Registrable {
 		return ErrNotRegistrable
 	}
-	if offer.Price <= 0 || offer.Price > o.maxDomainPrice {
+	if !offer.Buyable(o.maxDomainPrice) {
 		return ErrDomainTooPricey
 	}
 

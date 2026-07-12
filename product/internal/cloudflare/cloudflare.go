@@ -94,11 +94,13 @@ type domainResult struct {
 
 func (d domainResult) offer() DomainOffer {
 	price, _ := strconv.ParseFloat(d.Pricing.RegistrationCost, 64)
+	renewal, _ := strconv.ParseFloat(d.Pricing.RenewalCost, 64)
 	return DomainOffer{
 		Name:        d.Name,
 		Registrable: d.Registrable,
 		Premium:     d.Tier == "premium",
 		Price:       price,
+		Renewal:     renewal,
 		Currency:    d.Pricing.Currency,
 	}
 }
