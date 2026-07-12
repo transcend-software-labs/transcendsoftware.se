@@ -82,19 +82,16 @@ func (s *Server) handleDomainSearch(w http.ResponseWriter, r *http.Request, u *u
 		s.renderFragment(w, r, "domain_results", data)
 		return
 	}
-	// The wholesale registration price is used only to gate buyability (the
-	// customer pays the flat monthly add-on, not this), so it's never displayed.
+	// Show only domains the customer can actually buy — skip taken, premium,
+	// over-cap or unsupported ones rather than listing them as unavailable. The
+	// wholesale price gates this but is never shown (they pay the flat add-on).
 	cap := s.orch.MaxDomainUSD()
-	type result struct {
-		Name    string
-		Buyable bool
-	}
+	type result struct{ Name string }
 	var results []result
 	for _, o := range offers {
-		results = append(results, result{
-			Name:    o.Name,
-			Buyable: o.Registrable && o.Price > 0 && o.Price <= cap,
-		})
+		if o.Registrable && o.Price > 0 && o.Price <= cap {
+			results = append(results, result{Name: o.Name})
+		}
 	}
 	data["Results"] = results
 	data["None"] = len(results) == 0

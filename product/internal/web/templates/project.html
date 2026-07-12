@@ -415,15 +415,13 @@
 {{if .Data.Results}}<ul class="domain-hits">
   {{range .Data.Results}}<li>
     <span class="domain-hit-name mono">{{.Name}}</span>
-    {{if .Buyable}}<span class="domain-hit-ok">{{tr $.Lang "domain.available"}}</span>
-      <form method="post" action="/projects/{{$.Data.PID}}/domain/buy" class="inline"
-            hx-post="/projects/{{$.Data.PID}}/domain/buy" hx-target="#domain-panel" hx-select="#domain-panel" hx-swap="outerHTML" hx-confirm="{{tr $.Lang "domain.buy_confirm"}} {{.Name}}?">
-        <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-        <input type="hidden" name="domain" value="{{.Name}}">
-        <input type="hidden" name="ack" value="1">
-        <button class="btn btn-sm" type="submit">{{tr $.Lang "domain.buy_btn"}}</button>
-      </form>
-    {{else}}<span class="muted small">{{tr $.Lang "domain.taken"}}</span>{{end}}
+    <form method="post" action="/projects/{{$.Data.PID}}/domain/buy" class="inline"
+          hx-post="/projects/{{$.Data.PID}}/domain/buy" hx-target="#domain-panel" hx-select="#domain-panel" hx-swap="outerHTML" hx-confirm="{{tr $.Lang "domain.buy_confirm"}} {{.Name}}?">
+      <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+      <input type="hidden" name="domain" value="{{.Name}}">
+      <input type="hidden" name="ack" value="1">
+      <button class="btn btn-sm" type="submit">{{tr $.Lang "domain.buy_btn"}}</button>
+    </form>
   </li>
   {{end}}</ul>
 {{end}}{{end}}
