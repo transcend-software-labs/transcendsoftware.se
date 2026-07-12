@@ -76,9 +76,12 @@ body {
     radial-gradient(1200px 600px at 70% -10%, var(--accent-glow), transparent 60%),
     var(--bg);
   color: var(--text);
-  font-family: var(--font-mono);
+  /* Sans for reading, mono for voice: body copy renders in the system sans;
+     JetBrains Mono is re-applied to identity + data (headings, brand, buttons,
+     badges, tables, logs) by the scoped rule near the end of this file. */
+  font-family: var(--font-sans);
   font-size: var(--fs-base);
-  line-height: 1.65;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   /* Sticky footer: the page fills at least the viewport, main grows to take
      the slack, so the footer sits at the bottom on short pages. Flexbox
@@ -152,10 +155,19 @@ label.design-option:has(input:focus-visible) {
 .linklike { background: none; border: none; color: var(--muted); cursor: pointer; font: inherit; transition: color .15s var(--ease); }
 .linklike:hover { color: var(--accent); }
 
-/* Typography */
-h1 { font-size: var(--fs-3xl); font-weight: 500; letter-spacing: -.025em; line-height: 1.12; }
-h2 { font-size: var(--fs-xl); font-weight: 500; margin-bottom: var(--sp-3); letter-spacing: -.01em; }
-h3 { font-size: var(--fs-lg); font-weight: 500; }
+/* Typography. Three deliberate levels: h1 anchors the page, h2 titles a panel,
+   h3 is a mono eyebrow — small caps-style kicker that labels a subsection
+   without competing with body copy (its old 1rem size was body-sized). */
+h1 { font-size: var(--fs-3xl); font-weight: 600; letter-spacing: -.025em; line-height: 1.12; }
+h2 { font-size: var(--fs-xl); font-weight: 600; margin-bottom: var(--sp-3); letter-spacing: -.01em; }
+h3 {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+}
+.panel h3 { margin-top: var(--sp-4); }
 .lead { font-size: var(--fs-xl); color: var(--muted); margin: 1.25rem 0 var(--sp-6); max-width: 48ch; }
 .muted { color: var(--muted); }
 .small { font-size: var(--fs-sm); }
@@ -314,6 +326,7 @@ button.is-busy::after {
 .plan, .log {
   background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius);
   padding: var(--sp-4); white-space: pre-wrap; font-size: var(--fs-md); overflow-x: auto; margin-top: var(--sp-2);
+  line-height: 1.7; /* mono blocks read denser than sans — give them air */
 }
 
 /* Live build log */
@@ -364,7 +377,7 @@ details summary { cursor: pointer; }
 
 /* Payment status (operator only) */
 .pay-row { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-4); flex-wrap: wrap; }
-.pay-badge { font-weight: 700; font-size: var(--fs-md); padding: .2rem .55rem; border-radius: 999px; }
+.pay-badge { font-weight: 600; font-size: var(--fs-md); padding: .2rem .55rem; border-radius: 999px; }
 .pay-yes { color: var(--green); background: var(--green-fill); }
 .pay-no { color: var(--red); background: var(--red-fill); }
 .pay-panel .pay-badge { font-size: var(--fs-base); }
@@ -416,7 +429,7 @@ details summary { cursor: pointer; }
   left: 0;
   top: 0;
   color: var(--green);
-  font-weight: 700;
+  font-weight: 600;
 }
 /* Active subscription: the card reads as "settled" — a calm green accent
    instead of the gold call-to-action tint. */
@@ -544,7 +557,7 @@ label.design-option:hover { border-color: var(--accent); }
   gap: var(--sp-4); margin: .8rem 0;
 }
 .review-shots figure { margin: 0; }
-.review-shots figcaption { margin-bottom: var(--sp-1); font-family: monospace; }
+.review-shots figcaption { margin-bottom: var(--sp-1); font-family: var(--font-mono); }
 .review-shot {
   display: block; width: 100%; height: 18rem; object-fit: cover; object-position: top;
   border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-2);
@@ -573,7 +586,7 @@ label.design-option:hover { border-color: var(--accent); }
 .finding-error .finding-sev { color: var(--red); border-color: var(--red); }
 .finding-warning .finding-sev { color: var(--accent); border-color: var(--accent); }
 .finding-name { font-weight: 600; cursor: help; }
-.finding-where { margin-left: auto; font-family: monospace; }
+.finding-where { margin-left: auto; font-family: var(--font-mono); }
 .audit-flag { color: var(--accent); font-size: var(--fs-md); white-space: nowrap; }
 .critique-text { white-space: pre-wrap; margin: var(--sp-2) 0 0; }
 
@@ -898,7 +911,7 @@ label.ack-later { display: flex; flex-direction: row; align-items: flex-start; g
 .caption-form input[type=text] { flex: 1; }
 .files-hint { margin: .1rem 0 var(--sp-2); }
 
-.gen-spark { font-weight: 700; }
+.gen-spark { font-weight: 600; }
 .gen-exhausted { margin-top: var(--sp-2); font-style: italic; }
 .gen-notice {
   margin: var(--sp-1) 0 0; padding: .55rem var(--sp-3); border-radius: var(--radius);
@@ -931,4 +944,19 @@ label.ack-later { display: flex; flex-direction: row; align-items: flex-start; g
   .slot-file-name { min-width: 0; }
   .roster-member .roster-fields { flex-direction: column; }
   .roster-member .roster-fields input { min-width: 0; }
+}
+
+/* ── Voice: where JetBrains Mono lives ──────────────────────────────────────
+   The body reads in the system sans; mono carries identity (headings, brand,
+   controls, badges) and data (tables, logs, paths, prices, timeline). Kept at
+   the end of the file so it outranks earlier `font: inherit` shorthands
+   (.btn, .linklike targets) by source order. */
+h1, h2, h3, .brand, .btn, .badge, .pay-badge, .hist-label, .finding-sev,
+.mono, .stat-num, .proof-stat, .sub-price, .tl-label, .timeline, table,
+.plan, .log, .finding-where, .domain-fee, .gen-open, code {
+  font-family: var(--font-mono);
+}
+/* Numbers that get compared line-to-line align digit-for-digit. */
+table, .stat-num, .proof-stat, .sub-price, .domain-fee {
+  font-variant-numeric: tabular-nums;
 }

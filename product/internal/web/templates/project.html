@@ -68,7 +68,7 @@
     {{end}}
   </ul>
   {{if .Spec.NotIncluded}}
-  <h3 class="muted small" style="margin-top:1rem">{{$.T "prj.scope.not"}}</h3>
+  <h3>{{$.T "prj.scope.not"}}</h3>
   <ul class="scope-list scope-not">
     {{range .Spec.NotIncluded}}<li class="muted small">{{.}}</li>{{end}}
   </ul>
@@ -234,8 +234,8 @@
 <section class="panel">
   <h2>{{$.T "prj.brief.h2"}}</h2>
   <p class="brief">{{.Brief}}</p>
-  {{if .Answers}}<h3 class="muted small" style="margin-top:1rem">{{$.T "prj.brief.answers"}}</h3><p class="brief">{{.Answers}}</p>{{end}}
-  {{if .DesignBrief}}<h3 class="muted small" style="margin-top:1rem">{{$.T "prj.brief.design"}}</h3><p class="brief">{{.DesignBrief}}</p>{{end}}
+  {{if .Answers}}<h3>{{$.T "prj.brief.answers"}}</h3><p class="brief">{{.Answers}}</p>{{end}}
+  {{if .DesignBrief}}<h3>{{$.T "prj.brief.design"}}</h3><p class="brief">{{.DesignBrief}}</p>{{end}}
 </section>
 
 {{if .CanRetry}}

@@ -103,9 +103,9 @@
 <section class="panel">
   <h2>Brief</h2>
   <p class="brief">{{.Brief}}</p>
-  {{if .Answers}}<h3 class="muted small" style="margin-top:1rem">Answers</h3><p class="brief">{{.Answers}}</p>{{end}}
-  {{if .DesignBrief}}<h3 class="muted small" style="margin-top:1rem">Design direction</h3><p class="brief">{{.DesignBrief}}</p>{{end}}
-  {{if .RejectReason}}<h3 class="muted small" style="margin-top:1rem">Reject/flag reason</h3><p class="brief">{{.RejectReason}}</p>{{end}}
+  {{if .Answers}}<h3>Answers</h3><p class="brief">{{.Answers}}</p>{{end}}
+  {{if .DesignBrief}}<h3>Design direction</h3><p class="brief">{{.DesignBrief}}</p>{{end}}
+  {{if .RejectReason}}<h3>Reject/flag reason</h3><p class="brief">{{.RejectReason}}</p>{{end}}
 </section>
 
 {{if .Plan}}
