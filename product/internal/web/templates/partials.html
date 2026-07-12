@@ -38,5 +38,45 @@
 <footer class="foot"><span class="muted">{{.T "foot.line"}}
 <a href="https://transcendsoftware.se">Rasmus Kockum ↗</a> · <a href="/terms">{{.T "foot.terms"}}</a></span>
 <span class="lang-switch muted small">{{$cur := .Lang}}{{range .Languages}} <a href="?lang={{.Code}}"{{if eq .Code $cur}} class="lang-active"{{end}} lang="{{.Code}}" hreflang="{{.Code}}">{{.Label}}</a>{{end}}</span></footer>
+<script>
+(function () {
+  // Global busy state: any submit button that fires a request — an htmx call or
+  // a plain form POST that navigates — is disabled and shows a spinner until it
+  // resolves, so a click never looks dead and can't be double-fired. Opt out
+  // with data-no-busy on the button or its form.
+  function target(el) {
+    if (!el) return null;
+    if (el.tagName === 'BUTTON' || (el.tagName === 'INPUT' && el.type === 'submit')) return el;
+    return el.querySelector ? el.querySelector('button:not([type=button]), input[type=submit]') : null;
+  }
+  function busy(btn) {
+    if (!btn || btn.disabled || btn.hasAttribute('data-no-busy')) return;
+    if (btn.form && btn.form.hasAttribute('data-no-busy')) return;
+    btn.classList.add('is-busy');
+    btn.disabled = true;
+  }
+  function idle(btn) {
+    if (!btn) return;
+    btn.classList.remove('is-busy');
+    btn.disabled = false;
+  }
+  function htmxForm(f) {
+    return f.hasAttribute('hx-get') || f.hasAttribute('hx-post') ||
+      f.hasAttribute('hx-put') || f.hasAttribute('hx-delete') || f.hasAttribute('hx-patch');
+  }
+  // Plain forms navigate away — disable so the click can't repeat. htmx forms are
+  // driven by the request lifecycle below (so the disable lifts after a swap).
+  document.addEventListener('submit', function (e) {
+    if (!htmxForm(e.target)) busy(target(e.target));
+  });
+  document.addEventListener('htmx:beforeRequest', function (e) { busy(target(e.detail.elt)); });
+  document.addEventListener('htmx:afterRequest', function (e) { idle(target(e.detail.elt)); });
+  // Restore any button left disabled when the page returns from the bfcache.
+  window.addEventListener('pageshow', function () {
+    var b = document.querySelectorAll('.is-busy');
+    for (var i = 0; i < b.length; i++) idle(b[i]);
+  });
+})();
+</script>
 </body>
 </html>{{end}}

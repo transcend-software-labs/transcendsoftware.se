@@ -295,10 +295,10 @@
     <p class="muted small">{{$.T "domain.intro"}}</p>
     <div class="domain-attach">
       <form method="post" action="/projects/{{.ID}}/domain/attach" class="domain-row"
-            hx-post="/projects/{{.ID}}/domain/attach" hx-target="#domain-panel" hx-select="#domain-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
+            hx-post="/projects/{{.ID}}/domain/attach" hx-target="#domain-panel" hx-select="#domain-panel" hx-swap="outerHTML">
         <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
         <input type="text" name="host" placeholder="{{$.T "domain.byod_ph"}}" autocapitalize="off" autocomplete="off" spellcheck="false">
-        <button class="btn btn-sm" type="submit">{{$.T "domain.byod_btn"}} <span class="spinner htmx-indicator"></span></button>
+        <button class="btn btn-sm" type="submit">{{$.T "domain.byod_btn"}}</button>
       </form>
       <p class="muted xsmall">{{$.T "domain.byod_note"}}</p>
     </div>
@@ -322,9 +322,9 @@
     {{template "domain_records" $}}
     <div class="domain-row">
       <form method="post" action="/projects/{{.ID}}/domain/verify" class="inline"
-            hx-post="/projects/{{.ID}}/domain/verify" hx-target="#domain-panel" hx-select="#domain-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
+            hx-post="/projects/{{.ID}}/domain/verify" hx-target="#domain-panel" hx-select="#domain-panel" hx-swap="outerHTML">
         <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
-        <button class="btn btn-sm" type="submit">{{$.T "domain.verify_btn"}} <span class="spinner htmx-indicator"></span></button>
+        <button class="btn btn-sm" type="submit">{{$.T "domain.verify_btn"}}</button>
       </form>
       {{template "domain_detach" $}}
     </div>
@@ -414,11 +414,11 @@
     <span class="domain-hit-name mono">{{.Name}}</span>
     {{if .Buyable}}<span class="domain-hit-price">{{.Price}} {{tr $.Lang "domain.per_year"}}</span>
       <form method="post" action="/projects/{{$.Data.PID}}/domain/buy" class="inline"
-            hx-post="/projects/{{$.Data.PID}}/domain/buy" hx-target="#domain-panel" hx-select="#domain-panel" hx-swap="outerHTML" hx-confirm="{{tr $.Lang "domain.buy_confirm"}} {{.Name}}?" hx-disabled-elt="find button">
+            hx-post="/projects/{{$.Data.PID}}/domain/buy" hx-target="#domain-panel" hx-select="#domain-panel" hx-swap="outerHTML" hx-confirm="{{tr $.Lang "domain.buy_confirm"}} {{.Name}}?">
         <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
         <input type="hidden" name="domain" value="{{.Name}}">
         <input type="hidden" name="ack" value="1">
-        <button class="btn btn-sm" type="submit">{{tr $.Lang "domain.buy_btn"}} <span class="spinner htmx-indicator"></span></button>
+        <button class="btn btn-sm" type="submit">{{tr $.Lang "domain.buy_btn"}}</button>
       </form>
     {{else}}<span class="muted small">{{tr $.Lang "domain.taken"}}</span>{{end}}
   </li>
