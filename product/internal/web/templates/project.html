@@ -311,7 +311,7 @@
       <span id="domain-searching" class="spinner htmx-indicator"></span>
       <div id="domain-results"></div>
       <p class="muted xsmall">{{$.T "domain.buy_cc"}}</p>
-      <p class="muted xsmall">{{printf ($.T "domain.buy_note") $.Data.DomainMaxUSD}}</p>
+      <p class="muted xsmall">{{$.T "domain.buy_note"}}{{if $.Data.DomainAddonStr}} {{printf ($.T "domain.buy_fee") $.Data.DomainAddonStr}}{{end}}</p>
     </div>
     {{end}}
   {{else if eq $.Data.DomainStatus "registering"}}
@@ -412,7 +412,7 @@
 {{if .Data.Results}}<ul class="domain-hits">
   {{range .Data.Results}}<li>
     <span class="domain-hit-name mono">{{.Name}}</span>
-    {{if .Buyable}}<span class="domain-hit-price">{{.Price}} {{tr $.Lang "domain.per_year"}}</span>
+    {{if .Buyable}}<span class="domain-hit-ok">{{tr $.Lang "domain.available"}}</span>
       <form method="post" action="/projects/{{$.Data.PID}}/domain/buy" class="inline"
             hx-post="/projects/{{$.Data.PID}}/domain/buy" hx-target="#domain-panel" hx-select="#domain-panel" hx-swap="outerHTML" hx-confirm="{{tr $.Lang "domain.buy_confirm"}} {{.Name}}?">
         <input type="hidden" name="csrf_token" value="{{$.CSRF}}">

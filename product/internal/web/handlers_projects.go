@@ -200,14 +200,14 @@ type projectView struct {
 
 	// Custom domain panel (see handlers_domains.go). Visible only to paying
 	// customers when the feature is wired.
-	ShowDomain    bool                   // the domain panel is visible
-	DomainBuyable bool                   // buying a domain in-app is available
-	DomainStatus  string                 // "" | registering | pending_dns | verifying | active | failed
-	DomainName    string                 // the attached/purchased hostname
-	DomainKind    string                 // "byod" | "purchased"
-	DomainRecords []project.DomainRecord // DNS records to show (pending_dns/verifying)
-	DomainMaxUSD  int                    // self-serve price cap, for the buy copy
-	DomainFlash   string                 // in-panel feedback after an action (rendered inside #domain-panel)
+	ShowDomain     bool                   // the domain panel is visible
+	DomainBuyable  bool                   // buying a domain in-app is available
+	DomainStatus   string                 // "" | registering | pending_dns | verifying | active | failed
+	DomainName     string                 // the attached/purchased hostname
+	DomainKind     string                 // "byod" | "purchased"
+	DomainRecords  []project.DomainRecord // DNS records to show (pending_dns/verifying)
+	DomainAddonStr string                 // the flat monthly add-on price ("29 kr"), for the buy copy
+	DomainFlash    string                 // in-panel feedback after an action (rendered inside #domain-panel)
 }
 
 // rosterMember is one team person for the template, with a presigned photo URL.
@@ -360,7 +360,13 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		pv.DomainName = p.DomainName
 		pv.DomainKind = p.DomainKind
 		pv.DomainRecords = p.DomainRecords
-		pv.DomainMaxUSD = int(s.orch.MaxDomainUSD())
+		// The flat monthly add-on price (same for every domain) — shown once, so
+		// the customer knows what buying costs without us exposing per-domain cost.
+		if pv.DomainBuyable && s.billing != nil && s.cfg.StripeDomainPriceID != "" {
+			if pr, err := s.billing.Price(ctx, s.cfg.StripeDomainPriceID); err == nil {
+				pv.DomainAddonStr = formatPrice(pr.UnitAmount, pr.Currency)
+			}
+		}
 		// Feedback after an action shows inside the panel (which is what htmx
 		// swaps back in), not as a top-of-page banner that the swap wouldn't touch.
 		if code := r.URL.Query().Get("domain"); code != "" {

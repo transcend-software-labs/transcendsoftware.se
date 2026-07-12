@@ -2,7 +2,6 @@ package web
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -38,15 +37,16 @@ func (s *Server) handleDomainVerify(w http.ResponseWriter, r *http.Request, u *u
 	http.Redirect(w, r, "/projects/"+p.ID+"?domain=checking", http.StatusSeeOther)
 }
 
-// handleDomainBuy registers a domain the customer picked from search. The price
-// was shown next to the Buy button; the server re-checks it authoritatively.
+// handleDomainBuy registers a domain the customer picked from search. The buy
+// button carries a confirm dialog; the server re-checks price/availability
+// authoritatively (the flat monthly add-on is what the customer actually pays).
 func (s *Server) handleDomainBuy(w http.ResponseWriter, r *http.Request, u *user.User) {
 	p, ok := s.ownedProject(w, r, u)
 	if !ok {
 		return
 	}
 	domain := strings.TrimSpace(r.FormValue("domain"))
-	if r.FormValue("ack") != "1" { // price-acknowledgement guard
+	if r.FormValue("ack") != "1" { // confirm-dialog acknowledgement guard
 		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 		return
 	}
@@ -82,17 +82,17 @@ func (s *Server) handleDomainSearch(w http.ResponseWriter, r *http.Request, u *u
 		s.renderFragment(w, r, "domain_results", data)
 		return
 	}
+	// The wholesale registration price is used only to gate buyability (the
+	// customer pays the flat monthly add-on, not this), so it's never displayed.
 	cap := s.orch.MaxDomainUSD()
 	type result struct {
 		Name    string
-		Price   string
 		Buyable bool
 	}
 	var results []result
 	for _, o := range offers {
 		results = append(results, result{
 			Name:    o.Name,
-			Price:   formatUSD(o.Price),
 			Buyable: o.Registrable && o.Price > 0 && o.Price <= cap,
 		})
 	}
@@ -147,12 +147,4 @@ func domainRedirectCode(err error) string {
 	default:
 		return "error"
 	}
-}
-
-// formatUSD renders a USD amount for display, "" for non-positive.
-func formatUSD(v float64) string {
-	if v <= 0 {
-		return ""
-	}
-	return fmt.Sprintf("$%.2f", v)
 }

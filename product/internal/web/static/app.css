@@ -360,7 +360,7 @@ details summary { cursor: pointer; }
   border-radius: var(--radius);
 }
 .domain-hit-name { flex: 1; min-width: 8rem; }
-.domain-hit-price { color: var(--accent-2); font-size: .85rem; white-space: nowrap; }
+.domain-hit-ok { color: var(--green); font-size: .8rem; white-space: nowrap; }
 .domain-records-wrap { overflow-x: auto; margin: .7rem 0; }
 .domain-records { width: 100%; border-collapse: collapse; font-size: .82rem; }
 .domain-records th, .domain-records td {
