@@ -275,14 +275,14 @@
     {{if $.Data.DomainOffer}}
     <fieldset class="domain-choose" id="domain-choose">
       <legend>{{$.T "sub.domain.legend"}}</legend>
-      <label class="dc-opt"><input type="radio" name="domain_mode" value="none" checked> {{$.T "sub.domain.none"}}</label>
-      <label class="dc-opt"><input type="radio" name="domain_mode" value="byod"> {{$.T "sub.domain.byod"}}</label>
+      <label class="dc-opt"><input type="radio" name="domain_mode" value="none" checked> <span class="dc-label">{{$.T "sub.domain.none"}}</span></label>
+      <label class="dc-opt"><input type="radio" name="domain_mode" value="byod"> <span class="dc-label">{{$.T "sub.domain.byod"}}</span></label>
       <div class="dc-body" data-for="byod" hidden>
         <input type="text" name="byod_host" placeholder="{{$.T "domain.byod_ph"}}" autocapitalize="off" autocomplete="off" spellcheck="false">
         <p class="muted xsmall">{{$.T "domain.byod_note"}}</p>
       </div>
       {{if $.Data.DomainOfferBuy}}
-      <label class="dc-opt"><input type="radio" name="domain_mode" value="buy"> {{$.T "sub.domain.buy"}}{{if $.Data.DomainAddonStr}} <span class="domain-fee">{{printf ($.T "domain.buy_fee") $.Data.DomainAddonStr}}</span>{{end}}</label>
+      <label class="dc-opt"><input type="radio" name="domain_mode" value="buy"> <span class="dc-label">{{$.T "sub.domain.buy"}}</span>{{if $.Data.DomainAddonStr}}<span class="domain-fee">{{printf ($.T "domain.buy_fee") $.Data.DomainAddonStr}}</span>{{end}}</label>
       <div class="dc-body" data-for="buy" hidden>
         <input class="domain-search" type="search" name="q" placeholder="{{$.T "domain.buy_ph"}}"
                hx-get="/projects/{{.ID}}/domain/search?select=1" hx-target="#sub-domain-results" hx-swap="innerHTML" hx-indicator="#sub-domain-searching"
