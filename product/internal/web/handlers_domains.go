@@ -85,7 +85,7 @@ func (s *Server) handleDomainSearch(w http.ResponseWriter, r *http.Request, u *u
 	// Show only domains the customer can actually buy — skip taken, premium,
 	// over-cap or unsupported ones rather than listing them as unavailable. The
 	// wholesale price gates this but is never shown (they pay the flat add-on).
-	cap := s.orch.MaxDomainUSD()
+	cap := s.orch.MaxDomainPrice()
 	type result struct{ Name string }
 	var results []result
 	for _, o := range offers {

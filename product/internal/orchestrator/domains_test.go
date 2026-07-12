@@ -6,38 +6,38 @@ import (
 	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
-	"github.com/transcend-software-labs/rasmus-ai/internal/cloudflare"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
+	"github.com/transcend-software-labs/rasmus-ai/internal/registrar"
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
 )
 
 // fakeCF is an in-memory DomainRegistrar for orchestrator tests.
 type fakeCF struct {
-	offers      []cloudflare.DomainOffer
+	offers      []registrar.Offer
 	regState    string // RegisterDomain result (default succeeded)
 	statusState string // RegistrationStatus result (default succeeded)
 	zoneID      string // ZoneID result (default "zone1")
-	ensured     []cloudflare.DNSRecord
+	ensured     []registrar.Record
 	registered  []string
 }
 
-func (f *fakeCF) SearchDomains(context.Context, string, int) ([]cloudflare.DomainOffer, error) {
+func (f *fakeCF) SearchDomains(context.Context, string, int) ([]registrar.Offer, error) {
 	return f.offers, nil
 }
-func (f *fakeCF) CheckDomains(context.Context, []string) ([]cloudflare.DomainOffer, error) {
+func (f *fakeCF) CheckDomains(context.Context, []string) ([]registrar.Offer, error) {
 	return f.offers, nil
 }
 func (f *fakeCF) RegisterDomain(_ context.Context, name string) (string, error) {
 	f.registered = append(f.registered, name)
 	if f.regState == "" {
-		return cloudflare.StateSucceeded, nil
+		return registrar.StateSucceeded, nil
 	}
 	return f.regState, nil
 }
 func (f *fakeCF) RegistrationStatus(context.Context, string) (string, error) {
 	if f.statusState == "" {
-		return cloudflare.StateSucceeded, nil
+		return registrar.StateSucceeded, nil
 	}
 	return f.statusState, nil
 }
@@ -47,7 +47,7 @@ func (f *fakeCF) ZoneID(context.Context, string) (string, error) {
 	}
 	return f.zoneID, nil
 }
-func (f *fakeCF) EnsureDNSRecord(_ context.Context, _ string, rec cloudflare.DNSRecord) error {
+func (f *fakeCF) EnsureDNSRecord(_ context.Context, _ string, rec registrar.Record) error {
 	f.ensured = append(f.ensured, rec)
 	return nil
 }
@@ -153,8 +153,8 @@ func TestBuyDomain_Lifecycle_AddsSubItem(t *testing.T) {
 	orch.SetNotifications(rec, "rasmus@example.com", "https://forge.example")
 	biller := &fakeBiller{}
 	cf := &fakeCF{
-		offers:   []cloudflare.DomainOffer{{Name: "acme.se", Registrable: true, Price: 12, Currency: "USD"}},
-		regState: cloudflare.StatePending, // avoid the async success goroutine; drive reconcile by hand
+		offers:   []registrar.Offer{{Name: "acme.se", Registrable: true, Price: 12, Currency: "USD"}},
+		regState: registrar.StatePending, // avoid the async success goroutine; drive reconcile by hand
 	}
 	orch.SetDomains(cf, biller, "price_dom", 100)
 	seedDomainProject(t, st, nil)
@@ -199,7 +199,7 @@ func TestBuyDomain_Lifecycle_AddsSubItem(t *testing.T) {
 func TestBuyDomain_PriceCap(t *testing.T) {
 	st := store.NewMemory()
 	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
-	cf := &fakeCF{offers: []cloudflare.DomainOffer{{Name: "acme.se", Registrable: true, Price: 500, Currency: "USD"}}}
+	cf := &fakeCF{offers: []registrar.Offer{{Name: "acme.se", Registrable: true, Price: 500, Currency: "USD"}}}
 	orch.SetDomains(cf, &fakeBiller{}, "price_dom", 100)
 	seedDomainProject(t, st, nil)
 	ctx := context.Background()
@@ -218,7 +218,7 @@ func TestBuyDomain_PriceCap(t *testing.T) {
 func TestBuyDomain_NotRegistrable(t *testing.T) {
 	st := store.NewMemory()
 	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
-	cf := &fakeCF{offers: []cloudflare.DomainOffer{{Name: "acme.se", Registrable: false}}}
+	cf := &fakeCF{offers: []registrar.Offer{{Name: "acme.se", Registrable: false}}}
 	orch.SetDomains(cf, &fakeBiller{}, "price_dom", 100)
 	seedDomainProject(t, st, nil)
 

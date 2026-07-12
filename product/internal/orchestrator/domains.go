@@ -2,12 +2,11 @@ package orchestrator
 
 // Custom-domain lifecycle. A paying customer can attach their own domain (BYOD:
 // we show the DNS records, they set them, we verify and Fly issues the cert) or
-// buy one in-app (Cloudflare registers it, we auto-configure DNS + cert). The
-// orchestrator owns the whole flow — Cloudflare + Fly certs + Stripe add-on —
-// behind the DomainRegistrar/domainBiller interfaces so it stays testable.
-//
-// Every Cloudflare DNS record we create is proxied:false (enforced in the
-// cloudflare client) — the orange-cloud proxy breaks Fly's ACME + TLS.
+// buy one in-app (the registrar registers it, we auto-configure DNS + cert).
+// The orchestrator owns the whole flow — registrar + Fly certs + Stripe add-on
+// — behind the DomainRegistrar/domainBiller interfaces, so the provider
+// (internal/cloudflare or internal/hostup) is chosen at wiring time and the
+// rest stays identical.
 
 import (
 	"context"
@@ -17,20 +16,20 @@ import (
 	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
-	"github.com/transcend-software-labs/rasmus-ai/internal/cloudflare"
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
+	"github.com/transcend-software-labs/rasmus-ai/internal/registrar"
 )
 
-// DomainRegistrar is the slice of the Cloudflare client the orchestrator uses
-// (satisfied by *cloudflare.Client; faked in tests).
+// DomainRegistrar is the registrar surface the orchestrator drives (satisfied
+// by *cloudflare.Client and *hostup.Client; faked in tests).
 type DomainRegistrar interface {
-	SearchDomains(ctx context.Context, query string, limit int) ([]cloudflare.DomainOffer, error)
-	CheckDomains(ctx context.Context, names []string) ([]cloudflare.DomainOffer, error)
+	SearchDomains(ctx context.Context, query string, limit int) ([]registrar.Offer, error)
+	CheckDomains(ctx context.Context, names []string) ([]registrar.Offer, error)
 	RegisterDomain(ctx context.Context, name string) (string, error)
 	RegistrationStatus(ctx context.Context, name string) (string, error)
 	ZoneID(ctx context.Context, name string) (string, error)
-	EnsureDNSRecord(ctx context.Context, zoneID string, rec cloudflare.DNSRecord) error
+	EnsureDNSRecord(ctx context.Context, zoneID string, rec registrar.Record) error
 }
 
 // domainBiller is the Stripe surface the domain add-on needs (satisfied by
@@ -55,15 +54,23 @@ var (
 	ErrNotRegistrable  = errors.New("domain is not available to register")
 )
 
-// SetDomains wires the custom-domain feature: the Cloudflare client, the Stripe
+// SetDomains wires the custom-domain feature: the registrar client, the Stripe
 // biller for the monthly add-on (nil to comp), the add-on price id, and the
-// self-serve price cap. Leaving cf nil keeps domains off.
-func (o *Orchestrator) SetDomains(cf DomainRegistrar, bill domainBiller, priceID string, maxUSD float64) {
-	o.domains = cf
+// self-serve price cap in the registrar's own currency (USD for Cloudflare,
+// SEK for Hostup). Leaving reg nil keeps domains off.
+func (o *Orchestrator) SetDomains(reg DomainRegistrar, bill domainBiller, priceID string, maxPrice float64) {
+	o.domains = reg
 	o.biller = bill
 	o.domainPriceID = priceID
-	o.maxDomainUSD = maxUSD
+	o.maxDomainPrice = maxPrice
 }
+
+// SetDomainProvider records which registrar backs the feature ("cloudflare" /
+// "hostup"), for provider-specific UI copy (e.g. the ccTLD caveat).
+func (o *Orchestrator) SetDomainProvider(name string) { o.domainProvider = name }
+
+// DomainProvider returns the wired registrar's name ("" when unset).
+func (o *Orchestrator) DomainProvider() string { return o.domainProvider }
 
 // DomainsEnabled reports whether the feature is wired.
 func (o *Orchestrator) DomainsEnabled() bool { return o.domains != nil }
@@ -75,15 +82,15 @@ func (o *Orchestrator) DomainBuyEnabled() bool {
 }
 
 // SearchDomains proxies a registrable-domain search for the web layer.
-func (o *Orchestrator) SearchDomains(ctx context.Context, query string) ([]cloudflare.DomainOffer, error) {
+func (o *Orchestrator) SearchDomains(ctx context.Context, query string) ([]registrar.Offer, error) {
 	if o.domains == nil {
 		return nil, ErrDomainsDisabled
 	}
 	return o.domains.SearchDomains(ctx, query, 12)
 }
 
-// MaxDomainUSD is the self-serve price cap, for display.
-func (o *Orchestrator) MaxDomainUSD() float64 { return o.maxDomainUSD }
+// MaxDomainPrice is the self-serve price cap, in the registrar's currency.
+func (o *Orchestrator) MaxDomainPrice() float64 { return o.maxDomainPrice }
 
 // AttachDomain starts the BYOD flow: request a Fly certificate for the
 // customer's own hostname, allocate a dedicated IPv6 if it's an apex, and store
@@ -160,7 +167,7 @@ func (o *Orchestrator) BuyDomain(ctx context.Context, projectID, domain string) 
 	if err != nil {
 		return fmt.Errorf("buy domain: check: %w", err)
 	}
-	var offer cloudflare.DomainOffer
+	var offer registrar.Offer
 	for _, of := range offers {
 		if strings.EqualFold(of.Name, host) {
 			offer = of
@@ -169,7 +176,7 @@ func (o *Orchestrator) BuyDomain(ctx context.Context, projectID, domain string) 
 	if !offer.Registrable {
 		return ErrNotRegistrable
 	}
-	if offer.Price <= 0 || offer.Price > o.maxDomainUSD {
+	if offer.Price <= 0 || offer.Price > o.maxDomainPrice {
 		return ErrDomainTooPricey
 	}
 
@@ -192,7 +199,7 @@ func (o *Orchestrator) BuyDomain(ctx context.Context, projectID, domain string) 
 
 	// Make immediate progress if registration already completed; otherwise the
 	// poller advances it. Best-effort in a goroutine so the request returns fast.
-	if state == cloudflare.StateSucceeded {
+	if state == registrar.StateSucceeded {
 		go o.reconcileInBackground(projectID)
 	}
 	return nil
@@ -324,9 +331,9 @@ func (o *Orchestrator) advanceRegistration(ctx context.Context, p *project.Proje
 		return err
 	}
 	switch state {
-	case cloudflare.StateSucceeded:
+	case registrar.StateSucceeded:
 		return o.provisionPurchased(ctx, p)
-	case cloudflare.StatePending, cloudflare.StateInProgress:
+	case registrar.StatePending, registrar.StateInProgress:
 		return nil // keep waiting
 	default: // action_required | blocked | failed
 		return o.failDomain(ctx, p, "registration "+state)
@@ -366,7 +373,7 @@ func (o *Orchestrator) provisionPurchased(ctx context.Context, p *project.Projec
 		return err
 	}
 	for _, rec := range req.Records {
-		if err := o.domains.EnsureDNSRecord(ctx, zoneID, cloudflare.DNSRecord{
+		if err := o.domains.EnsureDNSRecord(ctx, zoneID, registrar.Record{
 			Type: rec.Type, Name: rec.Name, Content: rec.Value,
 		}); err != nil {
 			return fmt.Errorf("provision: ensure %s %s: %w", rec.Type, rec.Name, err)

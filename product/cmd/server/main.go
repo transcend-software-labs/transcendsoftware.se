@@ -23,6 +23,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/cloudflare"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
+	"github.com/transcend-software-labs/rasmus-ai/internal/hostup"
 	"github.com/transcend-software-labs/rasmus-ai/internal/imagegen"
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
 	"github.com/transcend-software-labs/rasmus-ai/internal/notify"
@@ -112,15 +113,30 @@ func main() {
 		bill = billing.New("https://api.stripe.com", cfg.StripeSecretKey)
 		srv.SetBilling(bill)
 	}
-	if cfg.CloudflareEnabled() {
+	// Domain registrar: Hostup takes precedence over Cloudflare when both are
+	// configured — it sells the Swedish ccTLDs (.se/.nu) Cloudflare can't, and
+	// both implement the same orchestrator interface so the rest is identical.
+	// bill may be nil (Stripe off) — then purchased domains are comped and the
+	// operator is alerted. Pass an untyped nil so the interface is truly nil.
+	var domainReg orchestrator.DomainRegistrar
+	var domainCap float64
+	switch {
+	case cfg.HostupEnabled():
+		log.Info("domains: hostup enabled", "buy", cfg.DomainBuyEnabled(), "base", cfg.HostupAPIURL)
+		domainReg = hostup.New(cfg.HostupAPIURL, cfg.HostupAPIToken, cfg.HostupPaymentMethod)
+		domainCap = cfg.MaxDomainSEK
+		orch.SetDomainProvider("hostup")
+	case cfg.CloudflareEnabled():
 		log.Info("domains: cloudflare enabled", "buy", cfg.DomainBuyEnabled())
-		cf := cloudflare.New("https://api.cloudflare.com/client/v4", cfg.CloudflareAPIToken, cfg.CloudflareAccountID)
-		// bill may be nil (Stripe off) — then purchased domains are comped and the
-		// operator is alerted. Pass an untyped nil so the interface is truly nil.
+		domainReg = cloudflare.New("https://api.cloudflare.com/client/v4", cfg.CloudflareAPIToken, cfg.CloudflareAccountID)
+		domainCap = cfg.MaxDomainUSD
+		orch.SetDomainProvider("cloudflare")
+	}
+	if domainReg != nil {
 		if bill != nil {
-			orch.SetDomains(cf, bill, cfg.StripeDomainPriceID, cfg.MaxDomainUSD)
+			orch.SetDomains(domainReg, bill, cfg.StripeDomainPriceID, domainCap)
 		} else {
-			orch.SetDomains(cf, nil, cfg.StripeDomainPriceID, cfg.MaxDomainUSD)
+			orch.SetDomains(domainReg, nil, cfg.StripeDomainPriceID, domainCap)
 		}
 		orch.StartDomainPoller(context.Background(), 3*time.Minute)
 	}

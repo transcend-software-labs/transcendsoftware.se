@@ -208,6 +208,7 @@ type projectView struct {
 	DomainRecords  []project.DomainRecord // DNS records to show (pending_dns/verifying)
 	DomainAddonStr string                 // the flat monthly add-on price ("29 kr"), for the buy copy
 	DomainFlash    string                 // in-panel feedback after an action (rendered inside #domain-panel)
+	DomainCCNote   bool                   // show the "country domains can't be bought here" caveat (Cloudflare only)
 }
 
 // rosterMember is one team person for the template, with a presigned photo URL.
@@ -360,6 +361,9 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		pv.DomainName = p.DomainName
 		pv.DomainKind = p.DomainKind
 		pv.DomainRecords = p.DomainRecords
+		// The ccTLD caveat only applies to Cloudflare Registrar — Hostup sells
+		// .se/.nu, which is why it exists as a provider.
+		pv.DomainCCNote = s.orch.DomainProvider() != "hostup"
 		// The flat monthly add-on price (same for every domain) — shown on the buy
 		// panel so the customer knows what buying costs, without exposing our
 		// per-domain wholesale cost. Only fetched when the buy panel is rendered.

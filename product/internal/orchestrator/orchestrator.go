@@ -67,10 +67,11 @@ type Orchestrator struct {
 
 	// Custom domains (see domains.go). All nil/zero until SetDomains wires
 	// Cloudflare — the feature stays invisible and inert without it.
-	domains       DomainRegistrar // Cloudflare registrar + DNS (nil → disabled)
-	biller        domainBiller    // Stripe sub-items for the monthly add-on (nil → comped)
-	domainPriceID string          // Stripe recurring price for the domain add-on
-	maxDomainUSD  float64         // refuse a self-serve buy above this
+	domains        DomainRegistrar // registrar + DNS provider (nil → disabled)
+	biller         domainBiller    // Stripe sub-items for the monthly add-on (nil → comped)
+	domainPriceID  string          // Stripe recurring price for the domain add-on
+	maxDomainPrice float64         // refuse a self-serve buy above this (registrar currency)
+	domainProvider string          // "cloudflare" | "hostup" (UI copy differences)
 }
 
 // Activity returns the language-neutral activity code of a project's running

@@ -24,6 +24,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/transcend-software-labs/rasmus-ai/internal/registrar"
 )
 
 // Client talks to the Cloudflare v4 REST API (JSON in/out, Bearer auth).
@@ -45,30 +47,27 @@ func New(baseURL, token, accountID string) *Client {
 	}
 }
 
-// Registration workflow states returned by RegisterDomain / RegistrationStatus.
+// Registration workflow states returned by RegisterDomain / RegistrationStatus
+// (Cloudflare's wire values are the neutral ones verbatim).
 const (
-	StateSucceeded      = "succeeded"
-	StatePending        = "pending"
-	StateInProgress     = "in_progress"
-	StateActionRequired = "action_required"
-	StateBlocked        = "blocked"
-	StateFailed         = "failed"
+	StateSucceeded      = registrar.StateSucceeded
+	StatePending        = registrar.StatePending
+	StateInProgress     = registrar.StateInProgress
+	StateActionRequired = registrar.StateActionRequired
+	StateBlocked        = registrar.StateBlocked
+	StateFailed         = registrar.StateFailed
 )
 
-// DomainOffer is a domain we can (or can't) register, with its price. Price is
-// the one-year registration cost parsed from Cloudflare's string amount; it is
-// 0 when the domain isn't registrable or carries no price.
-type DomainOffer struct {
-	Name        string
-	Registrable bool
-	Premium     bool
-	Price       float64
-	Currency    string // e.g. "USD"
-}
+// DomainOffer / DNSRecord are the provider-neutral registrar types — aliased so
+// this package's API reads naturally and other providers (internal/hostup) can
+// implement the same orchestrator interface.
+type (
+	DomainOffer = registrar.Offer
+	DNSRecord   = registrar.Record
+)
 
-// DNSRecord is a single DNS record in a zone. Proxied is always sent as false
-// for the records we manage.
-type DNSRecord struct {
+// dnsRecordWire is Cloudflare's DNS-record wire format.
+type dnsRecordWire struct {
 	ID      string `json:"id,omitempty"`
 	Type    string `json:"type"`
 	Name    string `json:"name"`
@@ -215,9 +214,13 @@ func (c *Client) ZoneID(ctx context.Context, name string) (string, error) {
 
 // ListDNSRecords returns every DNS record in a zone.
 func (c *Client) ListDNSRecords(ctx context.Context, zoneID string) ([]DNSRecord, error) {
-	var recs []DNSRecord
-	if err := c.do(ctx, http.MethodGet, "/zones/"+zoneID+"/dns_records", nil, &recs); err != nil {
+	var wire []dnsRecordWire
+	if err := c.do(ctx, http.MethodGet, "/zones/"+zoneID+"/dns_records", nil, &wire); err != nil {
 		return nil, err
+	}
+	recs := make([]DNSRecord, 0, len(wire))
+	for _, w := range wire {
+		recs = append(recs, DNSRecord{ID: w.ID, Type: w.Type, Name: w.Name, Content: w.Content, TTL: w.TTL, Proxied: w.Proxied})
 	}
 	return recs, nil
 }
@@ -226,9 +229,9 @@ func (c *Client) ListDNSRecords(ctx context.Context, zoneID string) ([]DNSRecord
 // isn't already present, so it is safe to re-run. Proxied is forced false — the
 // orange-cloud proxy breaks Fly's ACME challenge and TLS.
 func (c *Client) EnsureDNSRecord(ctx context.Context, zoneID string, rec DNSRecord) error {
-	rec.Proxied = false
-	if rec.TTL == 0 {
-		rec.TTL = 1 // Cloudflare: 1 = automatic
+	ttl := rec.TTL
+	if ttl == 0 {
+		ttl = 1 // Cloudflare: 1 = automatic
 	}
 	existing, err := c.ListDNSRecords(ctx, zoneID)
 	if err != nil {
@@ -241,7 +244,8 @@ func (c *Client) EnsureDNSRecord(ctx context.Context, zoneID string, rec DNSReco
 			return nil // already present — idempotent
 		}
 	}
-	return c.do(ctx, http.MethodPost, "/zones/"+zoneID+"/dns_records", rec, nil)
+	return c.do(ctx, http.MethodPost, "/zones/"+zoneID+"/dns_records",
+		dnsRecordWire{Type: rec.Type, Name: rec.Name, Content: rec.Content, TTL: ttl, Proxied: false}, nil)
 }
 
 // apiEnvelope is the standard Cloudflare v4 wrapper around every response.

@@ -97,6 +97,16 @@ type Config struct {
 	StripeDomainPriceID string  // price_… recurring add-on (SEK/mo) per domain
 	MaxDomainUSD        float64 // refuse a self-serve buy above this (default 100)
 
+	// Hostup (hostup.se) as the domain registrar instead of Cloudflare — it
+	// sells the Swedish ccTLDs (.se/.nu) Cloudflare can't. When the token is
+	// set, Hostup takes precedence over Cloudflare for the whole domain
+	// feature (registration + DNS). Keys: cloud.hostup.se/api-management,
+	// scoped for domains, dns-zones and orders.
+	HostupAPIToken      string
+	HostupAPIURL        string  // API base (default https://api.hostup.se)
+	HostupPaymentMethod string  // how registration orders settle (default "invoice")
+	MaxDomainSEK        float64 // Hostup buy cap, in SEK (default 300)
+
 	// Execution plane (empty → fake driver/machines):
 	OpencodeURL     string // fixed opencode server base URL (overrides per-machine)
 	OpencodePort    int    // port opencode listens on inside each sandbox machine
@@ -193,6 +203,11 @@ func Load() Config {
 		StripeDomainPriceID: os.Getenv("STRIPE_DOMAIN_PRICE_ID"),
 		MaxDomainUSD:        envFloatOr("MAX_DOMAIN_USD", 100),
 
+		HostupAPIToken:      os.Getenv("HOSTUP_API_TOKEN"),
+		HostupAPIURL:        envOr("HOSTUP_API_URL", "https://api.hostup.se"),
+		HostupPaymentMethod: envOr("HOSTUP_PAYMENT_METHOD", "invoice"),
+		MaxDomainSEK:        envFloatOr("MAX_DOMAIN_SEK", 300),
+
 		OpencodeURL:     os.Getenv("OPENCODE_URL"),
 		OpencodePort:    4096,
 		FlyAPIToken:     os.Getenv("FLY_API_TOKEN"),
@@ -278,11 +293,18 @@ func (c Config) CloudflareEnabled() bool {
 	return c.CloudflareAPIToken != "" && c.CloudflareAccountID != ""
 }
 
+// HostupEnabled reports whether Hostup backs the domain feature. When set it
+// takes precedence over Cloudflare (see cmd/server/main.go).
+func (c Config) HostupEnabled() bool { return c.HostupAPIToken != "" }
+
+// DomainsEnabled reports whether any domain registrar is configured.
+func (c Config) DomainsEnabled() bool { return c.HostupEnabled() || c.CloudflareEnabled() }
+
 // DomainBuyEnabled reports whether customers can buy a domain in-app. Beyond
-// Cloudflare access it needs the recurring add-on price to bill the domain, so
+// registrar access it needs the recurring add-on price to bill the domain, so
 // we never register a domain we can't charge for.
 func (c Config) DomainBuyEnabled() bool {
-	return c.CloudflareEnabled() && c.StripeDomainPriceID != ""
+	return c.DomainsEnabled() && c.StripeDomainPriceID != ""
 }
 
 // DevMode reports whether the app is running fully in-memory/fake.

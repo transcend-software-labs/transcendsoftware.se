@@ -313,7 +313,7 @@
              hx-trigger="input changed delay:400ms, search" autocapitalize="off" autocomplete="off" spellcheck="false">
       <span id="domain-searching" class="spinner htmx-indicator"></span>
       <div id="domain-results"></div>
-      <p class="muted xsmall">{{$.T "domain.buy_cc"}}</p>
+      {{if $.Data.DomainCCNote}}<p class="muted xsmall">{{$.T "domain.buy_cc"}}</p>{{end}}
       <p class="muted xsmall">{{$.T "domain.buy_note"}}</p>
     </div>
     {{end}}
