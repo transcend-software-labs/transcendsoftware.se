@@ -30,6 +30,21 @@ jobs:
     defaults:
       run:
         working-directory: product
+    # Real Postgres so the store's SQL bindings are exercised — the in-memory
+    # store can't catch a placeholder/arg mismatch (a broken UpdateProject
+    # shipped once because tests never touched Postgres). PG_TEST_URL opts the
+    # store binding test in.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: t
+          POSTGRES_DB: forge
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -40,6 +55,8 @@ jobs:
 
       # Gate the deploy on a green build — never ship a broken orchestrator.
       - name: Vet & test
+        env:
+          PG_TEST_URL: postgres://postgres:t@localhost:5432/forge?sslmode=disable
         run: |
           go vet ./...
           go test ./...

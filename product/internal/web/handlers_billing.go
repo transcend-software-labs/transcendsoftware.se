@@ -41,6 +41,11 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request, u *user
 	// taking payment for something we can't deliver.
 	if s.orch.DomainsEnabled() && domainSelectable(p) {
 		if err := s.applyDomainChoice(r, p); err != nil {
+			// Log the real cause: the customer only sees a generic "pick another
+			// domain" flash, so without this a validation/registrar/save failure
+			// is invisible (a store binding bug once hid here as "not registrable").
+			s.log.Error("subscribe: domain choice rejected", "project", p.ID,
+				"mode", r.FormValue("domain_mode"), "err", err)
 			http.Redirect(w, r, "/projects/"+p.ID+"?sub=domainbad", http.StatusSeeOther)
 			return
 		}
