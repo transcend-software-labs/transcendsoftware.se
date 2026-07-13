@@ -23,6 +23,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/cloudflare"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
+	"github.com/transcend-software-labs/rasmus-ai/internal/glesys"
 	"github.com/transcend-software-labs/rasmus-ai/internal/hostup"
 	"github.com/transcend-software-labs/rasmus-ai/internal/imagegen"
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
@@ -113,14 +114,21 @@ func main() {
 		bill = billing.New("https://api.stripe.com", cfg.StripeSecretKey)
 		srv.SetBilling(bill)
 	}
-	// Domain registrar: Hostup takes precedence over Cloudflare when both are
-	// configured — it sells the Swedish ccTLDs (.se/.nu) Cloudflare can't, and
-	// both implement the same orchestrator interface so the rest is identical.
-	// bill may be nil (Stripe off) — then purchased domains are comped and the
-	// operator is alerted. Pass an untyped nil so the interface is truly nil.
+	// Domain registrar: GleSYS takes precedence over Hostup and Cloudflare when
+	// configured — all three implement the same orchestrator interface so the
+	// rest is identical. bill may be nil (Stripe off) — then purchased domains
+	// are comped and the operator is alerted. Pass an untyped nil so the
+	// interface is truly nil.
 	var domainReg orchestrator.DomainRegistrar
 	var domainCap float64
 	switch {
+	case cfg.GlesysEnabled():
+		log.Info("domains: glesys enabled", "buy", cfg.DomainBuyEnabled(), "registrant_ok", cfg.GlesysRegistrant.Complete())
+		if !cfg.GlesysRegistrant.Complete() {
+			log.Warn("domains: glesys registrant incomplete — registrations will fail until GLESYS_REGISTRANT_* (org number, address, zip, city, phone) is set")
+		}
+		domainReg = glesys.New(cfg.GlesysProjectID, cfg.GlesysAPIKey, glesys.Registrant(cfg.GlesysRegistrant))
+		domainCap = cfg.MaxDomainSEK
 	case cfg.HostupEnabled():
 		log.Info("domains: hostup enabled", "buy", cfg.DomainBuyEnabled(), "base", cfg.HostupAPIURL)
 		domainReg = hostup.New(cfg.HostupAPIURL, cfg.HostupAPIToken, cfg.HostupPaymentMethod)
@@ -132,9 +140,9 @@ func main() {
 	}
 	if domainReg != nil {
 		if bill != nil {
-			orch.SetDomains(domainReg, bill, cfg.StripeDomainPriceID, domainCap)
+			orch.SetDomains(domainReg, bill, domainCap)
 		} else {
-			orch.SetDomains(domainReg, nil, cfg.StripeDomainPriceID, domainCap)
+			orch.SetDomains(domainReg, nil, domainCap)
 		}
 		orch.StartDomainPoller(context.Background(), 3*time.Minute)
 	}

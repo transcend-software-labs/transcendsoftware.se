@@ -32,10 +32,13 @@ type DomainRegistrar interface {
 	EnsureDNSRecord(ctx context.Context, zoneID string, rec registrar.Record) error
 }
 
-// domainBiller is the Stripe surface the domain add-on needs (satisfied by
+// domainBiller is the Stripe surface a purchased domain needs (satisfied by
 // *billing.Client). Nil when Stripe isn't configured — then a domain is comped.
+// A purchased domain's actual 1-year cost is added as a one-off item to the
+// customer's next invoice (AddInvoiceItem); RemoveSubscriptionItem only detaches
+// the legacy flat monthly add-on from domains bought under the old model.
 type domainBiller interface {
-	AddSubscriptionItem(ctx context.Context, subID, priceID string) (string, error)
+	AddInvoiceItem(ctx context.Context, customerID string, amountMinor int, currency, description string) (string, error)
 	RemoveSubscriptionItem(ctx context.Context, itemID string) error
 }
 
@@ -55,23 +58,24 @@ var (
 )
 
 // SetDomains wires the custom-domain feature: the registrar client, the Stripe
-// biller for the monthly add-on (nil to comp), the add-on price id, and the
-// self-serve price cap in the registrar's own currency (USD for Cloudflare,
-// SEK for Hostup). Leaving reg nil keeps domains off.
-func (o *Orchestrator) SetDomains(reg DomainRegistrar, bill domainBiller, priceID string, maxPrice float64) {
+// biller for a purchased domain's one-off cost (nil to comp), and the
+// self-serve price cap in the registrar's own currency (SEK for GleSYS/Hostup,
+// USD for Cloudflare) — which also clamps the amount billed. Leaving reg nil
+// keeps domains off.
+func (o *Orchestrator) SetDomains(reg DomainRegistrar, bill domainBiller, maxPrice float64) {
 	o.domains = reg
 	o.biller = bill
-	o.domainPriceID = priceID
 	o.maxDomainPrice = maxPrice
 }
 
 // DomainsEnabled reports whether the feature is wired.
 func (o *Orchestrator) DomainsEnabled() bool { return o.domains != nil }
 
-// DomainBuyEnabled reports whether customers can buy a domain in-app (needs the
-// add-on price so we never register a domain we can't bill).
+// DomainBuyEnabled reports whether customers can buy a domain in-app (needs a
+// biller so we can charge the registration cost — never register one we can't
+// bill).
 func (o *Orchestrator) DomainBuyEnabled() bool {
-	return o.domains != nil && o.domainPriceID != ""
+	return o.domains != nil && o.biller != nil
 }
 
 // SearchDomains proxies a registrable-domain search for the web layer.
@@ -271,6 +275,10 @@ func (o *Orchestrator) BuyDomain(ctx context.Context, projectID, domain string) 
 	p.DomainName = host
 	p.DomainKind = project.DomainKindPurchased
 	p.DomainStatus = project.DomainRegistering
+	// Capture the price the customer is committing to now; it's billed once, on
+	// the next invoice, when the domain goes active (the domain is taken by then,
+	// so we can't re-fetch the registration price). Clamped to the cap.
+	p.DomainCostOre = domainCostOre(offer.Price, o.maxDomainPrice)
 	p.DomainCreatedAt = time.Now().UTC()
 	p.DomainVerifiedAt = time.Time{}
 	if err := o.save(ctx, p); err != nil {
@@ -301,10 +309,13 @@ func (o *Orchestrator) VerifyDomain(ctx context.Context, projectID string) error
 	return o.reconcileDomain(ctx, p)
 }
 
-// DetachDomain removes a project's domain: delete the Fly cert, drop the Stripe
-// add-on, and clear the domain fields. Idempotent and best-effort on the
-// external calls so a customer (or operator) can always get unstuck. A purchased
-// domain we own is not transferred away here — that's manual, future work.
+// DetachDomain removes a project's domain: delete the Fly cert, drop the legacy
+// Stripe add-on if one exists, and clear the domain fields. Idempotent and
+// best-effort on the external calls so a customer (or operator) can always get
+// unstuck. Purchased domains now bill a one-off registration cost that's already
+// invoiced — it isn't refunded here (the operator refunds in Stripe if needed);
+// only domains bought under the old flat-add-on model carry a DomainSubItemID to
+// remove. A purchased domain we own is not transferred away here — manual work.
 func (o *Orchestrator) DetachDomain(ctx context.Context, projectID string) error {
 	p, err := o.store.ProjectByID(ctx, projectID)
 	if err != nil {
@@ -490,9 +501,10 @@ func (o *Orchestrator) advanceCertificate(ctx context.Context, p *project.Projec
 	}
 }
 
-// activateDomain runs the one-time →active edge: mark active, add the Stripe
-// monthly add-on (purchased + live sub only), and email the customer + operator.
-// Guarded by DomainVerifiedAt so replays don't re-bill or re-email.
+// activateDomain runs the one-time →active edge: mark active, bill the
+// purchased domain's actual registration cost once to the customer's next
+// invoice, and email the customer + operator. Guarded by DomainVerifiedAt so
+// replays don't re-bill or re-email.
 func (o *Orchestrator) activateDomain(ctx context.Context, p *project.Project) error {
 	if !p.DomainVerifiedAt.IsZero() {
 		return nil // already activated
@@ -500,20 +512,20 @@ func (o *Orchestrator) activateDomain(ctx context.Context, p *project.Project) e
 	p.DomainStatus = project.DomainActive
 	p.DomainVerifiedAt = time.Now().UTC()
 
-	// Bill the flat monthly add-on for a purchased domain on a live subscription.
-	// BYOD is free; a comped project (no sub / no biller) is noted for the operator.
+	// Bill the purchased domain's registration cost as a one-off item on the
+	// customer's next invoice (pass-through at cost, captured at buy time and
+	// clamped to the cap). BYOD is free; a comped project (no customer / no
+	// biller) or a zero cost is noted for the operator.
 	if p.DomainKind == project.DomainKindPurchased {
 		switch {
-		case o.biller != nil && p.StripeSubID != "" && o.domainPriceID != "":
-			itemID, err := o.biller.AddSubscriptionItem(ctx, p.StripeSubID, o.domainPriceID)
-			if err != nil {
-				o.log.Error("activate domain: add sub item", "project", p.ID, "err", err)
-			} else {
-				p.DomainSubItemID = itemID
+		case o.biller != nil && p.StripeCustomerID != "" && p.DomainCostOre > 0:
+			desc := fmt.Sprintf("Domän: %s (1 år)", p.DomainName)
+			if _, err := o.biller.AddInvoiceItem(ctx, p.StripeCustomerID, p.DomainCostOre, "sek", desc); err != nil {
+				o.log.Error("activate domain: add invoice item", "project", p.ID, "err", err)
 			}
 		default:
-			o.notifyOperator(ctx, "Forge: domain live without add-on billing",
-				fmt.Sprintf("%q is live on %s but has no live subscription to bill the domain add-on to — check manually:\n\n%s",
+			o.notifyOperator(ctx, "Forge: domain live without billing",
+				fmt.Sprintf("%q is live on %s but its registration cost wasn't billed (no Stripe customer, no biller, or no captured cost) — check manually:\n\n%s",
 					p.Name, p.DomainName, o.baseURLOr("/admin/projects/"+p.ID)))
 		}
 	}
@@ -528,6 +540,19 @@ func (o *Orchestrator) activateDomain(ctx context.Context, p *project.Project) e
 		fmt.Sprintf("%q is now live on https://%s (%s):\n\n%s",
 			p.Name, p.DomainName, p.DomainKind, o.baseURLOr("/admin/projects/"+p.ID)))
 	return nil
+}
+
+// domainCostOre converts a registrar price (SEK) to öre for Stripe, clamped to
+// the cap so we never bill more than the self-serve maximum even if a pricier
+// offer slipped through. Non-positive → 0 (nothing to bill).
+func domainCostOre(price, cap float64) int {
+	if cap > 0 && price > cap {
+		price = cap
+	}
+	if price <= 0 {
+		return 0
+	}
+	return int(price*100 + 0.5) // round to the nearest öre
 }
 
 // ensureApexIPv6 allocates a dedicated IPv6 once for an apex domain (needed for

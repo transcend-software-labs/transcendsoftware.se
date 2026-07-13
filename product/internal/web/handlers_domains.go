@@ -2,6 +2,7 @@ package web
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -9,6 +10,13 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
 	"github.com/transcend-software-labs/rasmus-ai/internal/web/i18n"
 )
+
+// formatSEK renders a registrar price (whole SEK) for the search results, e.g.
+// 129 → "129 kr". This is the one-year registration price billed to the
+// customer's next invoice.
+func formatSEK(amount float64) string {
+	return fmt.Sprintf("%.0f kr", amount)
+}
 
 // handleDomainAttach starts the BYOD flow for the customer's own hostname.
 func (s *Server) handleDomainAttach(w http.ResponseWriter, r *http.Request, u *user.User) {
@@ -39,7 +47,7 @@ func (s *Server) handleDomainVerify(w http.ResponseWriter, r *http.Request, u *u
 
 // handleDomainBuy registers a domain the customer picked from search. The buy
 // button carries a confirm dialog; the server re-checks price/availability
-// authoritatively (the flat monthly add-on is what the customer actually pays).
+// authoritatively and captures the cost to bill once to the next invoice.
 func (s *Server) handleDomainBuy(w http.ResponseWriter, r *http.Request, u *user.User) {
 	p, ok := s.ownedProject(w, r, u)
 	if !ok {
@@ -74,8 +82,16 @@ func (s *Server) handleDomainSearch(w http.ResponseWriter, r *http.Request, u *u
 		s.renderFragment(w, r, "domain_results", data)
 		return
 	}
-	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	if len(q) < 2 {
+	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	if q == "" {
+		s.renderFragment(w, r, "domain_results", data)
+		return
+	}
+	// Require a full domain incl. the TLD before searching: GleSYS fans out
+	// slowly across every ending for a bare keyword, and the customer chooses the
+	// ending they want (.se, .com, …).
+	if len(q) < 3 || !strings.Contains(strings.TrimSuffix(q, "."), ".") {
+		data["NeedTLD"] = true
 		s.renderFragment(w, r, "domain_results", data)
 		return
 	}
@@ -87,15 +103,18 @@ func (s *Server) handleDomainSearch(w http.ResponseWriter, r *http.Request, u *u
 		return
 	}
 	// Show only domains the customer can actually buy — skip taken, over-cap
-	// (registration OR renewal) or unsupported ones rather than listing them as
-	// unavailable. The wholesale prices gate this but are never shown (the
-	// customer pays the flat add-on). Same Buyable check as the buy guard.
+	// (registration OR renewal) ones rather than listing them as unavailable. The
+	// one-year price is shown per result: it's what's billed once to the next
+	// invoice. Same Buyable check as the buy guard.
 	cap := s.orch.MaxDomainPrice()
-	type result struct{ Name string }
+	type result struct {
+		Name  string
+		Price string
+	}
 	var results []result
 	for _, o := range offers {
 		if o.Buyable(cap) {
-			results = append(results, result{Name: o.Name})
+			results = append(results, result{Name: o.Name, Price: formatSEK(o.Price)})
 		}
 	}
 	data["Results"] = results

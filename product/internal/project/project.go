@@ -273,7 +273,8 @@ type Project struct {
 	DomainKind       string         // "byod" | "purchased"
 	DomainZoneID     string         // Cloudflare zone id (purchased domains)
 	DomainIPv6       string         // dedicated apex IPv6 on the Fly app (allocate-once guard)
-	DomainSubItemID  string         // Stripe subscription-item id for the monthly add-on
+	DomainSubItemID  string         // Stripe subscription-item id (legacy flat monthly add-on; empty for GleSYS-era buys)
+	DomainCostOre    int            // GleSYS 1-year registration cost captured at buy time, in öre; billed once to the next invoice on activation
 	DomainRecords    []DomainRecord // DNS records to show the customer (cached from the cert requirements)
 	DomainCreatedAt  time.Time      // when the domain flow started (stuck-timeout clock)
 	DomainVerifiedAt time.Time      // when it went active (guards one-time emails/billing)

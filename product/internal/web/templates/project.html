@@ -283,7 +283,7 @@
         <p class="muted xsmall">{{$.T "domain.byod_note"}}</p>
       </div>
       {{if $.Data.DomainOfferBuy}}
-      <label class="dc-opt"><input type="radio" name="domain_mode" value="buy"> <span class="dc-label">{{$.T "sub.domain.buy"}}</span>{{if $.Data.DomainAddonStr}}<span class="domain-fee">{{printf ($.T "domain.buy_fee") $.Data.DomainAddonStr}}</span>{{end}}</label>
+      <label class="dc-opt"><input type="radio" name="domain_mode" value="buy"> <span class="dc-label">{{$.T "sub.domain.buy"}}</span></label>
       <div class="dc-body" data-for="buy" hidden>
         <div class="dc-search">
           <input class="domain-search" type="search" name="q" placeholder="{{$.T "domain.buy_ph"}}"
@@ -339,10 +339,7 @@
     </div>
     {{if $.Data.DomainBuyable}}
     <div class="domain-buy">
-      <div class="domain-buy-head">
-        <p class="domain-or">{{$.T "domain.or_buy"}}</p>
-        {{if $.Data.DomainAddonStr}}<span class="domain-fee">{{printf ($.T "domain.buy_fee") $.Data.DomainAddonStr}}</span>{{end}}
-      </div>
+      <p class="domain-or">{{$.T "domain.or_buy"}}</p>
       <input class="domain-search" type="search" name="q" placeholder="{{$.T "domain.buy_ph"}}"
              hx-get="/projects/{{.ID}}/domain/search" hx-target="#domain-results" hx-swap="innerHTML" hx-indicator="#domain-searching"
              hx-trigger="input changed delay:400ms, search" autocapitalize="off" autocomplete="off" spellcheck="false">
@@ -462,20 +459,22 @@
 {{/* Domain search results fragment (htmx swap). Rendered View-less: uses .Lang,
      .CSRF, .Data{PID,Results,Error,None}. */}}
 {{define "domain_results"}}{{if .Data.Error}}<p class="reason">{{.Data.Error}}</p>{{end}}
+{{if .Data.NeedTLD}}<p class="muted small">{{tr .Lang "domain.need_tld"}}</p>{{end}}
 {{if .Data.None}}<p class="muted small">{{tr .Lang "domain.none"}}</p>{{end}}
 {{if .Data.Results}}
 {{if .Data.Select}}{{/* pre-checkout chooser: pick one, registered after payment */}}
 <ul class="domain-pick">
   {{range .Data.Results}}<li>
-    <label class="dc-pick"><input type="radio" name="buy_domain" value="{{.Name}}"> <span class="mono">{{.Name}}</span></label>
+    <label class="dc-pick"><input type="radio" name="buy_domain" value="{{.Name}}"> <span class="mono">{{.Name}}</span> <span class="domain-price">{{.Price}}</span></label>
   </li>
   {{end}}</ul>
 {{else}}{{/* post-pay panel: buy now */}}
 <ul class="domain-hits">
   {{range .Data.Results}}<li>
     <span class="domain-hit-name mono">{{.Name}}</span>
+    <span class="domain-price">{{.Price}}</span>
     <form method="post" action="/projects/{{$.Data.PID}}/domain/buy" class="inline"
-          hx-post="/projects/{{$.Data.PID}}/domain/buy" hx-target="#domain-panel" hx-select="#domain-panel" hx-swap="outerHTML" hx-confirm="{{tr $.Lang "domain.buy_confirm"}} {{.Name}}?">
+          hx-post="/projects/{{$.Data.PID}}/domain/buy" hx-target="#domain-panel" hx-select="#domain-panel" hx-swap="outerHTML" hx-confirm="{{tr $.Lang "domain.buy_confirm"}} {{.Name}} ({{.Price}})?">
       <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
       <input type="hidden" name="domain" value="{{.Name}}">
       <input type="hidden" name="ack" value="1">

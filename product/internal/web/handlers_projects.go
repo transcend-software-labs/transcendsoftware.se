@@ -200,7 +200,7 @@ type projectView struct {
 	IncludedChanges int    // monthly changes included in the plan, for the subscribe "what's included" list
 
 	// Bundle-a-domain chooser on the subscribe panel (Phase B): pick a domain
-	// before paying, provisioned after. DomainAddonStr (below) shows the buy fee.
+	// before paying, provisioned after. The per-domain price shows in search results.
 	DomainOffer    bool // show the domain chooser on the subscribe panel
 	DomainOfferBuy bool // the "buy a domain" option is available in the chooser
 	ShowAccept     bool // show the explicit accept step (paid/comped customers, or billing off — subscribing accepts implicitly otherwise)
@@ -219,7 +219,6 @@ type projectView struct {
 	DomainName     string                 // the attached/purchased hostname
 	DomainKind     string                 // "byod" | "purchased"
 	DomainRecords  []project.DomainRecord // DNS records to show (pending_dns/verifying)
-	DomainAddonStr string                 // the flat monthly add-on price ("29 kr"), for the buy copy
 	DomainFlash    string                 // in-panel feedback after an action (rendered inside #domain-panel)
 	DomainFlashErr bool                   // the flash reports a failure (render it red, not as neutral progress)
 }
@@ -387,9 +386,6 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		if pv.CanSubscribe && s.orch.DomainsEnabled() && domainSelectable(p) {
 			pv.DomainOffer = true
 			pv.DomainOfferBuy = s.orch.DomainBuyEnabled()
-			if pv.DomainOfferBuy {
-				pv.DomainAddonStr = s.domainAddonStr(ctx)
-			}
 		}
 	}
 	// Domain panel: paying customers only, when the feature is wired. Everything
@@ -401,12 +397,6 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		pv.DomainName = p.DomainName
 		pv.DomainKind = p.DomainKind
 		pv.DomainRecords = p.DomainRecords
-		// The flat monthly add-on price (same for every domain) — shown on the buy
-		// panel so the customer knows what buying costs, without exposing our
-		// per-domain wholesale cost. Only fetched when the buy panel is rendered.
-		if pv.DomainBuyable && p.DomainStatus == project.DomainNone {
-			pv.DomainAddonStr = s.domainAddonStr(ctx)
-		}
 		// Feedback after an action shows inside the panel (which is what htmx
 		// swaps back in), not as a top-of-page banner that the swap wouldn't touch.
 		if code := r.URL.Query().Get("domain"); code != "" {
@@ -463,22 +453,6 @@ func domainFlashIsError(code string) bool {
 
 // formatPrice renders a Stripe unit amount (minor units) for display, e.g.
 // (9900,"sek") → "99 kr". Empty for a non-positive amount.
-// domainAddonStr returns the formatted flat monthly domain add-on price, or ""
-// when billing/the price id isn't configured or the fetch fails. Shared by the
-// subscribe chooser and the post-pay domain panel. A fetch error is logged so a
-// misconfigured STRIPE_DOMAIN_PRICE_ID (e.g. a product id) is visible.
-func (s *Server) domainAddonStr(ctx context.Context) string {
-	if s.billing == nil || s.cfg.StripeDomainPriceID == "" {
-		return ""
-	}
-	pr, err := s.billing.Price(ctx, s.cfg.StripeDomainPriceID)
-	if err != nil {
-		s.log.Warn("domain add-on price fetch failed", "price_id", s.cfg.StripeDomainPriceID, "err", err)
-		return ""
-	}
-	return formatPrice(pr.UnitAmount, pr.Currency)
-}
-
 func formatPrice(unitAmount int64, currency string) string {
 	if unitAmount <= 0 {
 		return ""

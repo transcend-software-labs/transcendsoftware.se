@@ -51,10 +51,11 @@ func newBundleServer(t *testing.T) (*httptest.Server, store.Store) {
 	broker := stream.NewBroker(100)
 	assets := storage.NewMemory()
 	orch := orchestrator.New(st, fake, fake, fake, b, machines, assets, broker, orchestrator.NoopVerifier{}, log)
-	orch.SetDomains(cloudflare.New("http://127.0.0.1:1", "tok", "acct"), nil, "price_dom", 100)
+	bill := billing.New(stripe.URL, "sk_test_x")
+	orch.SetDomains(cloudflare.New("http://127.0.0.1:1", "tok", "acct"), bill, 100)
 	cfg := config.Config{
 		AdminEmail: "admin@example.com", BaseURL: "https://forge.example",
-		StripeSecretKey: "sk_test_x", StripePriceID: "price_base", StripeDomainPriceID: "price_dom",
+		StripeSecretKey: "sk_test_x", StripePriceID: "price_base",
 		StripeWebhookSecret: webhookSecret,
 	}
 	sessions := auth.NewSessions(st, time.Hour)
@@ -62,7 +63,7 @@ func newBundleServer(t *testing.T) (*httptest.Server, store.Store) {
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
-	srv.SetBilling(billing.New(stripe.URL, "sk_test_x"))
+	srv.SetBilling(bill)
 	ts := httptest.NewServer(srv.Handler())
 	testStores.Store(ts.URL, st)
 	return ts, st
@@ -83,7 +84,8 @@ func seedSubProject(t *testing.T, st store.Store, id string) {
 }
 
 // The subscribe panel offers an optional domain chooser (BYOD + buy) before the
-// customer pays, with the flat add-on fee shown for the buy option.
+// customer pays; the per-domain price is shown in the search results, not as a
+// fixed fee on the panel.
 func TestSubscribeChooser_ShownForUnpaid(t *testing.T) {
 	srv, st := newBundleServer(t)
 	defer srv.Close()
@@ -94,7 +96,6 @@ func TestSubscribeChooser_ShownForUnpaid(t *testing.T) {
 	for _, want := range []string{
 		`name="domain_mode"`, `value="byod"`, `value="buy"`,
 		"Add a domain",           // sub.domain.legend
-		"29 kr/mo",               // the flat add-on fee on the buy option (+ is HTML-escaped)
 		`name="byod_host"`,       // the BYOD input
 		`domain/search?select=1`, // the pre-pay buy search
 	} {

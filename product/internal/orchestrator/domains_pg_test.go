@@ -113,7 +113,7 @@ func TestDomainAtCheckout_RealPostgres_MockedHostup(t *testing.T) {
 	orch, _ := newTestOrchWithVerifier(pg, NoopVerifier{})
 	orch.SetNotifications(&recordingNotifier{}, "rasmus@example.com", "https://forge.example")
 	// Real Hostup client, real store, cap 300 SEK.
-	orch.SetDomains(hostup.New(mock.URL, "tok", "invoice"), &fakeBiller{}, "price_dom", 300)
+	orch.SetDomains(hostup.New(mock.URL, "tok", "invoice"), &fakeBiller{}, 300)
 
 	seedPGProject(t, pg, "u-checkout", "p-checkout")
 
@@ -164,7 +164,7 @@ func TestSetDomainIntent_TooPricey_RealPostgres(t *testing.T) {
 	defer mock.Close()
 
 	orch, _ := newTestOrchWithVerifier(pg, NoopVerifier{})
-	orch.SetDomains(hostup.New(mock.URL, "tok", "invoice"), &fakeBiller{}, "price_dom", 50) // cap below price
+	orch.SetDomains(hostup.New(mock.URL, "tok", "invoice"), &fakeBiller{}, 50) // cap below price
 
 	seedPGProject(t, pg, "u-pricey", "p-pricey")
 

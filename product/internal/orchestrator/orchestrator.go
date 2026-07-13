@@ -65,12 +65,11 @@ type Orchestrator struct {
 
 	activity *activity.Tracker // debounced per-project build activity for the customer status line
 
-	// Custom domains (see domains.go). All nil/zero until SetDomains wires
-	// Cloudflare — the feature stays invisible and inert without it.
+	// Custom domains (see domains.go). All nil/zero until SetDomains wires a
+	// registrar — the feature stays invisible and inert without it.
 	domains        DomainRegistrar // registrar + DNS provider (nil → disabled)
-	biller         domainBiller    // Stripe sub-items for the monthly add-on (nil → comped)
-	domainPriceID  string          // Stripe recurring price for the domain add-on
-	maxDomainPrice float64         // refuse a self-serve buy above this (registrar currency)
+	biller         domainBiller    // Stripe billing for a purchased domain's one-off cost (nil → comped)
+	maxDomainPrice float64         // refuse a self-serve buy above this, and clamp the billed amount to it (registrar currency)
 
 	// Forge Pro change model (see changes.go): a paying subscriber gets
 	// changesPerMonth included changes/month; each extra one adds a flat

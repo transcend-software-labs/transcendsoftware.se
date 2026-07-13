@@ -509,9 +509,8 @@ details summary { cursor: pointer; }
 .domain-row input[type=text], .domain-search { flex: 1; min-width: 12rem; }
 .domain-attach .muted { margin-top: .1rem; }
 .domain-buy { margin-top: 1.4rem; border-top: 1px solid var(--border); padding-top: 1.1rem; }
-.domain-buy-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-2); }
-.domain-or { font-weight: 500; }
-.domain-fee { color: var(--accent-2); font-weight: 600; font-size: var(--fs-base); white-space: nowrap; }
+.domain-or { font-weight: 500; margin-bottom: var(--sp-2); }
+.domain-price { color: var(--accent-2); font-weight: 600; font-size: var(--fs-base); white-space: nowrap; }
 .domain-search { width: 100%; margin-bottom: .6rem; }
 .domain-hits { list-style: none; display: flex; flex-direction: column; gap: .4rem; }
 .domain-hits li {
@@ -557,7 +556,6 @@ details summary { cursor: pointer; }
 .dc-opt:hover { border-color: var(--accent); }
 .dc-opt input[type=radio] { margin-top: .18rem; }       /* nudge onto the first text line */
 .dc-opt .dc-label { flex: 1; }                           /* take the row; long labels wrap here, not below the radio */
-.dc-opt .domain-fee { flex: 0 0 auto; align-self: center; }
 /* The revealed body belongs to the option above it: pull it up flush and indent
    it under the label so the pair reads as one unit. */
 .dc-body {
@@ -584,6 +582,7 @@ details summary { cursor: pointer; }
   padding: var(--sp-2) .7rem; border: 1px solid var(--border); border-radius: var(--radius);
 }
 .dc-pick:hover { border-color: var(--accent); }
+.dc-pick .domain-price { margin-left: auto; }
 /* When hx-indicator points AT the spinner itself, it gets .htmx-request too. */
 .htmx-request.htmx-indicator { opacity: 1; }
 .terms-doc h2 { margin-top: 1.6rem; font-size: var(--fs-lg); }
@@ -947,10 +946,10 @@ label.ack-later { display: flex; flex-direction: row; align-items: flex-start; g
    (.btn, .linklike targets) by source order. */
 h1, h2, h3, .brand, .btn, .badge,
 .mono, .stat-num, .proof-stat, .sub-price, .tl-label, .timeline, table,
-.plan, .log, .finding-where, .domain-fee, code {
+.plan, .log, .finding-where, .domain-price, code {
   font-family: var(--font-mono);
 }
 /* Numbers that get compared line-to-line align digit-for-digit. */
-table, .stat-num, .proof-stat, .sub-price, .domain-fee {
+table, .stat-num, .proof-stat, .sub-price, .domain-price {
   font-variant-numeric: tabular-nums;
 }

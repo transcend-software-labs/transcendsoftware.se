@@ -27,17 +27,11 @@ import (
 )
 
 // newDomainServer builds a test server with the custom-domain feature wired to a
-// Cloudflare client (pointed at cfURL, unused for BYOD flows) and the Stripe
-// paywall. Buying needs a price id, so the search UI is available too.
+// Cloudflare client (pointed at cfURL, unused for BYOD flows) and a Stripe
+// biller. Buying is enabled by the non-nil biller, so the search UI is available.
 func newDomainServer(t *testing.T, cfURL string) (*httptest.Server, store.Store) {
 	t.Helper()
-	// Fake Stripe that serves the domain add-on price (29 kr/mo) so the buy panel
-	// can display the flat fee.
 	stripe := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/v1/prices/") {
-			_, _ = w.Write([]byte(`{"unit_amount":2900,"currency":"sek","recurring":{"interval":"month"}}`))
-			return
-		}
 		http.NotFound(w, r)
 	}))
 	t.Cleanup(stripe.Close)
@@ -49,14 +43,15 @@ func newDomainServer(t *testing.T, cfURL string) (*httptest.Server, store.Store)
 	broker := stream.NewBroker(100)
 	assets := storage.NewMemory()
 	orch := orchestrator.New(st, fake, fake, fake, b, machines, assets, broker, orchestrator.NoopVerifier{}, log)
-	orch.SetDomains(cloudflare.New(cfURL, "tok", "acct"), nil, "price_dom", 100)
-	cfg := config.Config{AdminEmail: "admin@example.com", BaseURL: "https://forge.example", StripeDomainPriceID: "price_dom"}
+	bill := billing.New(stripe.URL, "sk_test_x")
+	orch.SetDomains(cloudflare.New(cfURL, "tok", "acct"), bill, 100)
+	cfg := config.Config{AdminEmail: "admin@example.com", BaseURL: "https://forge.example"}
 	sessions := auth.NewSessions(st, time.Hour)
 	srv, err := web.NewServer(cfg, st, sessions, orch, broker, assets, log)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
-	srv.SetBilling(billing.New(stripe.URL, "sk_test_x"))
+	srv.SetBilling(bill)
 	ts := httptest.NewServer(srv.Handler())
 	testStores.Store(ts.URL, st)
 	return ts, st
@@ -125,16 +120,18 @@ func TestDomainAttach_ShowsRecords(t *testing.T) {
 	}
 }
 
-func TestDomainBuy_ShowsFlatFee(t *testing.T) {
+func TestDomainSearch_RequiresFullDomain(t *testing.T) {
 	srv, st := newDomainServer(t, "http://127.0.0.1:1")
 	defer srv.Close()
 	c := signedInClient(t, srv.URL)
-	seedPaidProject(t, st, "domfee", true)
+	seedPaidProject(t, st, "domtld", true)
 
-	// The buy panel shows the flat monthly add-on, fetched from the domain price.
-	body := getBody(t, c, srv.URL+"/projects/domfee")
-	if !strings.Contains(body, "29 kr") {
-		t.Fatalf("buy panel should show the flat add-on price (29 kr) fetched from Stripe")
+	// A bare keyword (no TLD) must not trigger a registrar search — the panel
+	// prompts for the full domain instead (the registrar at 127.0.0.1:1 is
+	// unreachable, so a search attempt would error rather than hint).
+	body := getBody(t, c, srv.URL+"/projects/domtld/domain/search?q=mybakery")
+	if !strings.Contains(body, "including the ending") {
+		t.Fatalf("bare keyword should prompt for the full domain, got: %s", body)
 	}
 }
 

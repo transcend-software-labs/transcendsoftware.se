@@ -69,15 +69,22 @@ func (f *fakeCF) EnsureDNSRecord(_ context.Context, _ string, rec registrar.Reco
 	return nil
 }
 
-// fakeBiller records the Stripe sub-item calls.
+// fakeBiller records the Stripe calls: one-off invoice items for a purchased
+// domain's registration cost, and legacy sub-item removals on detach.
 type fakeBiller struct {
-	added   []string // subscription ids an item was added to
-	removed []string // item ids removed
+	invoiced []invoiceItem // one-off invoice items added
+	removed  []string      // legacy sub-item ids removed
 }
 
-func (b *fakeBiller) AddSubscriptionItem(_ context.Context, subID, _ string) (string, error) {
-	b.added = append(b.added, subID)
-	return "si_dom", nil
+type invoiceItem struct {
+	customer string
+	amount   int
+	currency string
+}
+
+func (b *fakeBiller) AddInvoiceItem(_ context.Context, customerID string, amountMinor int, currency, _ string) (string, error) {
+	b.invoiced = append(b.invoiced, invoiceItem{customer: customerID, amount: amountMinor, currency: currency})
+	return "ii_dom", nil
 }
 func (b *fakeBiller) RemoveSubscriptionItem(_ context.Context, itemID string) error {
 	b.removed = append(b.removed, itemID)
@@ -94,7 +101,7 @@ func seedDomainProject(t *testing.T, st store.Store, mutate func(*project.Projec
 	}
 	p := &project.Project{
 		ID: "p1", UserID: "u1", Name: "Bageri", Status: project.StatusPreviewReady,
-		Locale: "sv", Paid: true, PaidVia: "stripe", StripeSubID: "sub_1",
+		Locale: "sv", Paid: true, PaidVia: "stripe", StripeCustomerID: "cus_1", StripeSubID: "sub_1",
 		PreviewURL: "https://forge-p1.fly.dev", CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}
 	if mutate != nil {
@@ -111,7 +118,7 @@ func TestAttachDomain_BYOD_LifecycleAndEmailsOnce(t *testing.T) {
 	rec := &recordingNotifier{}
 	orch.SetNotifications(rec, "rasmus@example.com", "https://forge.example")
 	biller := &fakeBiller{}
-	orch.SetDomains(&fakeCF{}, biller, "price_dom", 100)
+	orch.SetDomains(&fakeCF{}, biller, 100)
 	seedDomainProject(t, st, nil)
 	ctx := context.Background()
 
@@ -137,7 +144,7 @@ func TestAttachDomain_BYOD_LifecycleAndEmailsOnce(t *testing.T) {
 		t.Fatalf("should stay pending_dns until DNS resolves, got %s", got.DomainStatus)
 	}
 
-	// DNS + cert now validated → active, one-time emails, no add-on (BYOD is free).
+	// DNS + cert now validated → active, one-time emails, no charge (BYOD is free).
 	fake.SetCertActive(true)
 	if err := orch.VerifyDomain(ctx, "p1"); err != nil {
 		t.Fatalf("verify (active): %v", err)
@@ -146,8 +153,8 @@ func TestAttachDomain_BYOD_LifecycleAndEmailsOnce(t *testing.T) {
 	if got.DomainStatus != project.DomainActive || got.DomainVerifiedAt.IsZero() {
 		t.Fatalf("expected active+verified, got %+v", got)
 	}
-	if len(biller.added) != 0 {
-		t.Errorf("BYOD must not add a billing item, added: %v", biller.added)
+	if len(biller.invoiced) != 0 {
+		t.Errorf("BYOD must not bill, invoiced: %v", biller.invoiced)
 	}
 	if !sentTo(rec, "cust@example.com", "domän") { // Swedish "Din domän är live"
 		t.Errorf("no localized domain-live email; sent %+v", rec.all())
@@ -163,17 +170,17 @@ func TestAttachDomain_BYOD_LifecycleAndEmailsOnce(t *testing.T) {
 	}
 }
 
-func TestBuyDomain_Lifecycle_AddsSubItem(t *testing.T) {
+func TestBuyDomain_Lifecycle_BillsRegistrationCost(t *testing.T) {
 	st := store.NewMemory()
 	orch, fake := newTestOrchWithVerifier(st, NoopVerifier{})
 	rec := &recordingNotifier{}
 	orch.SetNotifications(rec, "rasmus@example.com", "https://forge.example")
 	biller := &fakeBiller{}
 	cf := &fakeCF{
-		offers:   []registrar.Offer{{Name: "acme.se", Registrable: true, Price: 12, Currency: "USD"}},
+		offers:   []registrar.Offer{{Name: "acme.se", Registrable: true, Price: 129, Renewal: 129, Currency: "SEK"}},
 		regState: registrar.StatePending, // avoid the async success goroutine; drive reconcile by hand
 	}
-	orch.SetDomains(cf, biller, "price_dom", 100)
+	orch.SetDomains(cf, biller, 300)
 	seedDomainProject(t, st, nil)
 	ctx := context.Background()
 
@@ -183,8 +190,8 @@ func TestBuyDomain_Lifecycle_AddsSubItem(t *testing.T) {
 	if len(cf.registered) != 1 {
 		t.Fatalf("expected a registration call, got %v", cf.registered)
 	}
-	if got, _ := st.ProjectByID(ctx, "p1"); got.DomainStatus != project.DomainRegistering {
-		t.Fatalf("after buy: %s", got.DomainStatus)
+	if got, _ := st.ProjectByID(ctx, "p1"); got.DomainStatus != project.DomainRegistering || got.DomainCostOre != 12900 {
+		t.Fatalf("after buy: status=%s cost=%d (want registering / 12900 öre)", got.DomainStatus, got.DomainCostOre)
 	}
 
 	// Registration reported succeeded → provision DNS + cert → verifying.
@@ -199,17 +206,20 @@ func TestBuyDomain_Lifecycle_AddsSubItem(t *testing.T) {
 		t.Fatal("expected DNS records written to the zone")
 	}
 
-	// Cert validates → active → the flat monthly add-on lands on the sub.
+	// Cert validates → active → the registration cost lands once on the next invoice.
 	fake.SetCertActive(true)
 	if err := orch.VerifyDomain(ctx, "p1"); err != nil {
 		t.Fatalf("reconcile (active): %v", err)
 	}
 	got, _ = st.ProjectByID(ctx, "p1")
-	if got.DomainStatus != project.DomainActive || got.DomainSubItemID != "si_dom" {
-		t.Fatalf("expected active+sub-item, got %+v", got)
+	if got.DomainStatus != project.DomainActive {
+		t.Fatalf("expected active, got %+v", got)
 	}
-	if len(biller.added) != 1 || biller.added[0] != "sub_1" {
-		t.Errorf("expected add-on on sub_1, got %v", biller.added)
+	if len(biller.invoiced) != 1 {
+		t.Fatalf("expected one invoice item, got %v", biller.invoiced)
+	}
+	if ii := biller.invoiced[0]; ii.customer != "cus_1" || ii.amount != 12900 || ii.currency != "sek" {
+		t.Errorf("invoice item = %+v, want {cus_1 12900 sek}", ii)
 	}
 }
 
@@ -217,7 +227,7 @@ func TestBuyDomain_PriceCap(t *testing.T) {
 	st := store.NewMemory()
 	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
 	cf := &fakeCF{offers: []registrar.Offer{{Name: "acme.se", Registrable: true, Price: 500, Currency: "USD"}}}
-	orch.SetDomains(cf, &fakeBiller{}, "price_dom", 100)
+	orch.SetDomains(cf, &fakeBiller{}, 100)
 	seedDomainProject(t, st, nil)
 	ctx := context.Background()
 
@@ -237,7 +247,7 @@ func TestBuyDomain_RenewalCap(t *testing.T) {
 	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
 	// Cheap first year, pricey renewal — must be refused like an over-cap price.
 	cf := &fakeCF{offers: []registrar.Offer{{Name: "acme.se", Registrable: true, Price: 9, Renewal: 899, Currency: "SEK"}}}
-	orch.SetDomains(cf, &fakeBiller{}, "price_dom", 300)
+	orch.SetDomains(cf, &fakeBiller{}, 300)
 	seedDomainProject(t, st, nil)
 
 	if err := orch.BuyDomain(context.Background(), "p1", "acme.se"); err != ErrDomainTooPricey {
@@ -252,7 +262,7 @@ func TestBuyDomain_NotRegistrable(t *testing.T) {
 	st := store.NewMemory()
 	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
 	cf := &fakeCF{offers: []registrar.Offer{{Name: "acme.se", Registrable: false}}}
-	orch.SetDomains(cf, &fakeBiller{}, "price_dom", 100)
+	orch.SetDomains(cf, &fakeBiller{}, 100)
 	seedDomainProject(t, st, nil)
 
 	if err := orch.BuyDomain(context.Background(), "p1", "acme.se"); err != ErrNotRegistrable {
@@ -265,7 +275,7 @@ func TestReconcileDomain_StuckTimesOut(t *testing.T) {
 	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
 	rec := &recordingNotifier{}
 	orch.SetNotifications(rec, "rasmus@example.com", "https://forge.example")
-	orch.SetDomains(&fakeCF{}, &fakeBiller{}, "price_dom", 100)
+	orch.SetDomains(&fakeCF{}, &fakeBiller{}, 100)
 	seedDomainProject(t, st, func(p *project.Project) {
 		p.DomainName = "acme.se"
 		p.DomainKind = project.DomainKindPurchased
@@ -289,7 +299,7 @@ func TestDetachDomain_RemovesSubItemAndClears(t *testing.T) {
 	st := store.NewMemory()
 	orch, fake := newTestOrchWithVerifier(st, NoopVerifier{})
 	biller := &fakeBiller{}
-	orch.SetDomains(&fakeCF{}, biller, "price_dom", 100)
+	orch.SetDomains(&fakeCF{}, biller, 100)
 	seedDomainProject(t, st, func(p *project.Project) {
 		p.DomainName = "acme.se"
 		p.DomainKind = project.DomainKindPurchased
@@ -317,7 +327,7 @@ func TestDetachDomain_RemovesSubItemAndClears(t *testing.T) {
 func TestAttachDomain_Guards(t *testing.T) {
 	st := store.NewMemory()
 	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
-	orch.SetDomains(&fakeCF{}, &fakeBiller{}, "price_dom", 100)
+	orch.SetDomains(&fakeCF{}, &fakeBiller{}, 100)
 	ctx := context.Background()
 
 	// Malformed names + the preview host are rejected before the project even
@@ -341,7 +351,7 @@ func TestSubscriptionStarted_ProvisionsBundledBYOD(t *testing.T) {
 	st := store.NewMemory()
 	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
 	orch.SetNotifications(&recordingNotifier{}, "rasmus@example.com", "https://forge.example")
-	orch.SetDomains(&fakeCF{}, &fakeBiller{}, "price_dom", 100)
+	orch.SetDomains(&fakeCF{}, &fakeBiller{}, 100)
 	seedDomainProject(t, st, func(p *project.Project) {
 		p.Paid, p.PaidVia, p.StripeSubID = false, "", ""
 		p.DomainIntent, p.DomainIntentBuy = "acme.se", false
@@ -369,7 +379,7 @@ func TestSubscriptionStarted_ProvisionsBundledBuy(t *testing.T) {
 	orch.SetNotifications(&recordingNotifier{}, "rasmus@example.com", "https://forge.example")
 	orch.SetDomains(&fakeCF{offers: []registrar.Offer{
 		{Name: "acme.se", Registrable: true, Price: 12, Renewal: 12, Currency: "USD"},
-	}}, &fakeBiller{}, "price_dom", 100)
+	}}, &fakeBiller{}, 100)
 	seedDomainProject(t, st, func(p *project.Project) {
 		p.Paid, p.PaidVia, p.StripeSubID = false, "", ""
 		p.DomainIntent, p.DomainIntentBuy = "acme.se", true
@@ -393,7 +403,7 @@ func TestSetDomainIntent_Validation(t *testing.T) {
 	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
 	orch.SetDomains(&fakeCF{offers: []registrar.Offer{
 		{Name: "acme.se", Registrable: true, Price: 200, Renewal: 200, Currency: "USD"}, // over the cap
-	}}, &fakeBiller{}, "price_dom", 100)
+	}}, &fakeBiller{}, 100)
 	seedDomainProject(t, st, func(p *project.Project) { p.Paid = false })
 	ctx := context.Background()
 

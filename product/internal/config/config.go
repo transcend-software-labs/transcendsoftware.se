@@ -98,21 +98,28 @@ type Config struct {
 	// Custom domains via Cloudflare (both required to enable — see
 	// CloudflareEnabled). Lets a paying customer attach their own domain (we
 	// show DNS records, verify, auto-issue the Fly cert) or buy one in-app.
-	// Buying additionally needs StripeDomainPriceID (see DomainBuyEnabled).
 	CloudflareAPIToken  string  // scoped: Registrar write + Zone read + DNS edit
 	CloudflareAccountID string  // account the domains/zones live under
-	StripeDomainPriceID string  // price_… recurring add-on (SEK/mo) per domain
 	MaxDomainUSD        float64 // refuse a self-serve buy above this (default 100)
 
-	// Hostup (hostup.se) as the domain registrar instead of Cloudflare — it
-	// sells the Swedish ccTLDs (.se/.nu) Cloudflare can't. When the token is
-	// set, Hostup takes precedence over Cloudflare for the whole domain
-	// feature (registration + DNS). Keys: cloud.hostup.se/api-management,
-	// scoped for domains, dns-zones and orders.
+	// Hostup (hostup.se) as the domain registrar. Kept as a fallback behind
+	// GleSYS. Keys: cloud.hostup.se/api-management, scoped for domains,
+	// dns-zones and orders.
 	HostupAPIToken      string
-	HostupAPIURL        string  // API base (default https://cloud.hostup.se — verified: serves the RFC 7807 v2 API)
-	HostupPaymentMethod string  // how registration orders settle (default "invoice")
-	MaxDomainSEK        float64 // Hostup buy cap, in SEK (default 300)
+	HostupAPIURL        string // API base (default https://cloud.hostup.se — verified: serves the RFC 7807 v2 API)
+	HostupPaymentMethod string // how registration orders settle (default "invoice")
+
+	// GleSYS (glesys.com) as the domain registrar — the current provider. When
+	// both creds are set it takes precedence over Hostup/Cloudflare for the whole
+	// domain feature (availability + registration + DNS). A purchased domain's
+	// actual 1-year cost is billed once to the customer's next Stripe invoice
+	// (clamped to MaxDomainSEK). GlesysProjectID is the project key ("CL12345",
+	// the Basic-auth username); GlesysAPIKey is that project's API key.
+	GlesysProjectID  string
+	GlesysAPIKey     string
+	GlesysRegistrant Registrant // legal registrant every domain is registered to
+
+	MaxDomainSEK float64 // buy cap, in SEK: max we offer AND max we bill (default 300)
 
 	// Execution plane (empty → fake driver/machines):
 	OpencodeURL     string // fixed opencode server base URL (overrides per-machine)
@@ -154,6 +161,32 @@ type Config struct {
 	// switch so we can A/B its build-time cost vs. quality. (The design
 	// principles in the template's AGENTS.md apply either way.)
 	Impeccable bool
+}
+
+// Registrant is the legal contact every GleSYS domain is registered to (Forge's
+// own company details). GleSYS requires full contact details per registration;
+// we register everything to Forge and bill the customer. Hardcoded here — for a
+// company the organisationsnummer + address are public business data, not
+// secrets — with GLESYS_REGISTRANT_* overrides so a correction needs no
+// redeploy. NationalID is the organisationsnummer (required for .se).
+type Registrant struct {
+	Firstname    string
+	Lastname     string
+	Organization string
+	NationalID   int
+	Address      string
+	City         string
+	ZipCode      string
+	Country      string // ISO code, e.g. "SE"
+	Email        string
+	PhoneNumber  string
+}
+
+// Complete reports whether the registrant has the minimum GleSYS needs to
+// register a domain (a missing organisationsnummer is the usual gap).
+func (r Registrant) Complete() bool {
+	return r.NationalID > 0 && r.Organization != "" && r.Address != "" &&
+		r.City != "" && r.ZipCode != "" && r.Country != "" && r.Email != ""
 }
 
 // StorageEnabled reports whether a real S3-compatible backend is configured.
@@ -209,13 +242,17 @@ func Load() Config {
 
 		CloudflareAPIToken:  os.Getenv("CLOUDFLARE_API_TOKEN"),
 		CloudflareAccountID: os.Getenv("CLOUDFLARE_ACCOUNT_ID"),
-		StripeDomainPriceID: os.Getenv("STRIPE_DOMAIN_PRICE_ID"),
 		MaxDomainUSD:        envFloatOr("MAX_DOMAIN_USD", 100),
 
 		HostupAPIToken:      envOr("HOSTUP_API_TOKEN", os.Getenv("HOSTUP_API_KEY")), // both names accepted
 		HostupAPIURL:        envOr("HOSTUP_API_URL", "https://cloud.hostup.se"),
 		HostupPaymentMethod: envOr("HOSTUP_PAYMENT_METHOD", "invoice"),
-		MaxDomainSEK:        envFloatOr("MAX_DOMAIN_SEK", 300),
+
+		GlesysProjectID:  os.Getenv("GLESYS_PROJECT_ID"),
+		GlesysAPIKey:     os.Getenv("GLESYS_API_KEY"),
+		GlesysRegistrant: loadRegistrant(),
+
+		MaxDomainSEK: envFloatOr("MAX_DOMAIN_SEK", 300),
 
 		OpencodeURL:     os.Getenv("OPENCODE_URL"),
 		OpencodePort:    4096,
@@ -302,18 +339,25 @@ func (c Config) CloudflareEnabled() bool {
 	return c.CloudflareAPIToken != "" && c.CloudflareAccountID != ""
 }
 
-// HostupEnabled reports whether Hostup backs the domain feature. When set it
-// takes precedence over Cloudflare (see cmd/server/main.go).
+// GlesysEnabled reports whether GleSYS backs the domain feature. When set it
+// takes precedence over Hostup/Cloudflare (see cmd/server/main.go).
+func (c Config) GlesysEnabled() bool { return c.GlesysProjectID != "" && c.GlesysAPIKey != "" }
+
+// HostupEnabled reports whether Hostup backs the domain feature (fallback
+// behind GleSYS).
 func (c Config) HostupEnabled() bool { return c.HostupAPIToken != "" }
 
 // DomainsEnabled reports whether any domain registrar is configured.
-func (c Config) DomainsEnabled() bool { return c.HostupEnabled() || c.CloudflareEnabled() }
+func (c Config) DomainsEnabled() bool {
+	return c.GlesysEnabled() || c.HostupEnabled() || c.CloudflareEnabled()
+}
 
 // DomainBuyEnabled reports whether customers can buy a domain in-app. Beyond
-// registrar access it needs the recurring add-on price to bill the domain, so
-// we never register a domain we can't charge for.
+// registrar access it needs Stripe live, so we can bill the registration cost
+// onto the customer's next invoice — we never register a domain we can't charge
+// for.
 func (c Config) DomainBuyEnabled() bool {
-	return c.DomainsEnabled() && c.StripeDomainPriceID != ""
+	return c.DomainsEnabled() && c.StripeEnabled()
 }
 
 // DevMode reports whether the app is running fully in-memory/fake.
@@ -331,6 +375,26 @@ func listenAddr() string {
 		return ":" + p
 	}
 	return ":8080"
+}
+
+// loadRegistrant builds Forge's GleSYS registrant from hardcoded company
+// defaults, each overridable via GLESYS_REGISTRANT_*. The organisationsnummer,
+// street address, zip, city and phone are owner-supplied — the empty
+// placeholders below MUST be filled (in code or via env) before a live
+// registration; main.go warns at startup if the registrant is incomplete.
+func loadRegistrant() Registrant {
+	return Registrant{
+		Firstname:    envOr("GLESYS_REGISTRANT_FIRSTNAME", "Rasmus"),
+		Lastname:     envOr("GLESYS_REGISTRANT_LASTNAME", "Kockum"),
+		Organization: envOr("GLESYS_REGISTRANT_ORG", "Transcend Software AB"),
+		NationalID:   envIntOr("GLESYS_REGISTRANT_NATIONAL_ID", 5592181050), // organisationsnummer 559218-1050
+		Address:      envOr("GLESYS_REGISTRANT_ADDRESS", "Salagatan 36A"),
+		City:         envOr("GLESYS_REGISTRANT_CITY", "Uppsala"),
+		ZipCode:      envOr("GLESYS_REGISTRANT_ZIP", "75326"),
+		Country:      envOr("GLESYS_REGISTRANT_COUNTRY", "SE"),
+		Email:        envOr("GLESYS_REGISTRANT_EMAIL", "rasmus@transcendsoftware.se"),
+		PhoneNumber:  envOr("GLESYS_REGISTRANT_PHONE", "+46732020890"),
+	}
 }
 
 func envOr(key, def string) string {
