@@ -7,6 +7,15 @@
       "runtimeArgs": [],
       "autoPort": true,
       "port": 8080
+    },
+    {
+      "name": "goapp-template",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": [
+        "-c",
+        "cd /Users/rasmus/Repositories/transcendsoftware.se/product/template/goapp && go run ./tools/buildjs && go build -o bin/app . && rm -rf /tmp/goapp-preview-data && mkdir -p /tmp/goapp-preview-data && DATA_DIR=/tmp/goapp-preview-data ADDR=:8090 ./bin/app"
+      ],
+      "port": 8090
     }
   ]
 }

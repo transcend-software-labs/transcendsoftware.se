@@ -33,8 +33,8 @@ async function main() {
   page.on('console', (m) => {
     if (m.type() !== 'error') return;
     const t = m.text();
-    // asset-404 noise, and htmx logging a non-2xx server response (not a JS bug —
-    // the functional checks above catch real failures).
+    // asset-404 noise and non-2xx response logging (not JS bugs — the
+    // functional checks above catch real failures).
     if (/Failed to load resource|favicon|net::ERR_|Response Status Error Code/i.test(t)) return;
     jsErrors.push('console: ' + t);
   });
@@ -105,8 +105,9 @@ async function main() {
       ok('logout works');
     } catch (e) { fail('logout works', e.message); }
 
-    // 4) Log in — must succeed on the FIRST click (the hx-boost "login does
-    //    nothing" trap). Assert we actually leave /login.
+    // 4) Log in — must succeed on the FIRST click. A script that intercepts
+    //    the submit and stalls the redirect makes the first click "do nothing";
+    //    assert we actually leave /login.
     try {
       await page.goto(BASE + '/login', { waitUntil: 'domcontentloaded' });
       await page.fill('input[type="email"]', EMAIL);
@@ -116,13 +117,13 @@ async function main() {
         page.click('button[type="submit"], button:has-text("Log in"), button:has-text("Sign in")'),
       ]);
       ok('login works on the first click');
-    } catch (e) { fail('login works on the first click', 'first click did not navigate away from /login (hx-boost trap?) — ' + e.message); }
+    } catch (e) { fail('login works on the first click', 'first click did not navigate away from /login (a script intercepting the submit?) — ' + e.message); }
 
-    // 5) The hx-boost cross-stylesheet bug: the public site uses app.css and
-    //    /admin uses admin.css. Reproduce the real transition — stand on a
-    //    PUBLIC page (app.css) and CLICK the "Site admin" link. If it's a boosted
-    //    link it swaps only the body and keeps app.css, so /admin renders
-    //    unstyled until a reload. Assert admin.css is actually referenced after.
+    // 5) Cross-stylesheet check: the public site uses app.css and /admin uses
+    //    admin.css. Reproduce the real transition — stand on a PUBLIC page and
+    //    CLICK the "Site admin" link; any script that swaps page content instead
+    //    of navigating natively leaves /admin on the wrong stylesheet (unstyled
+    //    until reload). Assert admin.css is actually referenced after.
     try {
       await page.goto(BASE + '/', { waitUntil: 'load' }); // public page, still logged in
       const adminLink = page.locator('a[href="/admin"]').first();
@@ -132,7 +133,7 @@ async function main() {
         if (!page.url().includes('/admin')) throw new Error('nav did not reach /admin');
         const hasAdminCss = await page.evaluate(() =>
           !!document.querySelector('link[rel="stylesheet"][href*="admin.css"]'));
-        if (!hasAdminCss) throw new Error('admin.css not loaded after clicking "Site admin" from a public page (unstyled until reload — set hx-boost="false" on that link)');
+        if (!hasAdminCss) throw new Error('admin.css not loaded after clicking "Site admin" from a public page (unstyled until reload — the admin link must be a plain native <a>, not intercepted by a script)');
         ok('admin is styled when reached via the nav link');
       } else {
         ok('no admin link for this account — admin styling check skipped');

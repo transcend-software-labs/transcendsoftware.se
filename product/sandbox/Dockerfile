@@ -42,6 +42,11 @@ RUN npm i -g playwright@1.50.0
 # node >=24, which this Playwright base doesn't ship).
 RUN npm i -g impeccable@2.3.2
 
+# TypeScript — the starter's `make js` type-checks web/src/app.ts with
+# `tsc --noEmit` (the emit itself is esbuild via a Go dep, no Node needed).
+# Pinned to the mature 5.x line, which runs on this base's Node 22.
+RUN npm i -g typescript@5.9.3
+
 # Go — only needed if the canonical stack builds Go services; drop this layer
 # if your default stack is JS-only.
 RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" \
@@ -62,7 +67,7 @@ RUN curl -L https://fly.io/install.sh | FLYCTL_INSTALL=/usr/local sh
 RUN node --version && npm --version && pnpm --version && go version \
  && command -v opencode && command -v flyctl && command -v git \
  && command -v playwright && test -d /ms-playwright \
- && impeccable --version
+ && impeccable --version && tsc --version
 
 # Warm the Go module + build caches with the starter template's dependency
 # tree (staged into .template/ by `make sandbox-build`). modernc SQLite alone

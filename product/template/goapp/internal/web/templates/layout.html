@@ -5,31 +5,30 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{.Title}}</title>
   <!-- Order matters: tokens (the design surface) → components (locked
-       structure) → app.css (this project's theme, always wins). -->
-  <link rel="stylesheet" href="/static/tokens.css">
-  <link rel="stylesheet" href="/static/components.css">
-  <link rel="stylesheet" href="/static/app.css">
-  <!-- Vendored (no CDN) so the site stays self-contained. hx-boost turns
-       full-page loads into fast partial swaps — no white flash, back button
-       still works, and it degrades to normal navigation without JS. -->
-  <script src="/static/htmx.min.js" defer></script>
+       structure) → app.css (this project's theme, always wins). The asset
+       helper appends a build-content hash so redeploys bust the cache. -->
+  <link rel="stylesheet" href="{{asset "tokens.css"}}">
+  <link rel="stylesheet" href="{{asset "components.css"}}">
+  <link rel="stylesheet" href="{{asset "app.css"}}">
+  <!-- app.js is compiled+type-checked from web/src/app.ts (`make js`). It ships
+       empty by default: navigation is native (components.css adds view
+       transitions where supported), the nav toggle is CSS-only. Edit app.ts,
+       never this generated file. -->
+  <script src="{{asset "app.js"}}" defer></script>
 </head>
-<body hx-boost="true">
+<body>
 <header class="nav">
   <a class="brand" href="/">Your Site</a>
   <!-- Mobile menu: a CSS-only checkbox toggle (styled in app.css) collapses the
-       links into a hamburger on phones. No JS, and it survives hx-boost swaps.
-       Keep this pattern on every nav you build — see AGENTS.md. -->
+       links into a hamburger on phones. No JS. Keep this pattern on every nav
+       you build — see AGENTS.md. -->
   <input type="checkbox" id="nav-toggle" class="nav-toggle" hidden>
   <label for="nav-toggle" class="nav-burger" aria-label="Toggle menu" aria-controls="site-nav">
     <span></span><span></span><span></span>
   </label>
   <nav id="site-nav" class="navlinks" aria-label="Main navigation">
     {{if .User}}
-      {{/* /admin is served with a different stylesheet (admin.css); hx-boost
-           would swap only the body and keep app.css, leaving admin unstyled
-           until a manual reload — so cross into it with a native navigation. */}}
-      {{if .User.IsAdmin}}<a href="/admin" hx-boost="false">Site admin</a>{{else}}<a href="/app">Account</a>{{end}}
+      {{if .User.IsAdmin}}<a href="/admin">Site admin</a>{{else}}<a href="/app">Account</a>{{end}}
       <form method="post" action="/logout" class="inline">
         <input type="hidden" name="csrf_token" value="{{.CSRF}}">
         <button class="linklike">Log out</button>

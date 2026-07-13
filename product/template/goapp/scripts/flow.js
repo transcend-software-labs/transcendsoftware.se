@@ -17,8 +17,8 @@
 //   { "expectUrl": "/member/bookings" }               URL path must contain this
 //   { "expectFirstClick": "a[href='/admin']", "url": "/admin", "css": "admin.css" }
 //        click a link and assert it reached `url` on the FIRST click and (opt) that
-//        a stylesheet matching `css` loaded — catches hx-boost "does nothing" /
-//        "unstyled admin" bugs on a custom nav.
+//        a stylesheet matching `css` loaded — catches "first click does nothing" /
+//        "unstyled admin" bugs when a script intercepts navigation on a custom nav.
 //
 // Password for signup/login steps defaults to "ownerpass123" (matches smoke.js,
 // so signupOwner logs in cleanly when smoke.js already created the owner in the
@@ -99,7 +99,7 @@ async function run(page, step, i) {
       await settle(page);
       if (step.url && !page.url().includes(step.url)) throw new Error('first click did not reach ' + step.url + ' (got ' + page.url() + ')');
       if (step.css && !(await page.evaluate((c) => !!document.querySelector(`link[rel="stylesheet"][href*="${c}"]`), step.css)))
-        throw new Error(step.css + ' not loaded after the click (unstyled — hx-boost="false" needed?)');
+        throw new Error(step.css + ' not loaded after the click (unstyled — is a script intercepting the navigation? links must navigate natively)');
     } else throw new Error('unknown step: ' + JSON.stringify(step));
     pass(label);
   } catch (e) {
@@ -124,8 +124,8 @@ async function main() {
   page.on('console', (m) => {
     if (m.type() !== 'error') return;
     const t = m.text();
-    // asset-404 noise, and htmx logging a non-2xx server response (that is not a
-    // JS bug — the flow's expect/expectUrl steps catch functional failures).
+    // asset-404 noise and non-2xx response logging (not JS bugs — the flow's
+    // expect/expectUrl steps catch functional failures).
     if (/Failed to load resource|favicon|net::ERR_|Response Status Error Code/i.test(t)) return;
     jsErrors.push('console: ' + t);
   });

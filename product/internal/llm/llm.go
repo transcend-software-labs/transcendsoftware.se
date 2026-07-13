@@ -298,23 +298,21 @@ site is dead, and curl will NOT catch it):
   or that only works on the second click, is a BUG — fix it. If the site has
   accounts, actually create one and log in with it.
 - Health-check curls and page GETs are NOT sufficient and do not count: they run
-  no JavaScript, so they sail past broken htmx / form / redirect flows — the #1
+  no JavaScript, so they sail past broken form / redirect / script flows — the #1
   cause of "I click the button and nothing happens." Any interactivity MUST be
   driven in a browser.
-- Known trap that causes exactly this: hx-boost (on the starter's <body>)
-  hijacks a login/signup submit into an AJAX request that then stalls on the
-  post-login redirect chain, so the first click appears to do nothing. Auth
-  forms — login, signup, logout — MUST submit natively: put hx-boost="false" on
-  those <form> elements so the redirect navigates reliably, and keep the
-  post-login redirect to a single hop (avoid /login -> /app -> /admin chains).
-- Same hx-boost trap, different symptom (styling): a boosted LINK that crosses
-  between two pages served with DIFFERENT stylesheets swaps only the <body> and
-  keeps the old <head>, so the destination loads UNSTYLED until a manual reload.
-  The starter has exactly this seam — the public site uses app.css, the /admin
-  area uses admin.css. So ANY link navigating between the public site and /admin
-  MUST set hx-boost="false" (the nav's "Site admin" link INTO admin, and admin's
-  "View site" link back out). In your browser test, click into /admin and assert
-  it is correctly styled on the FIRST navigation, not only after a reload.
+- Navigation is NATIVE: the starter ships no htmx/AJAX layer — links navigate
+  and forms POST like plain HTML, and CSS view transitions (already in the
+  starter) provide the polish. NEVER add a script that intercepts link clicks
+  or form submits: that is exactly how "the first click does nothing" and
+  "/admin loads unstyled" bugs are born, and smoke.js fails on both. Keep the
+  post-login redirect to a single hop (avoid /login -> /app -> /admin chains),
+  and in your browser test click into /admin and assert it is correctly styled
+  on the FIRST navigation.
+- If the plan truly needs a client-side widget (gallery, date picker, live
+  filter), the ONLY place for that JS is web/src/app.ts — strict TypeScript,
+  compiled and type-checked by make test / serve.sh. No inline <script> blocks,
+  no extra .js files, no frameworks; the page must still work without JS.
 - Fix everything that doesn't work end to end, then re-verify. This is part of
   building the site correctly — it is NOT the gold-plating warned about below.
 

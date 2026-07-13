@@ -161,6 +161,81 @@ func TestCSRF_TokenlessPostRejected(t *testing.T) {
 	}
 }
 
+// Every starter page must render without template errors. render() turns a
+// template failure into a 500, so a plain 200 check catches missing fields,
+// bad pipelines and broken layout includes at test time.
+func TestPagesRenderWithoutTemplateErrors(t *testing.T) {
+	srv := newTestServer(t, "")
+	defer srv.Close()
+	owner, _ := signup(t, srv.URL, "owner@example.com")
+	member, _ := signup(t, srv.URL, "member@example.com")
+	anon := &http.Client{}
+
+	for _, tc := range []struct {
+		name, path string
+		c          *http.Client
+	}{
+		{"landing", "/", anon},
+		{"landing authed", "/", owner},
+		{"login", "/login", anon},
+		{"signup", "/signup", anon},
+		{"dashboard", "/app", member},
+		{"admin index", "/admin", owner},
+		{"admin table", "/admin/t/users", owner},
+		{"admin row", "/admin/t/users/r/1", owner},
+	} {
+		body, resp := get(t, tc.c, srv.URL+tc.path)
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("%s (GET %s) = %d, want 200 — body: %.300s", tc.name, tc.path, resp.StatusCode, body)
+		}
+	}
+}
+
+// Static assets must be cacheable (Cache-Control + ETag with 304 revalidation)
+// and pages must link them with a cache-busting version. embed.FS files have no
+// modtime, so losing these headers would silently make every asset re-download
+// on every page view.
+func TestStaticAssetsAreCacheable(t *testing.T) {
+	srv := newTestServer(t, "")
+	defer srv.Close()
+	c := &http.Client{}
+
+	resp, err := c.Get(srv.URL + "/static/tokens.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("tokens.css = %d, want 200", resp.StatusCode)
+	}
+	if cc := resp.Header.Get("Cache-Control"); !strings.Contains(cc, "max-age") {
+		t.Errorf("Cache-Control = %q, want a max-age", cc)
+	}
+	etag := resp.Header.Get("ETag")
+	if etag == "" {
+		t.Fatal("static response has no ETag")
+	}
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/static/tokens.css", nil)
+	req.Header.Set("If-None-Match", etag)
+	resp2, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, resp2.Body)
+	resp2.Body.Close()
+	if resp2.StatusCode != http.StatusNotModified {
+		t.Errorf("conditional GET = %d, want 304", resp2.StatusCode)
+	}
+
+	// Pages must reference assets through the versioned helper.
+	page, _ := get(t, c, srv.URL+"/")
+	if !strings.Contains(page, "/static/app.css?v=") {
+		t.Error("landing page does not link app.css with a ?v= cache-buster")
+	}
+}
+
 // The admin must never expose password hashes and must hide internal tables —
 // a security invariant that has to survive whatever tables the site adds.
 func TestAdmin_MasksSecretsAndHidesInternals(t *testing.T) {

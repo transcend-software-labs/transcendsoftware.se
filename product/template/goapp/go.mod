@@ -3,6 +3,7 @@ module app
 go 1.25
 
 require (
+	github.com/evanw/esbuild v0.28.1
 	golang.org/x/crypto v0.31.0
 	modernc.org/sqlite v1.34.4
 )

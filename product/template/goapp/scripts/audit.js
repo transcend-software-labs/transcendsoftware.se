@@ -24,7 +24,7 @@ const BASE = (process.argv[2] || 'http://localhost:8080').replace(/\/$/, '');
 // nav visibility and button readability can't regress per project. Restyle via
 // tokens.css + app.css. (Maintainers: template-push refuses to ship if this
 // constant doesn't match the file — update both together, deliberately.)
-const COMPONENTS_SHA256 = '170f9fbb24955b0f47878aa1b5be1be49b2f010d2b4aea22d6a9c448cd6eb04b';
+const COMPONENTS_SHA256 = 'bb502c2b1fa586aa143ee349acf1830ef10e7c63316cc27ae1bc76232e8bb830';
 
 async function get(url) {
   try { const r = await fetch(url); return r.ok ? await r.text() : ''; } catch { return ''; }

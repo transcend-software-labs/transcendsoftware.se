@@ -23,6 +23,10 @@ that implements the plan.
   dispatcher sends). Works for every table automatically — you don't build
   notifications; just store the data.
 - Public contact form on `/` → stored in `messages` → readable in `/admin`.
+- **Zero-JS navigation that still feels instant**: static assets are served
+  with proper caching (ETag + versioned URLs via the `asset` template helper),
+  and `components.css` enables native cross-page view transitions. Do not add
+  a JS navigation/AJAX layer — plain links and forms are the contract.
 - `/healthz` for platform health checks. Graceful shutdown.
 
 ## Layout
@@ -35,6 +39,9 @@ that implements the plan.
     internal/web/handlers.go    page + form handlers
     internal/web/templates/     html/template pages ("head"/"foot" layout)
     internal/web/static/        tokens.css (design vars) + components.css (locked) + app.css (theme)
+    web/src/app.ts              ALL client-side JS (TypeScript, usually empty)
+    internal/web/static/app.js  GENERATED from app.ts by `make js` — never edit
+    tools/buildjs/              the app.ts compiler (esbuild) — don't touch
 
 ## How to make common changes
 
@@ -48,6 +55,12 @@ that implements the plan.
 - **Content/branding:** replace "Your Site" in `layout.html`, the landing page,
   and the `static/tokens.css` variables. Write real, complete copy in the customer's
   language (Swedish unless the brief says otherwise).
+- **Client-side JS (rare):** if the plan genuinely needs an interactive widget
+  (gallery/lightbox, date picker, live filter), write it in `web/src/app.ts` —
+  typed, strict, no frameworks, no npm imports — and run `make js` (serve.sh and
+  `make test` do it automatically). NEVER add inline `<script>` blocks, new
+  script files, or a JS library; `app.ts` is the only JS path, and everything
+  must still work with JS disabled (forms post, links navigate).
 
 ## Design — decided per project, not by this template
 
@@ -84,13 +97,10 @@ Forge-specific rules layered on top of it.
   or the `admin*.html` templates are Forge-provided and intentionally styled
   separately from the public site — leave them exactly as they are. Your
   restyling of `app.css` only affects the public pages.
-- **Crossing into `/admin` must be a native link, not a boosted one.** Because
-  `/admin` is served with `admin.css` and the public site with `app.css`, an
-  hx-boost link between them swaps only the `<body>` and keeps the old `<head>`,
-  so the destination loads with the wrong stylesheet (unstyled) until a manual
-  reload. The starter sets `hx-boost="false"` on the nav's "Site admin" link and
-  on admin's "View site" link for exactly this reason — keep it there, and add
-  it to any link you introduce that crosses the public-site ↔ `/admin` boundary.
+- **Links and forms navigate natively — never intercept them with JS.** Page
+  transitions are already smooth (view transitions in `components.css`), and a
+  script that hijacks clicks/submits is how "the first click does nothing" and
+  "/admin loads unstyled" bugs happen (smoke.js fails on both).
 - Keep semantic HTML and the responsive behavior. The **Interface quality floor**
   below (keyboard/focus, forms, contrast, every-state, motion) is the
   non-negotiable bar under every design — beauty never trumps usability.
@@ -124,8 +134,8 @@ Forge-specific rules layered on top of it.
   most common tell). The starter ships a working CSS-only pattern in
   `layout.html` + `components.css` (`.nav` / `.nav-toggle` / `.nav-burger` / `.navlinks`,
   toggled below 720px): reuse it for the public nav — restyle it, but keep the
-  collapse behavior. It needs no JavaScript and survives hx-boost swaps. Always
-  check the nav at a 375px width before deploying.
+  collapse behavior. It needs no JavaScript. Always check the nav at a 375px
+  width before deploying.
 - **Login must stay reachable.** The starter serves /login and /signup on every
   site, and the starter nav's `{{if .User}}` block links them. When you redesign
   the header, KEEP that block (restyled however you like) — or link /login from
@@ -196,10 +206,12 @@ fails these is not done. Walk this list before you deploy.
   seeing their own booking — are fine; the ban is on owner/staff management UIs.)
 - Don't name columns with `password`/`hash`/`token`/`secret` unless the value
   is genuinely secret — the admin masks such columns.
-- Stdlib only unless the plan clearly needs more; no JS frameworks by default.
+- Stdlib only unless the plan clearly needs more. No JS frameworks, ever; the
+  only client-side JS lives in `web/src/app.ts` (see "Client-side JS" above).
 - Validate and length-cap all user input (see `maxFieldLen`).
-- Run `go test ./...` and `go vet ./...` before deploying — code must compile
-  and tests must pass. But note: the starter's `web_test.go` asserts the
+- Run `make test` and `go vet ./...` before deploying — code must compile,
+  `app.ts` must type-check (make test builds it first), and tests must pass.
+  But note: the starter's `web_test.go` asserts the
   SCAFFOLD's exact behavior (specific pages, confirmation text, which tables
   `/admin` lists). When you deliberately change that behavior, those assertions
   are now WRONG — update or delete the obsolete ones to match what you actually
@@ -209,7 +221,7 @@ fails these is not done. Walk this list before you deploy.
   don't rabbit-hole here.
 - **Test every user path in a real browser before deploying — required.** Unit
   tests and `curl`/health checks run no JavaScript, so they miss broken
-  htmx/form/redirect flows (the #1 "I click the button and nothing happens"
+  form/redirect/script flows (the #1 "I click the button and nothing happens"
   bug). To (re)start the app locally, run ONE command — do NOT improvise the
   process/port/data-dir lifecycle:
 
@@ -296,8 +308,8 @@ fails these is not done. Walk this list before you deploy.
 
 ## Build, test, deploy
 
-    make run        # local dev on :8080
-    make test       # tests
+    make run        # local dev on :8080 (compiles app.ts first)
+    make test       # builds + type-checks app.ts, then go test
     fly deploy --remote-only --ha=false --app "$FLY_APP" --access-token "$FLY_DEPLOY_TOKEN"
 
 `--ha=false` is required: the app uses SQLite on a single machine — two

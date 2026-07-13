@@ -3,10 +3,14 @@
 package web
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
 	"embed"
+	"encoding/hex"
 	"html/template"
+	"io/fs"
 	"log/slog"
 	"net/http"
 
@@ -19,6 +23,39 @@ var templatesFS embed.FS
 
 //go:embed static
 var staticFS embed.FS
+
+// assetVersion is a content hash of everything under static/, computed once at
+// startup. It cache-busts asset URLs (see the asset template func) and doubles
+// as the ETag for /static/ responses, so a redeploy with changed CSS/JS is
+// picked up immediately while unchanged assets revalidate as cheap 304s.
+var assetVersion = func() string {
+	h := sha256.New()
+	_ = fs.WalkDir(staticFS, "static", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, _ := staticFS.ReadFile(path)
+		h.Write([]byte(path))
+		h.Write(b)
+		return nil
+	})
+	return hex.EncodeToString(h.Sum(nil))[:12]
+}()
+
+// asset returns the versioned URL for a file in static/.
+func asset(name string) string { return "/static/" + name + "?v=" + assetVersion }
+
+// cacheStatic serves embedded static files with caching enabled. embed.FS has
+// no file modtimes, so without this every asset would be re-downloaded on every
+// page view (no validators = effectively uncacheable).
+func cacheStatic(next http.Handler) http.Handler {
+	etag := `"` + assetVersion + `"`
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		w.Header().Set("ETag", etag) // FileServer answers If-None-Match with 304 from this
+		next.ServeHTTP(w, r)
+	})
+}
 
 // Options configures the HTTP layer.
 type Options struct {
@@ -42,7 +79,9 @@ type Server struct {
 
 // New wires the HTTP layer.
 func New(db *sql.DB, sessions *auth.Sessions, opts Options, log *slog.Logger) *Server {
-	tmpl := template.Must(template.ParseFS(templatesFS, "templates/*.html"))
+	tmpl := template.Must(template.New("").
+		Funcs(template.FuncMap{"asset": asset}).
+		ParseFS(templatesFS, "templates/*.html"))
 	site := opts.SiteName
 	if site == "" {
 		site = "your site"
@@ -55,7 +94,7 @@ func New(db *sql.DB, sessions *auth.Sessions, opts Options, log *slog.Logger) *S
 // Handler returns the app's routes.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle("GET /static/", http.FileServerFS(staticFS))
+	mux.Handle("GET /static/", cacheStatic(http.FileServerFS(staticFS)))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
@@ -101,12 +140,19 @@ func (s *Server) view(r *http.Request, title string, data any) View {
 	return View{Title: title, SiteName: s.siteName, User: s.currentUser(r), CSRF: s.csrfToken(r), Data: data}
 }
 
+// render executes the template into a buffer first so a template error becomes
+// a loud 500 (caught by tests, smoke.js and the audit crawl) instead of a 200
+// with silently truncated HTML.
 func (s *Server) render(w http.ResponseWriter, status int, name string, v View) {
+	var buf bytes.Buffer
+	if err := s.tmpl.ExecuteTemplate(&buf, name, v); err != nil {
+		s.log.Error("render", "template", name, "err", err)
+		http.Error(w, "template error in "+name+": "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	if err := s.tmpl.ExecuteTemplate(w, name, v); err != nil {
-		s.log.Error("render", "template", name, "err", err)
-	}
+	_, _ = buf.WriteTo(w)
 }
 
 // currentUser returns the logged-in user, or nil.

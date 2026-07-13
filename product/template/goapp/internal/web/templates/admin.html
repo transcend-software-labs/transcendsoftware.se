@@ -14,7 +14,7 @@
     <li>
       <a href="/admin/t/{{.Name}}"><strong>{{.Name}}</strong></a>
       <span class="muted small">{{.Rows}} row{{if ne .Rows 1}}s{{end}}</span>
-      <a class="muted small" href="/admin/t/{{.Name}}/csv" hx-boost="false" download>export CSV</a>
+      <a class="muted small" href="/admin/t/{{.Name}}/csv" download>export CSV</a>
     </li>
     {{end}}
   </ul>

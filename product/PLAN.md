@@ -363,6 +363,18 @@ still inert (no GITHUB_TOKEN).
       footguns. Validated against local Postgres in all three states: legacy
       schema without tracking table (prod's state — backfills idempotently),
       re-boot (0 applied), fresh empty DB (full bootstrap + working signup). **Live in prod 2026-07-06**: boot log applied 0001-0004 (0004 first-time), health green.
+- [x] **htmx removed from the starter; typed-JS path added** (2026-07-13,
+      Rasmus's direction): htmx only ever provided hx-boost, whose silent
+      failure modes ("first click does nothing", unstyled /admin crossing)
+      were the template's whole class of interactivity bugs. Navigation is
+      now native links/forms + CSS view transitions; the speedup hx-boost
+      masked came from `/static/` being served uncacheable (embed.FS has no
+      modtimes) — fixed with ETag + Cache-Control + versioned asset URLs.
+      Client JS now has ONE path: `web/src/app.ts`, strict TypeScript,
+      emitted by esbuild's Go API (`make js`, no Node needed to build) and
+      gated by `tsc --noEmit` (added to the sandbox image). render() also
+      buffers output so template errors are 500s, not truncated 200s — with
+      a render-all-pages test. Build prompt + AGENTS.md updated to match.
 
 ### Phase 4 — better product (post-M3; several are joint sessions)
 - [x] Project template/scaffold — built 2026-07-05 at Rasmus's direction

@@ -10,12 +10,16 @@ Included out of the box:
 - First account created = site owner (`is_admin`)
 - Public contact form → messages inbox on the owner's `/app` dashboard
 - Embedded, numbered SQL migrations
+- Cached static assets (ETag + versioned URLs) and native CSS view transitions
+  — navigation is plain links and forms, no client-side routing layer
+- One typed path for client JS: `web/src/app.ts` (strict TypeScript, compiled
+  by `make js` via esbuild's Go API — empty by default)
 - `/healthz`, graceful shutdown, Dockerfile + fly.toml (auto-stop, 1 machine)
 
 Run locally:
 
-    make run      # http://localhost:8080, data in ./data
-    make test
+    make run      # http://localhost:8080, data in ./data (compiles app.ts first)
+    make test     # builds + type-checks app.ts, then go test
 
 Build agents: read [`AGENTS.md`](AGENTS.md) before changing anything.
 

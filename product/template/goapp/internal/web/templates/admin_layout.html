@@ -4,14 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{.Title}}</title>
-  <link rel="stylesheet" href="/static/admin.css">
-  <script src="/static/htmx.min.js" defer></script>
+  <link rel="stylesheet" href="{{asset "admin.css"}}">
 </head>
-<body hx-boost="true">
+<body>
 <header class="admin-nav">
   <span class="admin-brand"><a href="/admin">{{if .SiteName}}{{.SiteName}}{{else}}Site{{end}}</a> <span class="accent">Admin</span></span>
   <nav class="admin-navlinks">
-    <a class="muted" href="/" hx-boost="false">View site ↗</a>
+    <a class="muted" href="/">View site ↗</a>
     <form method="post" action="/logout" class="inline">
       <input type="hidden" name="csrf_token" value="{{.CSRF}}">
       <button class="linklike">Log out</button>

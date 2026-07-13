@@ -20,6 +20,15 @@ pkill -9 -f "$APP" 2>/dev/null || true   # SIGKILL: throwaway test process, no g
 sleep 0.5                                # let the kernel release the port
 rm -rf "$DATA" && mkdir -p "$DATA"
 
+if ! go run ./tools/buildjs; then
+  echo "JS BUILD FAILED — fix the error in web/src/app.ts above, then re-run ./scripts/serve.sh"
+  exit 1
+fi
+if command -v tsc >/dev/null 2>&1 && ! tsc -p .; then
+  echo "TYPECHECK FAILED — fix the TypeScript errors above, then re-run ./scripts/serve.sh"
+  exit 1
+fi
+
 if ! go build -o "$APP" .; then
   echo "BUILD FAILED — fix the compile error above, then re-run ./scripts/serve.sh"
   exit 1

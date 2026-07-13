@@ -37,10 +37,17 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); }
 .navlinks a { color: var(--nav-ink); opacity: .78; text-decoration: none; }
 .navlinks a:hover { opacity: 1; }
 
+/* Cross-page polish: native navigations get a smooth crossfade on browsers
+   that support view transitions (Chrome, Safari, recent Firefox) and a normal
+   page load everywhere else. Zero JS, honors reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+}
+
 /* Mobile navigation — links collapse into an accessible hamburger below 720px.
-   Pure CSS (the #nav-toggle checkbox drives it): no JavaScript, and it keeps
-   working after hx-boost swaps the page. Cramped links on a phone are the #1
-   "unfinished" tell, so keep a real mobile menu on every site. */
+   Pure CSS (the #nav-toggle checkbox drives it): no JavaScript. Cramped links
+   on a phone are the #1 "unfinished" tell, so keep a real mobile menu on every
+   site. */
 .nav-burger { display: none; }
 @media (max-width: 720px) {
   .nav-burger {
