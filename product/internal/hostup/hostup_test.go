@@ -200,6 +200,27 @@ func TestRegistrationStatus(t *testing.T) {
 	if state, _ := c.RegistrationStatus(context.Background(), "acme.se"); state != registrar.StatePending {
 		t.Fatalf("still available → %q", state)
 	}
+	// In our account with a live-but-not-literally-"active" status still counts as
+	// registered — otherwise the domain would sit in 'registering' until timeout.
+	item = `{"name":"acme.se","available":false,"existingDomainId":"dom_1","existingDomainServiceStatus":"ok"}`
+	if state, _ := c.RegistrationStatus(context.Background(), "acme.se"); state != registrar.StateSucceeded {
+		t.Fatalf("ours+ok → %q, want succeeded", state)
+	}
+}
+
+func TestRegistrationLive(t *testing.T) {
+	live := []string{"active", "ok", "registered", "live", "enabled", "connected"}
+	notLive := []string{"", "pending", "processing", "registering", "provisioning", "ordered", "paymentPending", "  Queued  "}
+	for _, s := range live {
+		if !registrationLive(s) {
+			t.Errorf("registrationLive(%q) = false, want true", s)
+		}
+	}
+	for _, s := range notLive {
+		if registrationLive(s) {
+			t.Errorf("registrationLive(%q) = true, want false", s)
+		}
+	}
 }
 
 func TestZoneID(t *testing.T) {

@@ -28,6 +28,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -36,6 +37,24 @@ import (
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/registrar"
 )
+
+// registrationLive reports whether a Hostup domain's service status means the
+// registration is complete enough to provision DNS + a cert. The status
+// vocabulary isn't authoritatively documented, so rather than hard-require the
+// exact string "active" (a domain that goes live under any other word would sit
+// in 'registering' until the 72h stuck-timeout), we treat anything that ISN'T an
+// obvious "still being set up" state as live. Provisioning early is safe: the
+// cert step (status 'verifying', itself retried by the poller) is the real
+// liveness gate — it just won't validate until DNS actually resolves.
+func registrationLive(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "", "pending", "processing", "registering", "provisioning",
+		"creating", "setup", "in_progress", "queued", "ordered", "paymentpending":
+		return false
+	default:
+		return true
+	}
+}
 
 // searchTLDs are the endings offered when a customer types a bare name in the
 // domain search. Leading with .se/.nu — the ccTLDs that motivated Hostup.
@@ -225,8 +244,19 @@ func (c *Client) RegistrationStatus(ctx context.Context, name string) (string, e
 		if !strings.EqualFold(it.Name, name) {
 			continue
 		}
+		// The exact status vocabulary is registry-dependent and was inferred from
+		// docs — log the raw fields so a domain that's really live but reports a
+		// non-"active" serviceStatus is visible (and won't silently 72h-timeout).
+		slog.Info("hostup registration status", "domain", name,
+			"available", it.Available, "existingDomainId", it.ExistingDomainID,
+			"serviceStatus", it.ExistingDomainServiceStatus)
 		switch {
-		case it.ExistingDomainID != "" && it.ExistingDomainServiceStatus == "active":
+		// In our account and the registry service is up in any state that isn't a
+		// pending/processing one → good to provision. Once the domain is ours and
+		// live enough to answer DNS, the cert step (verifying, itself retried) is
+		// the real liveness gate — so we don't hard-require the exact "active"
+		// string, only that it's not still being set up.
+		case it.ExistingDomainID != "" && registrationLive(it.ExistingDomainServiceStatus):
 			return registrar.StateSucceeded, nil
 		case it.ExistingDomainID != "":
 			return registrar.StateInProgress, nil
