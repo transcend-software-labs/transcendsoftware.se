@@ -1,9 +1,9 @@
 # Deploy Transcend Forge (the product) to Fly on push to main.
 #
 # Scope: the orchestrator app only (`transcend-forge`). Template and sandbox
-# changes are handled separately and do NOT trigger this — the template is
-# pushed to object storage with `make template-push`, and the sandbox image is
-# rebuilt with `make sandbox-build`; neither is part of `flyctl deploy`.
+# changes are handled separately and do NOT trigger this — the template tarball
+# ships via push-template.yml, and the sandbox image is rebuilt + activated by
+# build-sandbox.yml; neither is part of `flyctl deploy`.
 #
 # Auth: FLY_API_TOKEN is an app-scoped Fly *deploy* token (can deploy
 # transcend-forge and nothing else in the org). Rotate it in the repo secrets.

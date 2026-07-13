@@ -28,8 +28,16 @@ manifest, LLM provider config, deploy env).
 
 ## Build & push (to your Fly registry)
 
-From `product/` (stages the template into the build context, then builds on
-Fly's remote builder — native amd64, no local pull):
+**Automated:** `.github/workflows/build-sandbox.yml` rebuilds the image on any
+push to main touching `sandbox/**` or the template's `go.mod`/`go.sum` (the
+warm-cache layer), tags it `<date>-<sha7>`, and activates it by setting
+`FLY_SANDBOX_IMAGE` on the product app. It needs the repo secret
+`FLY_SANDBOX_TOKEN` (`fly tokens create deploy -a transcend-forge-sandbox`).
+Other template edits do NOT rebuild the image — the tarball, not the baked
+copy, seeds build workspaces; the baked copy only warms caches.
+
+Manual fallback, from `product/` (stages the template into the build context,
+then builds on Fly's remote builder — native amd64, no local pull):
 
 ```sh
 make sandbox-build SANDBOX_TAG=$(date +%Y%m%d)

@@ -1,0 +1,80 @@
+# Build & push the build-sandbox IMAGE when its definition changes, then point
+# the orchestrator at the new tag.
+#
+# Two artifacts ship from the template/sandbox pipeline — don't confuse them:
+#   - push-template.yml uploads the goapp.tgz TARBALL (the code each build
+#     starts from). Cheap; runs on any product/template/** change.
+#   - THIS workflow rebuilds the sandbox IMAGE (the toolchain the build microVM
+#     boots: Node/Chromium/Playwright, Go, opencode, flyctl, impeccable, tsc,
+#     plus warm Go caches for the starter template). Expensive, so it runs only
+#     when the image definition changes (product/sandbox/**) or the template's
+#     Go dependency set changes (go.mod/go.sum — that's what the warm-cache
+#     layer bakes; other template edits don't need an image rebuild because the
+#     tarball, not the baked copy, seeds build workspaces).
+#
+# The image is built on Fly's remote builder (native amd64, layer cache) via
+# `make sandbox-build`, tagged <date>-<sha7>, then ACTIVATED by updating the
+# FLY_SANDBOX_IMAGE secret on the product app — fly.SpawnSandbox creates each
+# build Machine from that image, and the secrets update restarts the app the
+# same way a deploy does. In-flight builds keep their old machines.
+#
+# Auth (repo secrets):
+#   FLY_SANDBOX_TOKEN — deploy token for the transcend-forge-sandbox app:
+#                         fly tokens create deploy -a transcend-forge-sandbox
+#                       Used for the remote build + registry push.
+#   FLY_API_TOKEN     — the existing transcend-forge deploy token (same one
+#                       deploy-product.yml uses); sets FLY_SANDBOX_IMAGE there.
+name: Build sandbox image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'product/sandbox/**'
+      - 'product/template/goapp/go.mod'
+      - 'product/template/goapp/go.sum'
+      - '.github/workflows/build-sandbox.yml'
+  workflow_dispatch: {} # manual "rebuild the image now" from the Actions tab
+
+# One image build at a time; the last finished build wins the secret bump.
+concurrency:
+  group: build-sandbox
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build, push & activate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: product
+    env:
+      FLY_SANDBOX_TOKEN: ${{ secrets.FLY_SANDBOX_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check auth is configured
+        if: ${{ env.FLY_SANDBOX_TOKEN == '' }}
+        run: |
+          echo "::error::Repo secret FLY_SANDBOX_TOKEN is missing. Create it with: fly tokens create deploy -a transcend-forge-sandbox — then add it under Settings → Secrets → Actions."
+          exit 1
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Compute image tag
+        id: tag
+        run: echo "tag=$(date +%Y%m%d)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # Stages template/goapp into sandbox/.template and builds on Fly's remote
+      # builder. The Dockerfile itself is the gate: it go-builds + go-tests the
+      # staged template and verifies every tool (node, go, opencode, flyctl,
+      # playwright, impeccable, tsc) before the image can exist.
+      - name: Build & push image
+        run: make sandbox-build SANDBOX_TAG=${{ steps.tag.outputs.tag }}
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_SANDBOX_TOKEN }}
+
+      - name: Point the orchestrator at the new image
+        run: flyctl secrets set -a transcend-forge "FLY_SANDBOX_IMAGE=registry.fly.io/transcend-forge-sandbox:${{ steps.tag.outputs.tag }}"
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

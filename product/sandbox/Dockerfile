@@ -8,11 +8,12 @@
 # The Playwright base ships Node + Chromium + all the system libraries, which is
 # the genuinely hard part of getting headless-browser verification working.
 #
-# Build & push (see sandbox/README.md):
-#   fly apps create transcend-forge-sandbox          # once
-#   fly auth docker
-#   docker build -t registry.fly.io/transcend-forge-sandbox:$(date +%Y%m%d) ./sandbox
-#   docker push registry.fly.io/transcend-forge-sandbox:<tag>
+# Build & push: automated — .github/workflows/build-sandbox.yml rebuilds and
+# activates this image on any push touching product/sandbox/** or the
+# template's go.mod/go.sum (the warm-cache layer). Manual fallback
+# (see sandbox/README.md):
+#   make sandbox-build SANDBOX_TAG=$(date +%Y%m%d)
+#   fly secrets set -a transcend-forge FLY_SANDBOX_IMAGE=registry.fly.io/transcend-forge-sandbox:<tag>
 
 # Pin to a current Playwright release (bundles Node 22 + Chromium + deps).
 # Bump deliberately; do not track a floating tag in production. Note: impeccable
