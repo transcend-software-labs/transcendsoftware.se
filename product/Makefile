@@ -40,7 +40,7 @@ sandbox-build:
 	rm -rf sandbox/.template && mkdir -p sandbox/.template
 	cp -R template/goapp sandbox/.template/goapp
 	rm -rf sandbox/.template/goapp/data sandbox/.template/goapp/bin
-	cd sandbox && fly deploy --build-only --push --remote-only --image-label $(SANDBOX_TAG)
+	cd sandbox && flyctl deploy --build-only --push --remote-only --image-label $(SANDBOX_TAG)
 
 # Upload the starter template tarball that seeds first builds (TEMPLATE_KEY).
 template-push:

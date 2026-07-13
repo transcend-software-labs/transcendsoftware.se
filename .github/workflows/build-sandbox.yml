@@ -33,6 +33,7 @@ on:
       - 'product/sandbox/**'
       - 'product/template/goapp/go.mod'
       - 'product/template/goapp/go.sum'
+      - 'product/Makefile' # the sandbox-build recipe lives here
       - '.github/workflows/build-sandbox.yml'
   workflow_dispatch: {} # manual "rebuild the image now" from the Actions tab
 
