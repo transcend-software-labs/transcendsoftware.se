@@ -413,6 +413,10 @@ func (o *Orchestrator) advanceRegistration(ctx context.Context, p *project.Proje
 	if err != nil {
 		return err
 	}
+	// Log every poll so "stuck at registering" is answerable — a purchased .se
+	// sits in 'pending' until the Hostup order settles at the registry, which is
+	// normal and otherwise invisible.
+	o.log.Info("domain registration poll", "project", p.ID, "domain", p.DomainName, "state", state)
 	switch state {
 	case registrar.StateSucceeded:
 		return o.provisionPurchased(ctx, p)
