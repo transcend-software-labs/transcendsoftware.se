@@ -2,10 +2,10 @@ package store
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
+	"github.com/transcend-software-labs/rasmus-ai/internal/pgtest"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
 )
@@ -13,15 +13,11 @@ import (
 // TestPostgresProjectBindings exercises the real INSERT/UPDATE/SELECT against a
 // live Postgres so a placeholder/arg mismatch — which the in-memory store can't
 // catch, and which shipped a broken UpdateProject in the domain-at-checkout work
-// — fails loudly here. Runs only when PG_TEST_URL is set (CI/local); skipped
-// otherwise so the normal suite stays DB-free.
+// — fails loudly here. Uses testcontainers (or PG_TEST_URL); skips if Docker is
+// unavailable.
 func TestPostgresProjectBindings(t *testing.T) {
-	url := os.Getenv("PG_TEST_URL")
-	if url == "" {
-		t.Skip("PG_TEST_URL not set")
-	}
 	ctx := context.Background()
-	st, err := NewPostgres(ctx, url)
+	st, err := NewPostgres(ctx, pgtest.Start(t))
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}

@@ -30,10 +30,12 @@ jobs:
     defaults:
       run:
         working-directory: product
-    # Real Postgres so the store's SQL bindings are exercised — the in-memory
-    # store can't catch a placeholder/arg mismatch (a broken UpdateProject
-    # shipped once because tests never touched Postgres). PG_TEST_URL opts the
-    # store binding test in.
+    # Real Postgres so the store's SQL bindings + the domain-at-checkout flow are
+    # exercised — the in-memory store can't catch a placeholder/arg mismatch (a
+    # broken UpdateProject shipped once because tests never touched Postgres).
+    # The tests use testcontainers by default (zero-setup locally); in CI we
+    # provide this service and point PG_TEST_URL at it so no nested container is
+    # spun (faster, avoids Docker-in-Docker).
     services:
       postgres:
         image: postgres:16-alpine
