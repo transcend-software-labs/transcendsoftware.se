@@ -91,8 +91,9 @@ Forge-specific rules layered on top of it.
   reload. The starter sets `hx-boost="false"` on the nav's "Site admin" link and
   on admin's "View site" link for exactly this reason — keep it there, and add
   it to any link you introduce that crosses the public-site ↔ `/admin` boundary.
-- Keep: semantic HTML, accessibility (contrast, focus states, labels), and the
-  responsive behavior. Beauty never trumps usability.
+- Keep semantic HTML and the responsive behavior. The **Interface quality floor**
+  below (keyboard/focus, forms, contrast, every-state, motion) is the
+  non-negotiable bar under every design — beauty never trumps usability.
 - **The site's language drives more than copy**: set `<html lang="…">` in
   `layout.html` to the site's language, and pick typefaces that actually cover
   its script — many display faces are Latin-only, so for Cyrillic, Greek, etc.
@@ -131,6 +132,52 @@ Forge-specific rules layered on top of it.
   the footer. A site whose auth pages exist but are linked from nowhere fails
   the audit (`orphaned-auth-page`): the owner literally cannot find their own
   login. If the site takes orders/bookings, "Log in" belongs in the nav.
+
+### Interface quality floor — every page clears these
+
+The distinctive look is per-project; THIS is the non-negotiable bar under all of
+them (adapted from Vercel's web interface guidelines). A beautiful page that
+fails these is not done. Walk this list before you deploy.
+
+- **Keyboard & focus.** Everything interactive is reachable and operable by
+  keyboard (Tab, Enter, Space). Every focusable element shows a visible
+  `:focus-visible` ring — never `outline: none` without a clear replacement.
+  Use real elements: a link is `<a>`, a button is `<button>` (never a clickable
+  `<div>`). Hit targets ≥ 24px on desktop, ≥ 44px on mobile; put
+  `touch-action: manipulation` on buttons/links to kill the double-tap zoom
+  delay. Never disable browser zoom; never block paste in a field.
+- **Forms are the money paths** (order, booking, contact, login). Every field
+  has a real `<label>` tied to it (clicking the label focuses the input). Set
+  the right `type` and `inputmode` (`email`, `tel`, `numeric`, …), an
+  `autocomplete` value, and `spellcheck="false"` on emails/codes/usernames.
+  Mobile inputs render at **≥ 16px** font (smaller makes iOS auto-zoom the
+  page). Enter submits a single-field form. Keep the submit button ENABLED
+  until submission starts — don't pre-disable it on "invalid"; instead show the
+  error next to the offending field and move focus to the first one. Placeholders
+  are example values ending with "…" (`e.g. you@example.com`), not instructions.
+- **Copy & typography.** Curly quotes (“ ” ‘ ’) and the ellipsis character (…),
+  never straight quotes or `...`. Each page sets an accurate, specific
+  `<title>`. Put `font-variant-numeric: tabular-nums` on any run of numbers
+  (prices, quantities, tables) so they align. Body copy stays a comfortable
+  measure (~45–75 characters).
+- **Never signal with color alone.** A status (available / sold out, open /
+  closed, error) always pairs the color with text or an icon. Icon-only buttons
+  carry an `aria-label`; purely decorative icons/SVGs get `aria-hidden="true"`.
+- **Design every state, not just the happy path.** Empty (no items yet), loading,
+  error, and long-content states all get a deliberate design. No dead ends —
+  every screen offers a next step or a way back. The layout must survive both a
+  3-character and a 500-character value without breaking (test a long name / a
+  long note).
+- **Visual finish.** Minimum AA contrast everywhere (never gray text on a colored
+  panel). Interaction states (`:hover`, `:active`, `:focus`) INCREASE contrast
+  vs the resting state. Nested corners: a child's `border-radius` ≤ its parent's.
+  Tint borders and shadows toward the surface's own hue rather than pure black.
+  Set `<meta name="theme-color">` and `color-scheme` on `<html>` so the browser
+  chrome matches the page.
+- **Motion.** Honor `prefers-reduced-motion` — wrap non-essential animation in
+  `@media (prefers-reduced-motion: no-preference)` (or disable it under
+  `reduce`). Animate only `transform` and `opacity`; never `transition: all`.
+  Motion responds to user action — no autoplaying loops.
 
 ## Rules
 
