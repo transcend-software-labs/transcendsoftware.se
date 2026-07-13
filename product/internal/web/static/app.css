@@ -281,6 +281,12 @@ textarea { resize: vertical; }
   border-radius: var(--radius);
   padding: .7rem .9rem;
 }
+/* Error variant: a clear red callout for failures (not the neutral gold tint). */
+.notice-error {
+  background: var(--red-fill);
+  border-color: color-mix(in srgb, var(--red) 45%, transparent);
+  color: var(--red-soft);
+}
 .verify-banner {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-4);
   margin-bottom: var(--sp-5);
@@ -517,6 +523,7 @@ details summary { cursor: pointer; }
 }
 .domain-hit-name { flex: 1; min-width: 8rem; }
 .domain-flash { color: var(--accent-2); font-size: var(--fs-md); margin: -.2rem 0 .9rem; }
+.domain-panel > .notice { margin: 0 0 var(--sp-4); font-size: var(--fs-md); }
 #domain-searching, #sub-domain-searching { margin-left: var(--sp-2); vertical-align: middle; }
 /* Subscribe-panel "add a domain" chooser (Phase B): radio options as card rows,
    each with an optional revealed body (host input, or a search + pickable

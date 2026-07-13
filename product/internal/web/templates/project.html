@@ -322,7 +322,10 @@
      the page never jumps to the top. method/action keep it working without JS. */}}
 <section class="panel domain-panel" id="domain-panel">
   <h2>{{$.T "domain.h2"}}</h2>
-  {{if $.Data.DomainFlash}}<p class="domain-flash">{{$.Data.DomainFlash}}</p>{{end}}
+  {{if $.Data.DomainFlash}}
+    {{if $.Data.DomainFlashErr}}<p class="notice notice-error">{{$.Data.DomainFlash}}</p>
+    {{else}}<p class="domain-flash">{{$.Data.DomainFlash}}</p>{{end}}
+  {{end}}
   {{if eq $.Data.DomainStatus ""}}
     <p class="muted small">{{$.T "domain.intro"}}</p>
     <div class="domain-attach">
@@ -370,7 +373,7 @@
     <p><a class="btn btn-sm" href="https://{{$.Data.DomainName}}" target="_blank" rel="noopener">{{$.Data.DomainName}} ↗</a></p>
     {{template "domain_detach" $}}
   {{else if eq $.Data.DomainStatus "failed"}}
-    <p class="reason">{{$.T "domain.failed_note"}}</p>
+    <p class="notice notice-error">{{$.T "domain.failed_note"}}</p>
     {{template "domain_detach" $}}
   {{end}}
 </section>

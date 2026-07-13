@@ -221,6 +221,7 @@ type projectView struct {
 	DomainRecords  []project.DomainRecord // DNS records to show (pending_dns/verifying)
 	DomainAddonStr string                 // the flat monthly add-on price ("29 kr"), for the buy copy
 	DomainFlash    string                 // in-panel feedback after an action (rendered inside #domain-panel)
+	DomainFlashErr bool                   // the flash reports a failure (render it red, not as neutral progress)
 }
 
 // rosterMember is one team person for the template, with a presigned photo URL.
@@ -410,6 +411,7 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		// swaps back in), not as a top-of-page banner that the swap wouldn't touch.
 		if code := r.URL.Query().Get("domain"); code != "" {
 			pv.DomainFlash = i18n.T(lang, domainFlashKey(code))
+			pv.DomainFlashErr = domainFlashIsError(code)
 		}
 	}
 	v := s.view(r, p.Name, pv)
@@ -445,6 +447,17 @@ func domainFlashKey(code string) string {
 		return "flash.domain_exists"
 	default:
 		return "flash.domain_error"
+	}
+}
+
+// domainFlashIsError reports whether a ?domain= code is a failure (shown red)
+// rather than progress/confirmation (attached/buying/checking, shown neutral).
+func domainFlashIsError(code string) bool {
+	switch code {
+	case "attached", "buying", "checking":
+		return false
+	default:
+		return true
 	}
 }
 
