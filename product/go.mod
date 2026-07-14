@@ -3,7 +3,6 @@ module github.com/transcend-software-labs/rasmus-ai
 go 1.25.0
 
 require (
-	github.com/glesys/glesys-go/v8 v8.5.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/minio/minio-go/v7 v7.2.1
 	github.com/superfly/macaroon v0.3.0
