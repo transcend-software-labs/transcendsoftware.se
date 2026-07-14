@@ -251,6 +251,24 @@ h3 {
 .proof-label { font-size: var(--fs-sm); color: var(--muted); max-width: 24ch; }
 .about-link { font-size: var(--fs-md); }
 
+/* Landing pricing — plan card + domain card, same rhythm as .about/.how. */
+.pricing { margin-top: var(--sp-7); border-top: 1px solid var(--border); padding-top: var(--sp-6); }
+.pricing > .lead { margin-bottom: var(--sp-5); }
+.price-grid {
+  display: grid; gap: var(--sp-4); margin-bottom: var(--sp-6);
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+.price-card { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--sp-5); background: var(--surface); }
+.price-card-plan { border-color: var(--accent-border); background: var(--accent-glow); }
+.price-amount { font-size: var(--fs-3xl); font-weight: 600; color: var(--accent); letter-spacing: -.02em; }
+.price-per { font-size: var(--fs-md); font-weight: 400; color: var(--muted); margin-left: .15rem; }
+.price-covers { color: var(--muted); margin: var(--sp-3) 0; }
+.price-incl { list-style: none; display: flex; flex-direction: column; gap: .5rem; margin: 0 0 var(--sp-4); }
+.price-incl li { position: relative; padding-left: 1.5rem; }
+.price-incl li::before { content: "✓"; position: absolute; left: 0; color: var(--accent); font-weight: 600; }
+.price-card-domain h3 { margin-bottom: var(--sp-2); }
+.price-card-domain p { color: var(--muted); margin-bottom: var(--sp-3); }
+
 /* Forms */
 .form-narrow { max-width: 26rem; }
 .stack { display: flex; flex-direction: column; gap: var(--sp-4); margin: var(--sp-5) 0; }

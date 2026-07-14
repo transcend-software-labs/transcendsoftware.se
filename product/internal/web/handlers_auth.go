@@ -12,12 +12,52 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
 )
 
+// landingView carries the public pricing block: the monthly base price (from
+// Stripe), the included-changes allowance, the flat overage per extra change,
+// and whether the domain-buy feature is live (so we only advertise it when
+// wired). PriceStr is "" when billing is unconfigured or Stripe is unreachable
+// — the template then shows a copy fallback.
+type landingView struct {
+	PriceStr        string
+	IncludedChanges int
+	OverageStr      string
+	Domains         bool
+}
+
 func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 	if s.currentUser(r) != nil {
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		return
 	}
-	s.render(w, http.StatusOK, "landing", s.view(r, s.t(r, "title.landing"), nil))
+	lv := landingView{
+		PriceStr:        s.monthlyPriceStr(r),
+		IncludedChanges: s.orch.ChangesPerMonth(),
+		OverageStr:      formatPrice(int64(s.orch.OverageOre()), "sek"),
+		Domains:         s.orch.DomainsEnabled(),
+	}
+	s.render(w, http.StatusOK, "landing", s.view(r, s.t(r, "title.landing"), lv))
+}
+
+// monthlyPriceStr returns the formatted base-plan price (e.g. "299 kr"),
+// cached for an hour so the public landing page never blocks on — or hard-
+// depends on — a live Stripe call. Returns "" when billing is disabled or the
+// first fetch fails (the template falls back to copy).
+func (s *Server) monthlyPriceStr(r *http.Request) string {
+	if s.billing == nil || s.cfg.StripePriceID == "" {
+		return ""
+	}
+	s.priceMu.Lock()
+	defer s.priceMu.Unlock()
+	if s.priceCache != "" && time.Since(s.priceAt) < time.Hour {
+		return s.priceCache
+	}
+	pr, err := s.billing.Price(r.Context(), s.cfg.StripePriceID)
+	if err != nil {
+		return s.priceCache // stale value if we have one, else "" → copy fallback
+	}
+	s.priceCache = formatPrice(pr.UnitAmount, pr.Currency)
+	s.priceAt = time.Now()
+	return s.priceCache
 }
 
 func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {

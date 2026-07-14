@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/auth"
@@ -50,6 +51,13 @@ type Server struct {
 	// previewTarget overrides the branded-preview backend origin (tests point
 	// it at an httptest server). nil → the project's own Fly app.
 	previewTarget func(projectID string) *url.URL
+
+	// The public landing page shows the base-plan price, which lives only in
+	// Stripe. Cache the formatted value so anonymous hits (incl. bots) don't
+	// call Stripe on every render; refreshed hourly, safe under concurrency.
+	priceMu    sync.Mutex
+	priceCache string
+	priceAt    time.Time
 }
 
 // NewServer wires the HTTP server.

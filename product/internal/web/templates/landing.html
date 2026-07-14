@@ -26,4 +26,31 @@
     <li><strong>{{.T "landing.how4.strong"}}</strong>{{.T "landing.how4.text"}}</li>
   </ol>
 </section>
+
+{{with .Data}}
+<section class="pricing">
+  <h2>{{$.T "landing.price.h2"}}</h2>
+  <p class="lead">{{$.T "landing.price.free"}}</p>
+  <div class="price-grid">
+    <div class="price-card price-card-plan">
+      <p class="price-amount">{{if .PriceStr}}{{.PriceStr}}{{else}}{{$.T "landing.price.amount_fallback"}}{{end}}<span class="price-per">{{$.T "landing.price.per"}}</span></p>
+      <p class="price-covers">{{$.T "landing.price.covers"}}</p>
+      <ul class="price-incl">
+        <li>{{$.T "landing.price.incl.hosting"}}</li>
+        <li>{{$.T "landing.price.incl.review"}}</li>
+        <li>{{if eq .IncludedChanges 1}}{{$.T "landing.price.incl.changes_one"}}{{else}}{{printf ($.T "landing.price.incl.changes_many") .IncludedChanges}}{{end}}</li>
+      </ul>
+      {{if .OverageStr}}<p class="muted small">{{printf ($.T "landing.price.overage") .OverageStr}}</p>{{end}}
+    </div>
+    {{if .Domains}}
+    <div class="price-card price-card-domain">
+      <h3>{{$.T "landing.price.domain.h3"}}</h3>
+      <p>{{$.T "landing.price.domain.text"}}</p>
+      <p class="muted small">{{$.T "landing.price.domain.note"}}</p>
+    </div>
+    {{end}}
+  </div>
+  <a class="btn btn-lg" href="/signup">{{$.T "landing.cta"}}</a>
+</section>
+{{end}}
 {{template "foot" .}}{{end}}
