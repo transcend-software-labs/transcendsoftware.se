@@ -40,7 +40,8 @@ func TestPostgresProjectBindings(t *testing.T) {
 	p.DomainIntent, p.DomainIntentBuy = "pelleuttning.se", true
 	p.DomainCostOre = 12900
 	p.PreviewHost = "bind-preview-a1b2c3"
-	p.DomainPaidThrough = now.AddDate(1, 0, 0)
+	paidThrough := now.AddDate(1, 0, 0).Truncate(time.Microsecond) // Postgres TIMESTAMPTZ is µs precision
+	p.DomainPaidThrough = paidThrough
 	p.ChangesThisPeriod, p.ChangePeriodStart, p.DeliveredAt = 2, now, now
 	if err := st.UpdateProject(ctx, p); err != nil {
 		t.Fatalf("UpdateProject (the shipped $44/$45 binding bug): %v", err)
@@ -53,8 +54,8 @@ func TestPostgresProjectBindings(t *testing.T) {
 		t.Fatalf("round-trip lost data: intent=%q buy=%v changes=%d cost=%d host=%q",
 			got.DomainIntent, got.DomainIntentBuy, got.ChangesThisPeriod, got.DomainCostOre, got.PreviewHost)
 	}
-	if !got.DomainPaidThrough.Equal(now.AddDate(1, 0, 0)) {
-		t.Fatalf("domain_paid_through round-trip: got %v want %v", got.DomainPaidThrough, now.AddDate(1, 0, 0))
+	if !got.DomainPaidThrough.Equal(paidThrough) {
+		t.Fatalf("domain_paid_through round-trip: got %v want %v", got.DomainPaidThrough, paidThrough)
 	}
 	// The reverse proxy's host lookup resolves through the real index.
 	byHost, err := st.ProjectByPreviewHost(ctx, "bind-preview-a1b2c3")
