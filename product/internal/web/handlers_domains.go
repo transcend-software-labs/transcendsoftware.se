@@ -111,10 +111,11 @@ func (s *Server) handleDomainSearch(w http.ResponseWriter, r *http.Request, u *u
 		Name  string
 		Price string
 	}
+	perYear := i18n.T(lang, "domain.per_year") // e.g. "/år" — the price is the 1-year cost
 	var results []result
 	for _, o := range offers {
 		if o.Buyable(cap) {
-			results = append(results, result{Name: o.Name, Price: formatSEK(o.Price)})
+			results = append(results, result{Name: o.Name, Price: formatSEK(o.Price) + perYear})
 		}
 	}
 	data["Results"] = results

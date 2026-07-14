@@ -40,6 +40,7 @@
   "domain.none": "No available domains for that search. Try another name.",
   "domain.or_buy": "Or buy a new domain",
   "domain.pending_note": "Add these DNS records for %s at your domain provider, then verify:",
+  "domain.per_year": "/yr",
   "domain.rec_name": "Name",
   "domain.rec_note": "Set these as DNS-only (grey cloud) records. Changes can take a little while to take effect.",
   "domain.rec_type": "Type",

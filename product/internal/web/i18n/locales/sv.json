@@ -40,6 +40,7 @@
   "domain.none": "Inga lediga domäner för den sökningen. Prova ett annat namn.",
   "domain.or_buy": "Eller köp en ny domän",
   "domain.pending_note": "Lägg till dessa DNS-poster för %s hos din domänleverantör och verifiera sedan:",
+  "domain.per_year": "/år",
   "domain.rec_name": "Namn",
   "domain.rec_note": "Sätt dessa som DNS-only (grått moln). Ändringar kan ta en stund att slå igenom.",
   "domain.rec_type": "Typ",
