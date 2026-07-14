@@ -78,6 +78,11 @@ type Orchestrator struct {
 	changeBiller    changeBiller
 	changesPerMonth int
 	overageOre      int
+
+	// previewDomain serves previews under our own domain ("<host>.<domain>")
+	// through the web layer's reverse proxy, hiding the internal fly.dev URLs.
+	// "" = feature off, previews keep their direct URLs (see preview.go).
+	previewDomain string
 }
 
 // Activity returns the language-neutral activity code of a project's running
@@ -994,6 +999,12 @@ func (o *Orchestrator) finishBuild(ctx context.Context, p *project.Project, it *
 			onLog("Verified live ✓")
 		}
 	}
+	// The URL the customer sees: branded (<host>.<previewDomain>, served via our
+	// reverse proxy) when configured and reachable, else the direct deploy URL.
+	previewURL := res.PreviewURL
+	if err == nil {
+		previewURL = o.brandedPreviewURL(ctx, p, res.PreviewURL)
+	}
 	if err != nil {
 		it.Status = project.StatusFailed
 		it.Log = logSnapshot()
@@ -1014,11 +1025,11 @@ func (o *Orchestrator) finishBuild(ctx context.Context, p *project.Project, it *
 		return err
 	}
 
-	if res.PreviewURL != "" {
-		onLog("Preview ready: " + res.PreviewURL)
+	if previewURL != "" {
+		onLog("Preview ready: " + previewURL)
 	}
 	it.Status = project.StatusPreviewReady
-	it.PreviewURL = res.PreviewURL
+	it.PreviewURL = previewURL
 	it.Log = logSnapshot()
 	it.Tokens = res.Tokens
 	it.HeartbeatAt = time.Now().UTC() // final timestamp → accurate build duration
@@ -1029,7 +1040,7 @@ func (o *Orchestrator) finishBuild(ctx context.Context, p *project.Project, it *
 	if it.Number > 0 { // internal polish passes (number 0) consume no credit
 		p.IterationsUsed = it.Number
 	}
-	p.PreviewURL = res.PreviewURL
+	p.PreviewURL = previewURL
 	if res.SnapshotSaved {
 		p.SnapshotKey = snapshotKey
 	}
@@ -1073,7 +1084,7 @@ func (o *Orchestrator) finishBuild(ctx context.Context, p *project.Project, it *
 	if it.Number > 0 {
 		pe := custEmail(p.Locale, "preview_ready")
 		o.notifyCustomer(ctx, p.UserID, pe.Subject,
-			fmt.Sprintf(pe.Body, p.Name)+"\n\n"+res.PreviewURL+"\n\n"+o.projectLink(p.ID))
+			fmt.Sprintf(pe.Body, p.Name)+"\n\n"+previewURL+"\n\n"+o.projectLink(p.ID))
 	}
 	return nil
 }

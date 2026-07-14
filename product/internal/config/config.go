@@ -55,6 +55,18 @@ type Config struct {
 	// reaper destroys it and marks the project expired (default 14 days).
 	PreviewTTL time.Duration
 
+	// PreviewDomain serves previews under our own domain: customers get
+	// https://<slug>-<id>.<PreviewDomain> (reverse-proxied by the Forge app,
+	// wildcard cert) instead of the internal fly.dev URL. Empty = off.
+	// Needs a "*.<PreviewDomain>" CNAME to the Forge app + the wildcard cert
+	// (self-provisioned at startup; see cmd/server/main.go).
+	PreviewDomain string
+
+	// FlyAppName is the Forge app's own Fly app name — injected by the Fly
+	// runtime as FLY_APP_NAME; used to self-provision the wildcard preview
+	// cert on this app. Empty outside Fly.
+	FlyAppName string
+
 	// SandboxCostPerHour is the (estimated) $/hour a build sandbox machine
 	// costs, used only to show rough per-build cost in /admin. Tune to your
 	// machine size; default is a shared-cpu-2x/2GB ballpark.
@@ -217,6 +229,8 @@ func Load() Config {
 		ChangesPerMonth:     envIntOr("FORGE_CHANGES_PER_MONTH", 3),
 		OverageOre:          envIntOr("FORGE_OVERAGE_SEK", 49) * 100,
 		PreviewTTL:          time.Duration(envIntOr("PREVIEW_TTL_DAYS", 14)) * 24 * time.Hour,
+		PreviewDomain:       strings.TrimSuffix(strings.ToLower(os.Getenv("PREVIEW_DOMAIN")), "."),
+		FlyAppName:          os.Getenv("FLY_APP_NAME"),
 		SandboxCostPerHour:  envFloatOr("SANDBOX_COST_PER_HOUR", 0.02),
 		TemplateKey:         os.Getenv("TEMPLATE_KEY"),
 

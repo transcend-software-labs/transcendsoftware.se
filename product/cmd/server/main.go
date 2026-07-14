@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -89,6 +90,40 @@ func main() {
 	// Reap zombie infrastructure hourly: preview apps of failed projects,
 	// previews idle past PREVIEW_TTL_DAYS, and leaked sandbox machines.
 	orch.StartReaper(context.Background(), time.Hour, cfg.PreviewTTL)
+	// Branded preview URLs: previews are handed out as <host>.<PREVIEW_DOMAIN>
+	// and reverse-proxied by the web layer, hiding the internal fly.dev URLs.
+	if cfg.PreviewDomain != "" {
+		log.Info("previews: branded domain enabled", "domain", cfg.PreviewDomain)
+		orch.SetPreviewDomain(cfg.PreviewDomain)
+		// Self-provision the wildcard cert on this app (idempotent — Fly returns
+		// the existing cert on repeat) and log the DNS records the owner must set
+		// at the DNS host. Best-effort: until DNS + cert are live, each build's
+		// branded verify falls back to the direct URL.
+		if cfg.FlyAPIToken != "" && cfg.FlyAppName != "" {
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				req, err := machines.AddCertificate(ctx, cfg.FlyAppName, "*."+cfg.PreviewDomain)
+				if err != nil {
+					log.Warn("previews: wildcard cert provisioning failed", "err", err)
+					return
+				}
+				for _, rec := range req.Records {
+					log.Info("previews: required DNS record", "type", rec.Type, "name", rec.Name, "value", rec.Value)
+				}
+			}()
+		}
+		// Rewrite existing fly.dev preview URLs to the branded host, but only
+		// once the wildcard DNS actually resolves (canary probe; retried on the
+		// next boot until the owner has set the records).
+		go func() {
+			if _, err := net.LookupHost("preview-canary." + cfg.PreviewDomain); err != nil {
+				log.Info("previews: wildcard DNS not live yet — backfill skipped", "err", err)
+				return
+			}
+			orch.BackfillPreviewHosts(context.Background())
+		}()
+	}
 	sessions := auth.NewSessions(st, cfg.SessionTTL)
 
 	srv, err := web.NewServer(cfg, st, sessions, orch, broker, assets, log)

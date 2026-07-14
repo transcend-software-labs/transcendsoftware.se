@@ -38,6 +38,9 @@ type Store interface {
 	// DeleteProject removes a project and its iterations + assets (operator cleanup).
 	DeleteProject(ctx context.Context, id string) error
 	ProjectByID(ctx context.Context, id string) (*project.Project, error)
+	// ProjectByPreviewHost resolves a branded preview subdomain label
+	// ("bageriet-a1fa81") to its project, for the preview reverse proxy.
+	ProjectByPreviewHost(ctx context.Context, host string) (*project.Project, error)
 	ProjectsByUser(ctx context.Context, userID string) ([]*project.Project, error)
 	// EscalatedProjects returns projects awaiting operator review, newest first.
 	EscalatedProjects(ctx context.Context) ([]*project.Project, error)

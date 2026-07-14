@@ -35,9 +35,11 @@ func TestPostgresProjectBindings(t *testing.T) {
 	if err := st.CreateProject(ctx, p); err != nil {
 		t.Fatalf("CreateProject (INSERT binding): %v", err)
 	}
-	// Exactly what SetDomainIntent + BuyDomain + the change meter do before checkout.
+	// Exactly what SetDomainIntent + BuyDomain + the change meter + the branded
+	// preview host do around checkout/build.
 	p.DomainIntent, p.DomainIntentBuy = "pelleuttning.se", true
 	p.DomainCostOre = 12900
+	p.PreviewHost = "bind-preview-a1b2c3"
 	p.ChangesThisPeriod, p.ChangePeriodStart, p.DeliveredAt = 2, now, now
 	if err := st.UpdateProject(ctx, p); err != nil {
 		t.Fatalf("UpdateProject (the shipped $44/$45 binding bug): %v", err)
@@ -46,8 +48,16 @@ func TestPostgresProjectBindings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ProjectByID (SELECT/scan binding): %v", err)
 	}
-	if got.DomainIntent != "pelleuttning.se" || !got.DomainIntentBuy || got.ChangesThisPeriod != 2 || got.DomainCostOre != 12900 {
-		t.Fatalf("round-trip lost data: intent=%q buy=%v changes=%d cost=%d",
-			got.DomainIntent, got.DomainIntentBuy, got.ChangesThisPeriod, got.DomainCostOre)
+	if got.DomainIntent != "pelleuttning.se" || !got.DomainIntentBuy || got.ChangesThisPeriod != 2 || got.DomainCostOre != 12900 || got.PreviewHost != "bind-preview-a1b2c3" {
+		t.Fatalf("round-trip lost data: intent=%q buy=%v changes=%d cost=%d host=%q",
+			got.DomainIntent, got.DomainIntentBuy, got.ChangesThisPeriod, got.DomainCostOre, got.PreviewHost)
+	}
+	// The reverse proxy's host lookup resolves through the real index.
+	byHost, err := st.ProjectByPreviewHost(ctx, "bind-preview-a1b2c3")
+	if err != nil || byHost.ID != p.ID {
+		t.Fatalf("ProjectByPreviewHost: got %v err=%v", byHost, err)
+	}
+	if _, err := st.ProjectByPreviewHost(ctx, ""); err == nil {
+		t.Fatal("empty preview host must not resolve to a project")
 	}
 }

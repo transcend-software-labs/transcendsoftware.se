@@ -109,7 +109,7 @@ func (o *Orchestrator) SetDomainIntent(ctx context.Context, projectID, hostname 
 	if o.domains == nil {
 		return ErrDomainsDisabled
 	}
-	host, ok := normalizeHostname(hostname)
+	host, ok := o.normalizeCustomerHostname(hostname)
 	if !ok {
 		return ErrBadHostname
 	}
@@ -187,7 +187,7 @@ func (o *Orchestrator) AttachDomain(ctx context.Context, projectID, hostname str
 	if o.domains == nil {
 		return ErrDomainsDisabled
 	}
-	host, ok := normalizeHostname(hostname)
+	host, ok := o.normalizeCustomerHostname(hostname)
 	if !ok {
 		return ErrBadHostname
 	}
@@ -234,7 +234,7 @@ func (o *Orchestrator) BuyDomain(ctx context.Context, projectID, domain string) 
 	if !o.DomainBuyEnabled() {
 		return ErrBuyDisabled
 	}
-	host, ok := normalizeHostname(domain)
+	host, ok := o.normalizeCustomerHostname(domain)
 	if !ok {
 		return ErrBadHostname
 	}
@@ -600,6 +600,20 @@ func recordNote(recType string) string {
 	default:
 		return "DNS-only (grey cloud if you use Cloudflare)"
 	}
+}
+
+// normalizeCustomerHostname is normalizeHostname plus the branded-preview
+// guard: a customer must not attach our own preview domain (or a host under
+// it) as their custom domain.
+func (o *Orchestrator) normalizeCustomerHostname(in string) (string, bool) {
+	h, ok := normalizeHostname(in)
+	if !ok {
+		return "", false
+	}
+	if o.previewDomain != "" && (h == o.previewDomain || strings.HasSuffix(h, "."+o.previewDomain)) {
+		return "", false
+	}
+	return h, true
 }
 
 // normalizeHostname lowercases, trims, strips a scheme/leading www and trailing

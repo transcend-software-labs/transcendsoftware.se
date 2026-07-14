@@ -28,3 +28,8 @@ primary_region = "arn"  # Stockholm (EU)
   ADDR = ":8080"
   BASE_URL = "https://forge.transcendsoftware.se"
   SECURE_COOKIE = "true"
+  # Branded preview URLs: previews serve as <slug>-<id>.forge.transcendsoftware.se
+  # via the in-app reverse proxy. Needs the wildcard DNS + cert (see startup
+  # logs for the exact records); until they're live, builds fall back to the
+  # direct URLs automatically.
+  PREVIEW_DOMAIN = "forge.transcendsoftware.se"

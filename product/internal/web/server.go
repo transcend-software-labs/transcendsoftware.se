@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/auth"
@@ -45,6 +46,10 @@ type Server struct {
 	billing  *billing.Client  // Stripe subscription paywall (nil = disabled)
 	tmpl     *template.Template
 	log      *slog.Logger
+
+	// previewTarget overrides the branded-preview backend origin (tests point
+	// it at an httptest server). nil → the project's own Fly app.
+	previewTarget func(projectID string) *url.URL
 }
 
 // NewServer wires the HTTP server.
@@ -163,7 +168,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /admin/projects/{id}/return", s.requireAdmin(s.handleAdminReturn))
 	mux.HandleFunc("POST /admin/projects/{id}/domain/detach", s.requireAdmin(s.handleAdminDomainDetach))
 
-	return logRequests(s.log, langSelector(mux))
+	// Preview hosts branch off before langSelector (?lang= must not redirect a
+	// proxied preview); logging stays outermost so those requests are logged too.
+	return logRequests(s.log, s.previewProxy(langSelector(mux)))
 }
 
 // langSelector turns ?lang=xx on any GET into a persistent cookie choice and

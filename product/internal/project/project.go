@@ -240,6 +240,7 @@ type Project struct {
 	Verdict          Verdict                    // safety-gate outcome
 	RejectReason     string                     // populated when Status == rejected
 	PreviewURL       string                     // latest deployed preview link
+	PreviewHost      string                     // branded preview subdomain label ("bageriet-a1fa81"); assigned once, stable across rebuilds
 	RepoURL          string                     // vestigial: GitHub mirroring was removed; kept to avoid a DB migration (always "")
 	SnapshotKey      string                     // object-storage key of the workspace snapshot from the last successful build
 	Screenshots      []Screenshot               // one per page of the deployed site (for /admin review)

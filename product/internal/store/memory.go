@@ -198,6 +198,21 @@ func (m *Memory) ProjectByID(_ context.Context, id string) (*project.Project, er
 	return &cp, nil
 }
 
+func (m *Memory) ProjectByPreviewHost(_ context.Context, host string) (*project.Project, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if host == "" { // '' means "never assigned" — must not match anything
+		return nil, project.ErrNotFound
+	}
+	for _, p := range m.projects { // scan is fine at memory-store scale
+		if p.PreviewHost == host {
+			cp := *p
+			return &cp, nil
+		}
+	}
+	return nil, project.ErrNotFound
+}
+
 func (m *Memory) ProjectsByUser(_ context.Context, userID string) ([]*project.Project, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
