@@ -2,19 +2,21 @@ package glesys
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	glesysgo "github.com/glesys/glesys-go/v8"
 	"github.com/transcend-software-labs/rasmus-ai/internal/registrar"
 )
 
-// fakeDNS is an in-memory DNSDomainService for testing the wrapper's mapping
-// logic without the live SDK/HTTP. It records calls so tests can assert the
-// request shape (registrant on Register, auto-renew, DNS records).
+// fakeDNS is an in-memory stand-in for the SDK's DNSDomainService (register /
+// details / records) — NOT availability, which the client calls over REST. It
+// records calls so tests can assert the request shape.
 type fakeDNS struct {
-	available    map[string][]glesysgo.DNSDomain // by search string
-	availErr     error
 	registered   []glesysgo.RegisterDNSDomainParams
 	regState     string
 	autoRenew    []glesysgo.SetAutoRenewParams
@@ -25,13 +27,6 @@ type fakeDNS struct {
 	added        []glesysgo.AddRecordParams
 }
 
-func (f *fakeDNS) Available(_ context.Context, search string) (*[]glesysgo.DNSDomain, error) {
-	if f.availErr != nil {
-		return nil, f.availErr
-	}
-	d := f.available[search]
-	return &d, nil
-}
 func (f *fakeDNS) Register(_ context.Context, p glesysgo.RegisterDNSDomainParams) (*glesysgo.DNSDomain, error) {
 	f.registered = append(f.registered, p)
 	st := f.regState
@@ -67,32 +62,60 @@ func testRegistrant() Registrant {
 	}
 }
 
-func TestSearchDomains_MapsOneYearPrice(t *testing.T) {
-	f := &fakeDNS{available: map[string][]glesysgo.DNSDomain{
-		"mittbageri.se": {{
-			Name:      "mittbageri.se",
-			Available: true,
-			Prices: []glesysgo.DNSDomainPrice{
-				{Amount: 129, Currency: "SEK", Years: 1},
-				{Amount: 1290, Currency: "SEK", Years: 10},
-			},
-		}},
-	}}
-	c := newWithService(f, testRegistrant())
+// TestSearchDomains_SendsSearchArg guards the SDK-bug workaround: GleSYS
+// domain/available needs a named "search" argument (the SDK sends a bare
+// string), so assert our request body carries it, and that the 1-year price is
+// mapped from the response.
+func TestSearchDomains_SendsSearchArg(t *testing.T) {
+	var gotSearch string
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		var body struct {
+			Search string `json:"search"`
+		}
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &body)
+		gotSearch = body.Search
+		if _, _, ok := r.BasicAuth(); !ok {
+			t.Error("availability request missing Basic auth")
+		}
+		_, _ = io.WriteString(w, `{"response":{"domain":[{"domainname":"mittbageri.se","available":true,`+
+			`"prices":[{"amount":129,"currency":"SEK","years":1},{"amount":1290,"currency":"SEK","years":10}]}]}}`)
+	}))
+	defer srv.Close()
 
+	c := newTest(&fakeDNS{}, srv.URL, testRegistrant())
 	offers, err := c.SearchDomains(context.Background(), "MittBageri.se", 5)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
+	if gotPath != "/domain/available" {
+		t.Errorf("path = %q, want /domain/available", gotPath)
+	}
+	if gotSearch != "mittbageri.se" {
+		t.Errorf("search arg = %q, want mittbageri.se (the bare-string SDK bug)", gotSearch)
+	}
 	if len(offers) != 1 {
 		t.Fatalf("want 1 offer, got %d", len(offers))
 	}
-	o := offers[0]
-	if o.Name != "mittbageri.se" || !o.Registrable || o.Price != 129 || o.Currency != "SEK" || o.Renewal != 129 {
+	if o := offers[0]; o.Name != "mittbageri.se" || !o.Registrable || o.Price != 129 || o.Currency != "SEK" || o.Renewal != 129 {
 		t.Fatalf("bad offer mapping: %+v", o)
 	}
-	if !o.Buyable(300) {
+	if !offers[0].Buyable(300) {
 		t.Errorf("129 SEK should be buyable under a 300 cap")
+	}
+}
+
+func TestSearchDomains_SurfacesAPIError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"response":{"status":{"code":401,"text":"Invalid credentials"}}}`)
+	}))
+	defer srv.Close()
+	c := newTest(&fakeDNS{}, srv.URL, testRegistrant())
+	if _, err := c.SearchDomains(context.Background(), "x.se", 5); err == nil {
+		t.Fatal("a non-200 availability response should be an error, not empty results")
 	}
 }
 
@@ -111,7 +134,7 @@ func TestOffer_UnavailableAndNonSEK(t *testing.T) {
 
 func TestRegisterDomain_UsesRegistrantAndAutoRenew(t *testing.T) {
 	f := &fakeDNS{regState: "REGISTER"}
-	c := newWithService(f, testRegistrant())
+	c := newTest(f, "", testRegistrant())
 
 	state, err := c.RegisterDomain(context.Background(), "mittbageri.se")
 	if err != nil {
@@ -137,7 +160,7 @@ func TestRegisterDomain_UsesRegistrantAndAutoRenew(t *testing.T) {
 
 func TestRegisterDomain_AutoRenewFailureNonFatal(t *testing.T) {
 	f := &fakeDNS{regState: "OK", autoRenewErr: errors.New("not settled")}
-	c := newWithService(f, testRegistrant())
+	c := newTest(f, "", testRegistrant())
 	state, err := c.RegisterDomain(context.Background(), "x.se")
 	if err != nil {
 		t.Fatalf("auto-renew failure should not fail registration: %v", err)
@@ -170,7 +193,7 @@ func TestMapState(t *testing.T) {
 }
 
 func TestRegistrationStatus(t *testing.T) {
-	c := newWithService(&fakeDNS{detailsState: "OK"}, testRegistrant())
+	c := newTest(&fakeDNS{detailsState: "OK"}, "", testRegistrant())
 	st, err := c.RegistrationStatus(context.Background(), "x.se")
 	if err != nil {
 		t.Fatalf("status: %v", err)
@@ -182,12 +205,12 @@ func TestRegistrationStatus(t *testing.T) {
 
 func TestZoneID(t *testing.T) {
 	// Domain in the account → its name is the zone key.
-	c := newWithService(&fakeDNS{detailsState: "OK"}, testRegistrant())
+	c := newTest(&fakeDNS{detailsState: "OK"}, "", testRegistrant())
 	if id, err := c.ZoneID(context.Background(), "x.se"); err != nil || id != "x.se" {
 		t.Fatalf("zone ready: id=%q err=%v", id, err)
 	}
 	// Not in DNS yet → empty id, no error (caller retries).
-	c2 := newWithService(&fakeDNS{detailsErr: errors.New("not found")}, testRegistrant())
+	c2 := newTest(&fakeDNS{detailsErr: errors.New("not found")}, "", testRegistrant())
 	if id, err := c2.ZoneID(context.Background(), "x.se"); err != nil || id != "" {
 		t.Fatalf("zone not ready should be (\"\", nil): id=%q err=%v", id, err)
 	}
@@ -195,7 +218,7 @@ func TestZoneID(t *testing.T) {
 
 func TestEnsureDNSRecord_RelativizesAndCreates(t *testing.T) {
 	f := &fakeDNS{}
-	c := newWithService(f, testRegistrant())
+	c := newTest(f, "", testRegistrant())
 	// Apex A record: FQDN "acme.se" relativizes to "@".
 	if err := c.EnsureDNSRecord(context.Background(), "acme.se",
 		registrar.Record{Type: "A", Name: "acme.se", Content: "1.2.3.4"}); err != nil {
@@ -221,7 +244,7 @@ func TestEnsureDNSRecord_Idempotent(t *testing.T) {
 	f := &fakeDNS{records: []glesysgo.DNSDomainRecord{
 		{Host: "@", Type: "A", Data: "1.2.3.4"},
 	}}
-	c := newWithService(f, testRegistrant())
+	c := newTest(f, "", testRegistrant())
 	if err := c.EnsureDNSRecord(context.Background(), "acme.se",
 		registrar.Record{Type: "A", Name: "acme.se", Content: "1.2.3.4"}); err != nil {
 		t.Fatalf("ensure: %v", err)

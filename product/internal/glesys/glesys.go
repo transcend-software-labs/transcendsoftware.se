@@ -2,8 +2,14 @@
 // (github.com/glesys/glesys-go), the registrar we use for .se and the other
 // TLDs a customer might want. Unlike the bespoke Cloudflare/Hostup HTTP
 // clients, this wraps GleSYS's official SDK: its DNSDomainService covers the
-// whole flow we need — availability + prices, registration, registrar state,
-// and the DNS records that point a domain at a customer's Fly app.
+// registration, registrar-state and DNS-record calls we need.
+//
+// One exception: availability. The SDK's DNSDomainService.Available sends the
+// domain as a bare JSON string body, but GleSYS's domain/available expects a
+// named "search" argument, so the SDK call always fails ("unavailable" in the
+// UI). We therefore make the availability request ourselves with the correct
+// body, reusing the same Basic auth + base URL, and use the SDK for everything
+// else (register/details/records, which send correctly-named args and work).
 //
 // It implements the same orchestrator.DomainRegistrar surface as
 // internal/cloudflare and internal/hostup, so the provider is chosen at wiring
@@ -11,7 +17,7 @@
 //
 // GleSYS notes:
 //   - Auth is HTTP Basic: username = the project key ("CL12345"), password =
-//     the API key. NewClient(project, apiKey, userAgent).
+//     the API key.
 //   - Registration is tied to a named registrant (contact details are
 //     required); we register every domain to Forge's own company contact, set
 //     once at wiring time (config.Registrant). The customer pays the
@@ -22,14 +28,21 @@
 package glesys
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"strings"
+	"time"
 
 	glesysgo "github.com/glesys/glesys-go/v8"
 	"github.com/transcend-software-labs/rasmus-ai/internal/registrar"
 )
+
+const defaultBaseURL = "https://api.glesys.com"
 
 // Registrant is Forge's own contact, used as the registrant on every
 // registration (GleSYS requires full contact details). NationalID is the
@@ -49,9 +62,10 @@ type Registrant struct {
 }
 
 // dnsService is the slice of glesys-go's DNSDomainService we use — narrowed to
-// an interface so tests can substitute a fake without a live SDK.
+// an interface so tests can substitute a fake without a live SDK. Note it does
+// NOT include Available: that call is broken in the SDK (see the package doc),
+// so we make it ourselves against the REST endpoint.
 type dnsService interface {
-	Available(ctx context.Context, search string) (*[]glesysgo.DNSDomain, error)
 	Register(ctx context.Context, params glesysgo.RegisterDNSDomainParams) (*glesysgo.DNSDomain, error)
 	SetAutoRenew(ctx context.Context, params glesysgo.SetAutoRenewParams) (*glesysgo.DNSDomain, error)
 	Details(ctx context.Context, domainname string) (*glesysgo.DNSDomain, error)
@@ -59,9 +73,14 @@ type dnsService interface {
 	AddRecord(ctx context.Context, params glesysgo.AddRecordParams) (*glesysgo.DNSDomainRecord, error)
 }
 
-// Client talks to GleSYS via the official SDK.
+// Client talks to GleSYS: the SDK for register/details/records, and a direct
+// REST call for availability (where the SDK is broken).
 type Client struct {
 	dns        dnsService
+	http       *http.Client
+	baseURL    string
+	project    string // Basic-auth username (project key, "CL12345")
+	apiKey     string // Basic-auth password
 	registrant Registrant
 }
 
@@ -69,13 +88,32 @@ type Client struct {
 // username, e.g. "CL12345"); apiKey is the project's API key. reg is the
 // registrant every domain is registered to.
 func New(project, apiKey string, reg Registrant) *Client {
-	c := glesysgo.NewClient(project, apiKey, "transcend-forge/1.0")
-	return &Client{dns: c.DNSDomains, registrant: reg}
+	sdk := glesysgo.NewClient(project, apiKey, "transcend-forge/1.0")
+	return &Client{
+		dns:        sdk.DNSDomains,
+		http:       &http.Client{Timeout: 25 * time.Second},
+		baseURL:    defaultBaseURL,
+		project:    project,
+		apiKey:     apiKey,
+		registrant: reg,
+	}
 }
 
-// newWithService is the test seam: inject a fake dnsService.
-func newWithService(dns dnsService, reg Registrant) *Client {
-	return &Client{dns: dns, registrant: reg}
+// newTest is the test seam: inject a fake dnsService for the SDK-backed calls
+// and point the availability call at a test server (baseURL "" keeps the real
+// host for tests that don't touch availability).
+func newTest(dns dnsService, baseURL string, reg Registrant) *Client {
+	if baseURL == "" {
+		baseURL = defaultBaseURL
+	}
+	return &Client{
+		dns:        dns,
+		http:       &http.Client{Timeout: 10 * time.Second},
+		baseURL:    baseURL,
+		project:    "CLtest",
+		apiKey:     "test-key",
+		registrant: reg,
+	}
 }
 
 // offer maps a GleSYS DNSDomain to the neutral Offer, taking the one-year
@@ -100,9 +138,54 @@ func offer(d glesysgo.DNSDomain) registrar.Offer {
 	return o
 }
 
+// available calls GleSYS domain/available with the correctly-named "search"
+// argument (the SDK omits it, sending a bare string). A full domain incl. TLD
+// returns just that domain; a bare keyword fans out across every TLD (slow —
+// which is why the UI requires a full domain).
+func (c *Client) available(ctx context.Context, search string) ([]glesysgo.DNSDomain, error) {
+	body, err := json.Marshal(struct {
+		Search string `json:"search"`
+	}{search})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/domain/available", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.SetBasicAuth(c.project, c.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("glesys: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		var e struct {
+			Response struct {
+				Status struct {
+					Text string `json:"text"`
+				} `json:"status"`
+			} `json:"response"`
+		}
+		_ = json.Unmarshal(raw, &e)
+		return nil, fmt.Errorf("glesys: available %q: status %d: %s", search, resp.StatusCode, strings.TrimSpace(e.Response.Status.Text))
+	}
+	var out struct {
+		Response struct {
+			Domain []glesysgo.DNSDomain `json:"domain"`
+		} `json:"response"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("glesys: available %q: decode: %w", search, err)
+	}
+	return out.Response.Domain, nil
+}
+
 // SearchDomains checks availability + the one-year price for a query. The web
-// layer requires a full domain (name + TLD), so this is a single fast lookup —
-// GleSYS fans out slowly across every TLD for a bare keyword.
+// layer requires a full domain (name + TLD), so this is a single fast lookup.
 func (c *Client) SearchDomains(ctx context.Context, query string, limit int) ([]registrar.Offer, error) {
 	return c.CheckDomains(ctx, []string{strings.ToLower(strings.TrimSpace(query))})
 }
@@ -115,14 +198,11 @@ func (c *Client) CheckDomains(ctx context.Context, names []string) ([]registrar.
 		if name == "" {
 			continue
 		}
-		domains, err := c.dns.Available(ctx, name)
+		domains, err := c.available(ctx, name)
 		if err != nil {
-			return nil, fmt.Errorf("glesys: available %q: %w", name, err)
+			return nil, err
 		}
-		if domains == nil {
-			continue
-		}
-		for _, d := range *domains {
+		for _, d := range domains {
 			offers = append(offers, offer(d))
 		}
 	}
