@@ -241,6 +241,8 @@ type Project struct {
 	RejectReason     string                     // populated when Status == rejected
 	PreviewURL       string                     // latest deployed preview link
 	PreviewHost      string                     // branded preview subdomain label ("bageriet-a1fa81"); assigned once, stable across rebuilds
+	PlannerProfile   string                     // model-profile key for the plan step ("" → default); operator override for experiments
+	ImplProfile      string                     // model-profile key for the build agent ("" → default)
 	RepoURL          string                     // vestigial: GitHub mirroring was removed; kept to avoid a DB migration (always "")
 	SnapshotKey      string                     // object-storage key of the workspace snapshot from the last successful build
 	Screenshots      []Screenshot               // one per page of the deployed site (for /admin review)
@@ -447,11 +449,13 @@ type Iteration struct {
 	SessionID   string    // opencode session id — lets a restarted orchestrator re-attach to the still-running build
 	SandboxAddr string    // sandbox opencode address (http://[ip]:port) — the re-attach target
 	HeartbeatAt time.Time // last time the build reported progress
-	Tokens      int       // model tokens the build agent consumed (cost visibility)
+	Tokens      int       // total model tokens the build agent consumed (input+output+reasoning)
+	TokensInput int       // input-only subset of Tokens, for accurate cost (in/out priced differently)
 	// Which models produced this build — recorded at build start so model
-	// experiments (make model-*) can be compared per build afterwards.
-	ImplModel    string // the build/intake/gate model (LLM_MODEL)
-	PlannerModel string // the planning model (PLANNER_LLM_MODEL)
+	// experiments can be compared per build afterwards. The strings include
+	// effort, e.g. "claude-sonnet-5 · max".
+	ImplModel    string // the build agent's model + effort
+	PlannerModel string // the planning model + effort
 	CreatedAt    time.Time
 }
 

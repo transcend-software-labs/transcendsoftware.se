@@ -166,6 +166,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /admin/projects/{id}/mark-paid", s.requireAdmin(s.handleAdminMarkPaid))
 	mux.HandleFunc("POST /admin/projects/{id}/mark-unpaid", s.requireAdmin(s.handleAdminMarkUnpaid))
 	mux.HandleFunc("POST /admin/projects/{id}/return", s.requireAdmin(s.handleAdminReturn))
+	mux.HandleFunc("POST /admin/projects/{id}/build-models", s.requireAdmin(s.handleAdminBuildModels))
 	mux.HandleFunc("POST /admin/projects/{id}/domain/detach", s.requireAdmin(s.handleAdminDomainDetach))
 
 	// Preview hosts branch off before langSelector (?lang= must not redirect a

@@ -80,6 +80,22 @@ type Request struct {
 	// SiteName is the project name — the site's SITE_NAME (notification copy)
 	// and the display name on its notification sender.
 	SiteName string
+
+	// Model overrides the implementation model for this build (operator
+	// experiment). Zero value → the builder's configured default (AnthropicKey /
+	// LLM*), i.e. current behavior.
+	Model ModelSpec
+}
+
+// ModelSpec is a per-build implementation-model override. Provider is
+// "anthropic" (native, opencode's anthropic provider) or "zen"/other
+// (OpenAI-compatible gateway). Empty Provider → the builder's default.
+type ModelSpec struct {
+	Provider string
+	BaseURL  string
+	APIKey   string
+	Model    string
+	Effort   string
 }
 
 // CapturedPage is one screenshot the crawler produced: which slot (PUT URL
@@ -96,7 +112,8 @@ type Result struct {
 	SnapshotSaved bool           // the workspace snapshot was uploaded to SnapshotPutURL
 	Screenshots   []CapturedPage // pages captured (slot → path)
 	Findings      []Finding      // impeccable design-audit findings (non-nil iff the audit ran; empty = clean)
-	Tokens        int            // model tokens consumed by the build agent
+	Tokens        int            // total model tokens consumed by the build agent
+	TokensInput   int            // input-only subset of Tokens (for accurate cost)
 	Critique      string         // in-session visual-review verdict (SHIP / POLISH + notes), "" if it didn't run
 }
 
@@ -200,13 +217,33 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 	// roots) so the agent's browser test "just works" instead of burning several
 	// tool-calls rediscovering it every build.
 	env["NODE_PATH"] = "/usr/lib/node_modules:/usr/local/lib/node_modules"
-	if b.cfg.AnthropicKey != "" {
-		env["ANTHROPIC_API_KEY"] = b.cfg.AnthropicKey
-	}
-	if b.cfg.LLMKey != "" {
-		env["LLM_API_KEY"] = b.cfg.LLMKey
-		env["LLM_BASE_URL"] = b.cfg.LLMBaseURL
-		env["LLM_MODEL"] = b.cfg.LLMModel
+	// The implementation model: a per-build override (operator experiment) wins;
+	// otherwise the builder's configured default (current behavior). The
+	// entrypoint turns these env vars into opencode's provider config.
+	switch {
+	case req.Model.Provider == "anthropic":
+		env["ANTHROPIC_API_KEY"] = req.Model.APIKey
+		env["IMPL_PROVIDER"] = "anthropic" // entrypoint writes an explicit anthropic model block
+		env["ANTHROPIC_MODEL"] = req.Model.Model
+		if req.Model.Effort != "" {
+			env["ANTHROPIC_EFFORT"] = req.Model.Effort
+		}
+	case req.Model.Provider != "": // zen / OpenAI-compatible gateway
+		env["LLM_API_KEY"] = req.Model.APIKey
+		env["LLM_BASE_URL"] = req.Model.BaseURL
+		env["LLM_MODEL"] = req.Model.Model
+		if req.Model.Effort != "" {
+			env["LLM_EFFORT"] = req.Model.Effort
+		}
+	default: // no override → the configured global default
+		if b.cfg.AnthropicKey != "" {
+			env["ANTHROPIC_API_KEY"] = b.cfg.AnthropicKey
+		}
+		if b.cfg.LLMKey != "" {
+			env["LLM_API_KEY"] = b.cfg.LLMKey
+			env["LLM_BASE_URL"] = b.cfg.LLMBaseURL
+			env["LLM_MODEL"] = b.cfg.LLMModel
+		}
 	}
 	if len(req.AssetManifest) > 0 {
 		// Presigned GET URLs — the entrypoint downloads these into the workspace.
@@ -416,7 +453,7 @@ func (b *Sandbox) finalize(ctx context.Context, sb *fly.Sandbox, req Request, re
 		}
 	}
 
-	return Result{PreviewURL: preview, Log: res.Log, Tokens: res.Tokens,
+	return Result{PreviewURL: preview, Log: res.Log, Tokens: res.Tokens, TokensInput: res.TokensInput,
 		SnapshotSaved: snapshotSaved, Screenshots: shots, Findings: findings, Critique: critique}, nil
 }
 
@@ -673,6 +710,7 @@ func (b *Sandbox) runFixRound(ctx context.Context, sb *fly.Sandbox, findings []F
 	}, hooks.OnLog, nil)
 	res.Log += "\n" + fres.Log
 	res.Tokens += fres.Tokens
+	res.TokensInput += fres.TokensInput
 	if err != nil {
 		emit(hooks.OnLog, "Polish pass didn't finish cleanly — keeping the deployed site as-is.")
 		return false

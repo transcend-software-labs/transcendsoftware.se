@@ -116,6 +116,27 @@
 {{end}}
 {{end}}
 
+{{if .Data.Profiles}}
+<section class="panel">
+  <h2>Models (experiment)</h2>
+  <p class="muted small">Re-runs the plan + build with the chosen models. Replaces the current preview — use test projects, and run the same brief as separate projects to A/B.</p>
+  <form method="post" action="/admin/projects/{{.Data.Item.ID}}/build-models" class="model-picker">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <label>Planner
+      <select name="planner_profile">
+        {{range $.Data.Profiles}}<option value="{{.Key}}"{{if eq .Key $.Data.PlannerProfile}} selected{{end}}>{{.Label}}{{if .Effort}} · {{.Effort}}{{end}}</option>{{end}}
+      </select>
+    </label>
+    <label>Implementation
+      <select name="impl_profile">
+        {{range $.Data.Profiles}}<option value="{{.Key}}"{{if eq .Key $.Data.ImplProfile}} selected{{end}}>{{.Label}}{{if .Effort}} · {{.Effort}}{{end}}</option>{{end}}
+      </select>
+    </label>
+    <button class="btn btn-sm" type="submit">Build with these models</button>
+  </form>
+</section>
+{{end}}
+
 {{if .Data.Iterations}}
 <section class="panel">
   <h2>Iterations</h2>
@@ -124,9 +145,11 @@
     <li>
       <span class="badge badge-{{.Status}}">#{{.Number}} · {{statusLabel .Status}}</span>
       <span class="muted small">machine {{if .MachineID}}{{.MachineID}}{{else}}—{{end}}
-        · {{if .ImplModel}}{{.ImplModel}}{{else}}—{{end}}
+        · impl {{if .ImplModel}}{{.ImplModel}}{{else}}—{{end}}
+        · plan {{if .PlannerModel}}{{.PlannerModel}}{{else}}—{{end}}
         · {{dur .Duration}}
-        {{if .Tokens}}· {{.Tokens}} tok{{end}}</span>
+        {{if .Tokens}}· {{.Tokens}} tok{{end}}
+        {{if .CostStr}}· ~{{.CostStr}}{{end}}</span>
       {{if .Prompt}}<p class="muted small">“{{.Prompt}}”</p>{{end}}
       {{if .Log}}<details><summary class="muted small">build log</summary><pre class="log">{{.Log}}</pre></details>{{end}}
     </li>

@@ -94,6 +94,16 @@ type Config struct {
 	PlannerLLMAPIKey  string
 	PlannerLLMModel   string
 
+	// Per-build model profiles (see models.go): the operator picks a planner +
+	// implementation model per build from /admin. ZenAPIKey/ZenBaseURL back the
+	// OpenAI-compatible profiles (Kimi/GLM/Grok/MiniMax/DeepSeek via the OpenCode
+	// Zen gateway); the anthropic profiles use AnthropicAPIKey. Default* is the
+	// combo used when a project hasn't overridden it (reproduces current wiring).
+	ZenAPIKey             string
+	ZenBaseURL            string
+	DefaultPlannerProfile string
+	DefaultImplProfile    string
+
 	// Image generation for content slots ("Generate with AI"). Defaults to
 	// OpenAI gpt-image-2 using OPENAI_API_KEY. Disabled when no key is set.
 	ImageGenBaseURL       string
@@ -333,6 +343,17 @@ func Load() Config {
 	if c.ImageGenAPIKey == "" {
 		c.ImageGenAPIKey = os.Getenv("OPENAI_API_KEY")
 	}
+
+	// Model profiles: the OpenAI-compatible profiles run on the OpenCode Zen Go
+	// gateway. Prefer OPENCODE_GO_API_KEY; else reuse the LLM key when it already
+	// points at the Zen gateway (the common default wiring).
+	c.ZenBaseURL = "https://opencode.ai/zen/go/v1"
+	c.ZenAPIKey = os.Getenv("OPENCODE_GO_API_KEY")
+	if c.ZenAPIKey == "" && strings.Contains(c.LLMBaseURL, "opencode.ai/zen") {
+		c.ZenAPIKey = c.LLMAPIKey
+	}
+	c.DefaultPlannerProfile = envOr("DEFAULT_PLANNER_PROFILE", "glm")
+	c.DefaultImplProfile = envOr("DEFAULT_IMPL_PROFILE", "kimi")
 	return c
 }
 

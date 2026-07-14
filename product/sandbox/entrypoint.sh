@@ -74,9 +74,39 @@ fi
 #    provider block; otherwise opencode falls back to Anthropic via env.
 mkdir -p /root/.config/opencode
 perm='"permission": { "edit": "allow", "bash": "allow", "webfetch": "allow", "external_directory": "allow" }'
-if [ -n "${LLM_API_KEY:-}" ]; then
+if [ "${IMPL_PROVIDER:-}" = "anthropic" ] && [ -n "${ANTHROPIC_MODEL:-}" ]; then
+  # Explicit Anthropic model (per-build model experiment). Reasoning effort maps
+  # to a thinking budget (best-effort — the newest Claude models may reject the
+  # budgetTokens shape; then the model just runs at its default thinking).
+  case "${ANTHROPIC_EFFORT:-}" in
+  low) budget=8000 ;; medium) budget=12000 ;; high) budget=24000 ;;
+  xhigh) budget=32000 ;; max) budget=48000 ;; *) budget=0 ;;
+  esac
+  amodel="{}"
+  if [ "$budget" -gt 0 ]; then
+    amodel="{ \"options\": { \"thinking\": { \"type\": \"enabled\", \"budgetTokens\": ${budget} } } }"
+  fi
+  log "configuring opencode: anthropic provider, model ${ANTHROPIC_MODEL} effort=${ANTHROPIC_EFFORT:-default} (auto-approve all tools)"
+  cat > /root/.config/opencode/opencode.json <<JSON
+{
+  "\$schema": "https://opencode.ai/config.json",
+  ${perm},
+  "provider": {
+    "anthropic": {
+      "models": { "${ANTHROPIC_MODEL}": ${amodel} }
+    }
+  },
+  "model": "anthropic/${ANTHROPIC_MODEL}"
+}
+JSON
+elif [ -n "${LLM_API_KEY:-}" ]; then
   base="${LLM_BASE_URL:-https://api.moonshot.ai/v1}"
   model="${LLM_MODEL:-kimi-k2.7-code}"
+  # Optional reasoning effort for the OpenAI-compatible model.
+  ropts="{}"
+  if [ -n "${LLM_EFFORT:-}" ]; then
+    ropts="{ \"options\": { \"reasoningEffort\": \"${LLM_EFFORT}\" } }"
+  fi
   case "$base" in
   *api.openai.com*)
     # Direct OpenAI: use opencode's NATIVE openai provider, not the generic
@@ -94,7 +124,7 @@ if [ -n "${LLM_API_KEY:-}" ]; then
   ${perm},
   "provider": {
     "openai": {
-      "models": { "${model}": {} }
+      "models": { "${model}": ${ropts} }
     }
   },
   "model": "openai/${model}"
@@ -112,7 +142,7 @@ JSON
       "npm": "@ai-sdk/openai-compatible",
       "name": "Moonshot",
       "options": { "baseURL": "${base}", "apiKey": "{env:LLM_API_KEY}" },
-      "models": { "${model}": {} }
+      "models": { "${model}": ${ropts} }
     }
   },
   "model": "moonshot/${model}"

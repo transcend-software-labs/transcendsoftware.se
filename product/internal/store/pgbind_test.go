@@ -40,6 +40,7 @@ func TestPostgresProjectBindings(t *testing.T) {
 	p.DomainIntent, p.DomainIntentBuy = "pelleuttning.se", true
 	p.DomainCostOre = 12900
 	p.PreviewHost = "bind-preview-a1b2c3"
+	p.PlannerProfile, p.ImplProfile = "fable5", "sonnet5"
 	paidThrough := now.AddDate(1, 0, 0).Truncate(time.Microsecond) // Postgres TIMESTAMPTZ is µs precision
 	p.DomainPaidThrough = paidThrough
 	p.ChangesThisPeriod, p.ChangePeriodStart, p.DeliveredAt = 2, now, now
@@ -56,6 +57,22 @@ func TestPostgresProjectBindings(t *testing.T) {
 	}
 	if !got.DomainPaidThrough.Equal(paidThrough) {
 		t.Fatalf("domain_paid_through round-trip: got %v want %v", got.DomainPaidThrough, paidThrough)
+	}
+	if got.PlannerProfile != "fable5" || got.ImplProfile != "sonnet5" {
+		t.Fatalf("model profiles round-trip: planner=%q impl=%q", got.PlannerProfile, got.ImplProfile)
+	}
+	// Iteration token split round-trips too.
+	it := &project.Iteration{ID: "bind-it1", ProjectID: p.ID, Number: 1, Status: project.StatusPreviewReady,
+		Tokens: 124000, TokensInput: 100000, ImplModel: "claude-sonnet-5 · max", CreatedAt: now}
+	if err := st.CreateIteration(ctx, it); err != nil {
+		t.Fatalf("CreateIteration: %v", err)
+	}
+	its, err := st.IterationsByProject(ctx, p.ID)
+	if err != nil || len(its) == 0 {
+		t.Fatalf("IterationsByProject: %v", err)
+	}
+	if its[0].TokensInput != 100000 || its[0].Tokens != 124000 {
+		t.Fatalf("iteration token round-trip: total=%d input=%d", its[0].Tokens, its[0].TokensInput)
 	}
 	// The reverse proxy's host lookup resolves through the real index.
 	byHost, err := st.ProjectByPreviewHost(ctx, "bind-preview-a1b2c3")

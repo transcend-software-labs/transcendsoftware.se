@@ -28,9 +28,10 @@ type Spec struct {
 
 // Result is the outcome of a build run.
 type Result struct {
-	Log       string // streamed/aggregated agent output
-	SessionID string // opencode session id, for resuming reiterations
-	Tokens    int    // total model tokens the build consumed (0 if unknown)
+	Log         string // streamed/aggregated agent output
+	SessionID   string // opencode session id, for resuming reiterations
+	Tokens      int    // total model tokens the build consumed (0 if unknown)
+	TokensInput int    // input-only subset of Tokens (for accurate cost)
 }
 
 // Driver runs a build via opencode. onLog, if non-nil, receives progress lines
@@ -145,11 +146,11 @@ func (h *HTTP) Run(ctx context.Context, spec Spec, onLog func(string), onSession
 
 	log, err := h.consume(sessionID, stream, onLog)
 	// Best-effort token accounting from the session (for cost visibility).
-	tokens := 0
+	tokens, tokensIn := 0, 0
 	if err == nil {
-		tokens = h.sessionTokens(ctx, sessionID)
+		tokens, tokensIn = h.sessionTokens(ctx, sessionID)
 	}
-	return Result{Log: log, SessionID: sessionID, Tokens: tokens}, err
+	return Result{Log: log, SessionID: sessionID, Tokens: tokens, TokensInput: tokensIn}, err
 }
 
 // Attach re-connects to a build already running under sessionID and consumes
@@ -194,13 +195,13 @@ func (h *HTTP) Attach(ctx context.Context, sessionID string, onLog func(string))
 	for {
 		select {
 		case c := <-ch:
-			tokens := 0
+			tokens, tokensIn := 0, 0
 			if c.err == nil {
-				tokens = h.sessionTokens(ctx, sessionID)
+				tokens, tokensIn = h.sessionTokens(ctx, sessionID)
 			}
-			return Result{Log: c.log, SessionID: sessionID, Tokens: tokens}, c.err
+			return Result{Log: c.log, SessionID: sessionID, Tokens: tokens, TokensInput: tokensIn}, c.err
 		case <-ticker.C:
-			cur := h.sessionTokens(ctx, sessionID)
+			cur, _ := h.sessionTokens(ctx, sessionID)
 			if cur == last {
 				frozen++
 			} else {
@@ -219,16 +220,17 @@ func (h *HTTP) Attach(ctx context.Context, sessionID string, onLog func(string))
 	}
 }
 
-// sessionTokens reads the session's token totals (input + output + reasoning),
-// best-effort — a failure just yields 0.
-func (h *HTTP) sessionTokens(ctx context.Context, sessionID string) int {
+// sessionTokens reads the session's token totals, best-effort — a failure
+// yields (0, 0). Returns the grand total (input+output+reasoning) and the
+// input-only subset, so cost can price input vs output+reasoning separately.
+func (h *HTTP) sessionTokens(ctx context.Context, sessionID string) (total, input int) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, h.BaseURL+"/session/"+sessionID, nil)
 	if err != nil {
-		return 0
+		return 0, 0
 	}
 	resp, err := h.client.Do(req)
 	if err != nil {
-		return 0
+		return 0, 0
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
@@ -240,9 +242,9 @@ func (h *HTTP) sessionTokens(ctx context.Context, sessionID string) int {
 		} `json:"tokens"`
 	}
 	if json.Unmarshal(raw, &s) != nil {
-		return 0
+		return 0, 0
 	}
-	return s.Tokens.Input + s.Tokens.Output + s.Tokens.Reasoning
+	return s.Tokens.Input + s.Tokens.Output + s.Tokens.Reasoning, s.Tokens.Input
 }
 
 func (h *HTTP) createSession(ctx context.Context) (string, error) {

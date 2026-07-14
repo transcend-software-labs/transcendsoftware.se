@@ -20,26 +20,35 @@ const DefaultModel = "claude-sonnet-4-6"
 type Anthropic struct {
 	apiKey string
 	model  string
+	effort string // reasoning effort (low..max) via output_config; "" = model default
 	http   *http.Client
 }
 
-// NewAnthropic returns a real planner/gate. model may be empty for DefaultModel.
-func NewAnthropic(apiKey, model string) *Anthropic {
+// NewAnthropic returns a real planner/gate. model may be empty for DefaultModel;
+// effort ("" | low | medium | high | xhigh | max) sets the reasoning depth on
+// the 4.6+/5 models (adaptive thinking; never budget_tokens).
+func NewAnthropic(apiKey, model, effort string) *Anthropic {
 	if model == "" {
 		model = DefaultModel
 	}
 	return &Anthropic{
 		apiKey: apiKey,
 		model:  model,
-		http:   &http.Client{Timeout: 120 * time.Second},
+		effort: effort,
+		http:   &http.Client{Timeout: 300 * time.Second},
 	}
 }
 
 type anthropicReq struct {
-	Model     string         `json:"model"`
-	MaxTokens int            `json:"max_tokens"`
-	System    string         `json:"system,omitempty"`
-	Messages  []anthropicMsg `json:"messages"`
+	Model        string           `json:"model"`
+	MaxTokens    int              `json:"max_tokens"`
+	System       string           `json:"system,omitempty"`
+	Messages     []anthropicMsg   `json:"messages"`
+	OutputConfig *anthropicOutCfg `json:"output_config,omitempty"`
+}
+
+type anthropicOutCfg struct {
+	Effort string `json:"effort,omitempty"`
 }
 
 type anthropicMsg struct {
@@ -59,12 +68,21 @@ type anthropicResp struct {
 }
 
 func (a *Anthropic) complete(ctx context.Context, system, user string, maxTokens int) (string, error) {
-	body, err := json.Marshal(anthropicReq{
+	r := anthropicReq{
 		Model:     a.model,
 		MaxTokens: maxTokens,
 		System:    system,
 		Messages:  []anthropicMsg{{Role: "user", Content: user}},
-	})
+	}
+	if a.effort != "" {
+		// Higher effort spends more thinking (billed as output) — give the
+		// response room so a deep plan isn't truncated.
+		r.OutputConfig = &anthropicOutCfg{Effort: a.effort}
+		if maxTokens < 16000 {
+			r.MaxTokens = 16000
+		}
+	}
+	body, err := json.Marshal(r)
 	if err != nil {
 		return "", err
 	}

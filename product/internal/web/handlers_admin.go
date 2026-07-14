@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/orchestrator"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
@@ -250,8 +251,21 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 // adminProjectView backs the operator's technical view of one project.
 type adminProjectView struct {
 	Item       reviewItem
-	Iterations []*project.Iteration
+	Iterations []adminBuildRow
 	OwnerEmail string
+
+	// Per-build model selection (experiment): the enabled profiles for the
+	// dropdowns and the project's current choice (defaults when unset).
+	Profiles       []config.ModelProfile
+	PlannerProfile string
+	ImplProfile    string
+}
+
+// adminBuildRow is one iteration plus its rough LLM cost (from the token split
+// × the project's implementation-profile prices).
+type adminBuildRow struct {
+	*project.Iteration
+	CostStr string
 }
 
 // handleAdminProject is the operator's technical view of one project: raw plan,
@@ -272,10 +286,51 @@ func (s *Server) handleAdminProject(w http.ResponseWriter, r *http.Request, _ *u
 	if u, err := s.store.UserByID(r.Context(), p.UserID); err == nil {
 		owner = u.Email
 	}
+	// Price each iteration by the project's implementation profile (experiments
+	// run one combo per project, so this is accurate).
+	implKey := p.ImplProfile
+	if implKey == "" {
+		implKey = s.cfg.DefaultImplProfile
+	}
+	implModel, _ := s.cfg.ResolveModel(implKey)
+	rows := make([]adminBuildRow, 0, len(its))
+	for _, it := range its {
+		cost := ""
+		if it.Tokens > 0 {
+			cost = formatPrice(int64(implModel.CostOre(it.TokensInput, it.Tokens)), "sek")
+		}
+		rows = append(rows, adminBuildRow{Iteration: it, CostStr: cost})
+	}
+	plannerKey := p.PlannerProfile
+	if plannerKey == "" {
+		plannerKey = s.cfg.DefaultPlannerProfile
+	}
 	v := s.view(r, p.Name+" — operator", adminProjectView{
-		Item: s.withScreenshots(r.Context(), p), Iterations: its, OwnerEmail: owner})
+		Item: s.withScreenshots(r.Context(), p), Iterations: rows, OwnerEmail: owner,
+		Profiles: s.cfg.ModelProfiles(), PlannerProfile: plannerKey, ImplProfile: implKey})
 	v.Lang = "en" // operator pages are English regardless of the customer-facing selector
 	s.render(w, http.StatusOK, "admin_project", v)
+}
+
+// handleAdminBuildModels sets the project's planner + implementation profiles
+// and re-runs the pipeline with them (operator experiment).
+func (s *Server) handleAdminBuildModels(w http.ResponseWriter, r *http.Request, _ *user.User) {
+	id := r.PathValue("id")
+	planner := r.FormValue("planner_profile")
+	impl := r.FormValue("impl_profile")
+	// Only accept keys that are actually enabled.
+	valid := map[string]bool{}
+	for _, pr := range s.cfg.ModelProfiles() {
+		valid[pr.Key] = true
+	}
+	if !valid[planner] {
+		planner = ""
+	}
+	if !valid[impl] {
+		impl = ""
+	}
+	s.orch.RebuildWithModels(id, planner, impl)
+	http.Redirect(w, r, "/admin/projects/"+id, http.StatusSeeOther)
 }
 
 // handleAdminDestroyPreview tears down a project's preview app immediately.

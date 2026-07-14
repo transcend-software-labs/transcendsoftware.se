@@ -21,13 +21,21 @@ import (
 // on reasoning (so max_tokens must be generous), and returns the answer in
 // .content (chain-of-thought goes to .reasoning_content, which we ignore).
 type OpenAICompat struct {
-	baseURL     string
-	apiKey      string
-	model       string
-	temperature float64
-	http        *http.Client
-	maxAttempts int           // total tries per call (1 + retries)
-	retryDelay  time.Duration // backoff between attempts
+	baseURL         string
+	apiKey          string
+	model           string
+	temperature     float64
+	reasoningEffort string // "" = model default
+	http            *http.Client
+	maxAttempts     int           // total tries per call (1 + retries)
+	retryDelay      time.Duration // backoff between attempts
+}
+
+// WithEffort sets the reasoning effort (best-effort — ignored by gateways that
+// don't support it) and returns the client for chaining.
+func (o *OpenAICompat) WithEffort(effort string) *OpenAICompat {
+	o.reasoningEffort = effort
+	return o
 }
 
 // NewOpenAICompat returns a client for an OpenAI-compatible endpoint.
@@ -59,6 +67,9 @@ type ocRequest struct {
 	MaxTokens           int      `json:"max_tokens,omitempty"`
 	MaxCompletionTokens int      `json:"max_completion_tokens,omitempty"`
 	Temperature         *float64 `json:"temperature,omitempty"`
+	// ReasoningEffort steers reasoning models (OpenAI-style). Best-effort — a
+	// gateway that doesn't support it ignores the field. Empty = model default.
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 }
 
 type ocResponse struct {
@@ -105,6 +116,7 @@ func (o *OpenAICompat) completeOnce(ctx context.Context, system, user string, ma
 			{Role: "system", Content: system},
 			{Role: "user", Content: user},
 		},
+		ReasoningEffort: o.reasoningEffort,
 	}
 	if strings.Contains(o.baseURL, "api.openai.com") {
 		// max_completion_tokens caps hidden reasoning + visible output COMBINED

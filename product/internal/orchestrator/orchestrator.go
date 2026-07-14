@@ -23,6 +23,7 @@ import (
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/activity"
 	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
+	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
 	"github.com/transcend-software-labs/rasmus-ai/internal/id"
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
@@ -58,8 +59,9 @@ type Orchestrator struct {
 	operatorEmail string          // Rasmus — escalation/failure notices
 	baseURL       string          // for links in emails
 	templateKey   string          // object-storage key of the starter-app tarball ("" = greenfield)
-	implModel     string          // active build/intake/gate model, stamped on iterations for experiment analysis
-	plannerModel  string          // active planning model, stamped on iterations
+	implModel     string          // default build model label, stamped on iterations when no per-build profile is chosen
+	plannerModel  string          // default planning model label
+	modelCfg      *config.Config  // model-profile registry for per-build model selection (nil → global wiring only)
 	activeMu      sync.Mutex      // guards active
 	active        map[string]bool // projects with an in-flight pipeline goroutine in THIS process
 
@@ -753,7 +755,8 @@ func (o *Orchestrator) runPlanGateBuild(ctx context.Context, projectID string) e
 	if a := o.assetContext(ctx, p.ID); a != "" {
 		brief += "\n\n" + a
 	}
-	planRes, err := o.planner.Plan(ctx, brief)
+	planner, _ := o.plannerFor(p)
+	planRes, err := planner.Plan(ctx, brief)
 	if err != nil {
 		return err
 	}
@@ -857,14 +860,17 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string, i
 	if internal {
 		number = 0
 	}
+	// Resolve the models for this build (per-project override or the default).
+	implSpec, implLabel := o.implFor(p)
+	_, plannerLabel := o.plannerFor(p)
 	it := &project.Iteration{
 		ID:           id.New(),
 		ProjectID:    p.ID,
 		Number:       number,
 		Prompt:       prompt,
 		Status:       project.StatusBuilding,
-		ImplModel:    o.implModel,
-		PlannerModel: o.plannerModel,
+		ImplModel:    implLabel,
+		PlannerModel: plannerLabel,
 		CreatedAt:    time.Now().UTC(),
 	}
 	if err := o.store.CreateIteration(ctx, it); err != nil {
@@ -949,6 +955,7 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string, i
 		Brief:             p.EffectiveBrief(),
 		Plan:              p.Plan,
 		Prompt:            prompt,
+		Model:             implSpec,
 		SnapshotGetURL:    snapshotGet,
 		SnapshotPutURL:    snapshotPut,
 		ScreenshotPutURLs: screenshotPuts,
@@ -1032,6 +1039,7 @@ func (o *Orchestrator) finishBuild(ctx context.Context, p *project.Project, it *
 	it.PreviewURL = previewURL
 	it.Log = logSnapshot()
 	it.Tokens = res.Tokens
+	it.TokensInput = res.TokensInput
 	it.HeartbeatAt = time.Now().UTC() // final timestamp → accurate build duration
 	if err := o.store.UpdateIteration(ctx, it); err != nil {
 		return err
