@@ -202,10 +202,12 @@ func (i *flexInt) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// registrarState extracts registrarinfo.state, tolerating GleSYS returning
-// registrarinfo as either an object ({"state":"OK",...}) or the string "None".
+// registrarState extracts registrarinfo.state + expiry, tolerating GleSYS
+// returning registrarinfo as either an object ({"state":"OK","expire":"…"}) or
+// the string "None".
 type registrarState struct {
-	State string
+	State  string
+	Expire string // "2027-01-19" (YYYY-MM-DD); "" when unknown
 }
 
 func (r *registrarState) UnmarshalJSON(data []byte) error {
@@ -214,12 +216,13 @@ func (r *registrarState) UnmarshalJSON(data []byte) error {
 		return nil // a string like "None" — no registrar state
 	}
 	var o struct {
-		State string `json:"state"`
+		State  string `json:"state"`
+		Expire string `json:"expire"`
 	}
 	if err := json.Unmarshal(data, &o); err != nil {
 		return err
 	}
-	r.State = o.State
+	r.State, r.Expire = o.State, o.Expire
 	return nil
 }
 
@@ -320,10 +323,42 @@ func (c *Client) RegisterDomain(ctx context.Context, name string) (string, error
 	// Best-effort: keep the domain from lapsing. A fresh .se may still be
 	// settling, so a failure here is logged, not fatal — GleSYS also defaults new
 	// registrations to auto-renew.
-	if err := c.do(ctx, "domain/setautorenew", map[string]any{"domainname": name, "setautorenew": "yes"}, nil); err != nil {
+	if err := c.SetAutoRenew(ctx, name, true); err != nil {
 		slog.Warn("glesys set auto-renew", "domain", name, "err", err)
 	}
 	return mapState(name, out.Response.Domain.RegistrarInfo.State), nil
+}
+
+// SetAutoRenew turns GleSYS auto-renew on or off for a domain. Off is used when
+// a customer detaches a purchased domain, so we stop paying to renew it.
+func (c *Client) SetAutoRenew(ctx context.Context, name string, on bool) error {
+	v := "no"
+	if on {
+		v = "yes"
+	}
+	return c.do(ctx, "domain/setautorenew", map[string]any{"domainname": name, "setautorenew": v}, nil)
+}
+
+// DomainExpiry returns the domain's current registry expiry date, for detecting
+// (auto-)renewals. Zero time (no error) when unknown or the domain isn't in the
+// account yet.
+func (c *Client) DomainExpiry(ctx context.Context, name string) (time.Time, error) {
+	ri, err := c.details(ctx, name)
+	if err != nil {
+		if isNotFound(err) {
+			return time.Time{}, nil
+		}
+		return time.Time{}, fmt.Errorf("glesys: details %q: %w", name, err)
+	}
+	if ri.Expire == "" {
+		return time.Time{}, nil
+	}
+	t, perr := time.Parse("2006-01-02", strings.TrimSpace(ri.Expire))
+	if perr != nil {
+		slog.Warn("glesys: unparsable expiry", "domain", name, "expire", ri.Expire)
+		return time.Time{}, nil
+	}
+	return t, nil
 }
 
 // details fetches a domain's registrar state. A 404 (domain not in the account)

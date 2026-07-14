@@ -230,6 +230,14 @@ func (c *Client) ListDNSRecords(ctx context.Context, zoneID string) ([]DNSRecord
 // EnsureDNSRecord creates rec in the zone if an identical one (type+name+content)
 // isn't already present, so it is safe to re-run. Proxied is forced false — the
 // orange-cloud proxy breaks Fly's ACME challenge and TLS.
+// DomainExpiry / SetAutoRenew are no-ops for Cloudflare: yearly renewal billing
+// runs on the GleSYS provider, and Cloudflare Registrar manages renewals itself.
+// Present only to satisfy orchestrator.DomainRegistrar.
+func (c *Client) DomainExpiry(context.Context, string) (time.Time, error) {
+	return time.Time{}, nil
+}
+func (c *Client) SetAutoRenew(context.Context, string, bool) error { return nil }
+
 func (c *Client) EnsureDNSRecord(ctx context.Context, zoneID string, rec DNSRecord) error {
 	ttl := rec.TTL
 	if ttl == 0 {

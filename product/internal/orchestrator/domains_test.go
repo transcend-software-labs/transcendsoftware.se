@@ -31,12 +31,14 @@ func waitForDomain(t *testing.T, st store.Store, id string, ok func(*project.Pro
 
 // fakeCF is an in-memory DomainRegistrar for orchestrator tests.
 type fakeCF struct {
-	offers      []registrar.Offer
-	regState    string // RegisterDomain result (default succeeded)
-	statusState string // RegistrationStatus result (default succeeded)
-	zoneID      string // ZoneID result (default "zone1")
-	ensured     []registrar.Record
-	registered  []string
+	offers       []registrar.Offer
+	regState     string // RegisterDomain result (default succeeded)
+	statusState  string // RegistrationStatus result (default succeeded)
+	zoneID       string // ZoneID result (default "zone1")
+	ensured      []registrar.Record
+	registered   []string
+	expiry       time.Time // DomainExpiry result (zero = unknown)
+	autoRenewOff []string  // domains SetAutoRenew(false) was called on
 }
 
 func (f *fakeCF) SearchDomains(context.Context, string, int) ([]registrar.Offer, error) {
@@ -66,6 +68,15 @@ func (f *fakeCF) ZoneID(context.Context, string) (string, error) {
 }
 func (f *fakeCF) EnsureDNSRecord(_ context.Context, _ string, rec registrar.Record) error {
 	f.ensured = append(f.ensured, rec)
+	return nil
+}
+func (f *fakeCF) DomainExpiry(context.Context, string) (time.Time, error) {
+	return f.expiry, nil
+}
+func (f *fakeCF) SetAutoRenew(_ context.Context, name string, on bool) error {
+	if !on {
+		f.autoRenewOff = append(f.autoRenewOff, name)
+	}
 	return nil
 }
 

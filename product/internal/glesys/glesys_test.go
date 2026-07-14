@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/registrar"
 )
@@ -261,6 +262,58 @@ func TestEnsureDNSRecord_Idempotent(t *testing.T) {
 	}
 	if addCalled {
 		t.Error("identical record must not be re-added")
+	}
+}
+
+func TestDomainExpiry(t *testing.T) {
+	// registrarinfo as an object with an expire date.
+	ok := newMockClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"response":{"domain":{"registrarinfo":{"state":"OK","expire":"2027-01-19"}}}}`)
+	})
+	got, err := ok.DomainExpiry(context.Background(), "x.se")
+	if err != nil {
+		t.Fatalf("expiry: %v", err)
+	}
+	if want := time.Date(2027, 1, 19, 0, 0, 0, 0, time.UTC); !got.Equal(want) {
+		t.Errorf("expiry = %v, want %v", got, want)
+	}
+
+	// registrarinfo as the string "None" → zero, no error.
+	none := newMockClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"response":{"domain":{"registrarinfo":"None"}}}`)
+	})
+	if got, err := none.DomainExpiry(context.Background(), "x.se"); err != nil || !got.IsZero() {
+		t.Errorf("string registrarinfo → zero,nil; got %v err=%v", got, err)
+	}
+
+	// 404 (not in account) → zero, no error.
+	nf := newMockClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `{"response":{"status":{"text":"Not Found"}}}`)
+	})
+	if got, err := nf.DomainExpiry(context.Background(), "x.se"); err != nil || !got.IsZero() {
+		t.Errorf("404 → zero,nil; got %v err=%v", got, err)
+	}
+}
+
+func TestSetAutoRenew(t *testing.T) {
+	var gotPath, gotValue string
+	c := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		var b struct {
+			Domainname   string `json:"domainname"`
+			SetAutoRenew string `json:"setautorenew"`
+		}
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &b)
+		gotValue = b.SetAutoRenew
+		_, _ = io.WriteString(w, `{"response":{"domain":{}}}`)
+	})
+	if err := c.SetAutoRenew(context.Background(), "x.se", false); err != nil {
+		t.Fatalf("set auto-renew: %v", err)
+	}
+	if gotPath != "/domain/setautorenew" || gotValue != "no" {
+		t.Errorf("path=%q value=%q, want /domain/setautorenew + no", gotPath, gotValue)
 	}
 }
 

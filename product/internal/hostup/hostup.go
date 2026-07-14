@@ -270,6 +270,14 @@ func (c *Client) RegistrationStatus(ctx context.Context, name string) (string, e
 	return "", fmt.Errorf("hostup: availability returned no result for %s", name)
 }
 
+// DomainExpiry / SetAutoRenew are no-ops for Hostup: yearly renewal billing
+// runs on the GleSYS provider, and Hostup orders default to the account's own
+// renewal handling. Present only to satisfy orchestrator.DomainRegistrar.
+func (c *Client) DomainExpiry(context.Context, string) (time.Time, error) {
+	return time.Time{}, nil
+}
+func (c *Client) SetAutoRenew(context.Context, string, bool) error { return nil }
+
 // zoneListItem is one entry in GET /api/v2/dns-zones.
 type zoneListItem struct {
 	ID   string `json:"id"`

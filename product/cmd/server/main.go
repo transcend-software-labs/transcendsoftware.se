@@ -180,6 +180,9 @@ func main() {
 			orch.SetDomains(domainReg, nil, domainCap)
 		}
 		orch.StartDomainPoller(context.Background(), 3*time.Minute)
+		// Re-bill yearly domain auto-renewals to the customer (no-op without a
+		// biller). Slow cadence — renewals happen once a year per domain.
+		orch.StartDomainRenewalPoller(context.Background(), 24*time.Hour)
 	}
 	// Forge Pro change model: the monthly change allowance + flat overage price.
 	// Always active (core to the paid product). bill may be nil (Stripe off) —

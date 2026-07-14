@@ -40,6 +40,16 @@ var customerEmails = map[string]map[string]emailCopy{
 		"ru": {"Ваш домен активен",
 			"Ваш сайт теперь доступен по адресу %s. Может пройти немного времени, пока он появится везде, по мере обновления DNS:"},
 	},
+	// Two args: domain, cost ("129 kr"). Sent when a domain auto-renews for
+	// another year and the cost is added to the customer's next invoice.
+	"domain_renewed": {
+		"en": {"Your domain has been renewed",
+			"We've renewed %s for another year. The renewal cost, %s, will appear on your next invoice — nothing you need to do."},
+		"sv": {"Din domän har förnyats",
+			"Vi har förnyat %s för ytterligare ett år. Förnyelsekostnaden, %s, läggs till på din nästa faktura — du behöver inte göra något."},
+		"ru": {"Ваш домен продлён",
+			"Мы продлили %s ещё на один год. Стоимость продления, %s, будет добавлена в ваш следующий счёт — ничего делать не нужно."},
+	},
 }
 
 // custEmail returns localized subject + body for a customer email, defaulting

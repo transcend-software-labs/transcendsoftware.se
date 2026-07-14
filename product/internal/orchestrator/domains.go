@@ -30,6 +30,12 @@ type DomainRegistrar interface {
 	RegistrationStatus(ctx context.Context, name string) (string, error)
 	ZoneID(ctx context.Context, name string) (string, error)
 	EnsureDNSRecord(ctx context.Context, zoneID string, rec registrar.Record) error
+	// DomainExpiry returns the domain's registry expiry, for detecting yearly
+	// (auto-)renewals (zero time = unknown). SetAutoRenew toggles the registrar's
+	// auto-renew — turned off when a customer detaches a purchased domain so we
+	// stop paying to renew it. Providers that don't manage renewals stub these.
+	DomainExpiry(ctx context.Context, name string) (time.Time, error)
+	SetAutoRenew(ctx context.Context, name string, on bool) error
 }
 
 // domainBiller is the Stripe surface a purchased domain needs (satisfied by
@@ -328,6 +334,13 @@ func (o *Orchestrator) DetachDomain(ctx context.Context, projectID string) error
 		if err := o.machines.DeleteCertificate(ctx, builder.DeployAppName(p.ID), p.DomainName); err != nil {
 			o.log.Error("detach domain: delete cert", "project", p.ID, "err", err)
 		}
+		// Stop paying to renew a purchased domain the customer no longer uses —
+		// it lapses at the end of the year they already paid for. Best-effort.
+		if p.DomainKind == project.DomainKindPurchased && o.domains != nil {
+			if err := o.domains.SetAutoRenew(ctx, p.DomainName, false); err != nil {
+				o.log.Error("detach domain: disable auto-renew", "project", p.ID, "domain", p.DomainName, "err", err)
+			}
+		}
 	}
 	if p.DomainSubItemID != "" && o.biller != nil {
 		if err := o.biller.RemoveSubscriptionItem(ctx, p.DomainSubItemID); err != nil {
@@ -379,6 +392,93 @@ func (o *Orchestrator) reconcileAllDomains(ctx context.Context) {
 			o.log.Error("domain poller: reconcile", "project", p.ID, "err", err)
 		}
 	}
+}
+
+// StartDomainRenewalPoller re-bills domain renewals on a slow interval (daily is
+// plenty — renewals happen once a year per domain). GleSYS auto-renews each
+// purchased domain and charges us; we detect the renewal (the registry expiry
+// advancing) and pass the cost through to the customer, mirroring the initial
+// registration charge. No-op without a registrar or a biller.
+func (o *Orchestrator) StartDomainRenewalPoller(ctx context.Context, interval time.Duration) {
+	if o.domains == nil || o.biller == nil {
+		return
+	}
+	go func() {
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				o.rebillDomainRenewals(ctx)
+			}
+		}
+	}()
+}
+
+// rebillDomainRenewals scans active purchased domains and bills any that GleSYS
+// has auto-renewed since we last billed them.
+func (o *Orchestrator) rebillDomainRenewals(ctx context.Context) {
+	all, err := o.store.Projects(ctx)
+	if err != nil {
+		o.log.Error("renewal poller: list projects", "err", err)
+		return
+	}
+	for _, p := range all {
+		if p.DomainStatus != project.DomainActive || p.DomainKind != project.DomainKindPurchased {
+			continue
+		}
+		if err := o.rebillDomainRenewal(ctx, p); err != nil {
+			o.log.Error("renewal poller: project", "project", p.ID, "domain", p.DomainName, "err", err)
+		}
+	}
+}
+
+// rebillDomainRenewal bills one project for a domain renewal if GleSYS's expiry
+// has advanced past what the customer has paid through. The first observation of
+// an untracked domain (zero DomainPaidThrough) just anchors the clock without
+// billing, so legacy domains aren't charged retroactively.
+func (o *Orchestrator) rebillDomainRenewal(ctx context.Context, p *project.Project) error {
+	exp, err := o.domains.DomainExpiry(ctx, p.DomainName)
+	if err != nil {
+		return err
+	}
+	if exp.IsZero() {
+		return nil // unknown expiry — try again next cycle
+	}
+	if p.DomainPaidThrough.IsZero() {
+		p.DomainPaidThrough = exp // establish the anchor, don't bill
+		return o.save(ctx, p)
+	}
+	// A renewal advances the expiry ~a year; the one-month grace ignores any
+	// slack between our activation anchor and the real registry date.
+	if !exp.After(p.DomainPaidThrough.AddDate(0, 1, 0)) {
+		return nil
+	}
+
+	amount := domainCostOre(float64(p.DomainCostOre)/100, o.maxDomainPrice) // re-clamp to the current cap
+	if o.biller != nil && p.StripeCustomerID != "" && amount > 0 {
+		desc := fmt.Sprintf("Domänförnyelse: %s (1 år)", p.DomainName)
+		if _, err := o.biller.AddInvoiceItem(ctx, p.StripeCustomerID, amount, "sek", desc); err != nil {
+			return fmt.Errorf("bill renewal: %w", err)
+		}
+		pe := custEmail(p.Locale, "domain_renewed")
+		o.notifyCustomer(ctx, p.UserID, pe.Subject,
+			fmt.Sprintf(pe.Body, p.DomainName, formatKr(amount)))
+	} else {
+		o.notifyOperator(ctx, "Forge: domain renewed without billing",
+			fmt.Sprintf("%q renewed %s but it couldn't be billed (no Stripe customer / no captured cost) — check manually:\n\n%s",
+				p.Name, p.DomainName, o.baseURLOr("/admin/projects/"+p.ID)))
+	}
+	o.log.Info("domain renewal billed", "project", p.ID, "domain", p.DomainName, "through", exp.Format("2006-01-02"))
+	p.DomainPaidThrough = exp
+	return o.save(ctx, p)
+}
+
+// formatKr renders an öre amount as whole kronor for email copy ("12900" → "129 kr").
+func formatKr(ore int) string {
+	return fmt.Sprintf("%d kr", (ore+50)/100)
 }
 
 func (o *Orchestrator) reconcileInBackground(projectID string) {
@@ -517,6 +617,11 @@ func (o *Orchestrator) activateDomain(ctx context.Context, p *project.Project) e
 	// clamped to the cap). BYOD is free; a comped project (no customer / no
 	// biller) or a zero cost is noted for the operator.
 	if p.DomainKind == project.DomainKindPurchased {
+		// Anchor the renewal clock: we registered for one year, so the customer is
+		// paid through ~now+1y. The renewal poller re-bills when GleSYS's expiry
+		// advances past this (auto-renewal). Approximate is fine — the poller uses
+		// a one-month grace, well under a yearly jump.
+		p.DomainPaidThrough = time.Now().UTC().AddDate(1, 0, 0)
 		switch {
 		case o.biller != nil && p.StripeCustomerID != "" && p.DomainCostOre > 0:
 			desc := fmt.Sprintf("Domän: %s (1 år)", p.DomainName)

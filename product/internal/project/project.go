@@ -269,16 +269,17 @@ type Project struct {
 	DeliveredAt       time.Time
 
 	// Custom domain (see internal/orchestrator/domains.go). Zero value = none.
-	DomainName       string         // the attached/purchased hostname, e.g. "acme.se"
-	DomainStatus     DomainStatus   // lifecycle of the domain
-	DomainKind       string         // "byod" | "purchased"
-	DomainZoneID     string         // Cloudflare zone id (purchased domains)
-	DomainIPv6       string         // dedicated apex IPv6 on the Fly app (allocate-once guard)
-	DomainSubItemID  string         // Stripe subscription-item id (legacy flat monthly add-on; empty for GleSYS-era buys)
-	DomainCostOre    int            // GleSYS 1-year registration cost captured at buy time, in öre; billed once to the next invoice on activation
-	DomainRecords    []DomainRecord // DNS records to show the customer (cached from the cert requirements)
-	DomainCreatedAt  time.Time      // when the domain flow started (stuck-timeout clock)
-	DomainVerifiedAt time.Time      // when it went active (guards one-time emails/billing)
+	DomainName        string         // the attached/purchased hostname, e.g. "acme.se"
+	DomainStatus      DomainStatus   // lifecycle of the domain
+	DomainKind        string         // "byod" | "purchased"
+	DomainZoneID      string         // Cloudflare zone id (purchased domains)
+	DomainIPv6        string         // dedicated apex IPv6 on the Fly app (allocate-once guard)
+	DomainSubItemID   string         // Stripe subscription-item id (legacy flat monthly add-on; empty for GleSYS-era buys)
+	DomainCostOre     int            // GleSYS 1-year registration cost captured at buy time, in öre; billed once to the next invoice on activation
+	DomainRecords     []DomainRecord // DNS records to show the customer (cached from the cert requirements)
+	DomainCreatedAt   time.Time      // when the domain flow started (stuck-timeout clock)
+	DomainVerifiedAt  time.Time      // when it went active (guards one-time emails/billing)
+	DomainPaidThrough time.Time      // expiry the customer has paid through; advanced + re-billed on each GleSYS auto-renewal (zero = not tracked / BYOD)
 
 	// Domain chosen at checkout (Phase B): captured before the Stripe redirect,
 	// then provisioned automatically once payment settles (attach for BYOD, buy
