@@ -58,6 +58,22 @@ func (v *urlVerifier) Verify(_ context.Context, url string) error {
 	return nil
 }
 
+// storeCheckVerifier mimics the real reverse proxy: it "reaches" a branded URL
+// only if the preview host already resolves in the store — proving the host was
+// persisted BEFORE verification (else a first preview 404s and falls back).
+type storeCheckVerifier struct {
+	st     store.Store
+	domain string
+}
+
+func (v *storeCheckVerifier) Verify(ctx context.Context, rawURL string) error {
+	label := strings.TrimSuffix(strings.TrimPrefix(rawURL, "https://"), "."+v.domain)
+	if _, err := v.st.ProjectByPreviewHost(ctx, label); err != nil {
+		return errors.New("preview host not resolvable in store yet: " + label)
+	}
+	return nil
+}
+
 func seedPreviewProject(t *testing.T, st store.Store, id, name string) *project.Project {
 	t.Helper()
 	ctx := context.Background()
@@ -106,6 +122,23 @@ func TestBrandedPreviewURL_AssignsHostAndBrands(t *testing.T) {
 	p.Name = "Renamed Bakery"
 	if got := orch.brandedPreviewURL(context.Background(), p, "https://forge-aaaabbbbcccc.fly.dev"); got != want {
 		t.Fatalf("host must be stable after rename, got %q", got)
+	}
+}
+
+// TestBrandedPreviewURL_PersistsHostBeforeVerify guards the fix for the first-
+// preview fallback bug: the host must be in the store when we verify the branded
+// URL, because our own proxy resolves it that way. With storeCheckVerifier this
+// only passes if brandedPreviewURL saved the host before probing.
+func TestBrandedPreviewURL_PersistsHostBeforeVerify(t *testing.T) {
+	st := store.NewMemory()
+	orch, _ := newTestOrchWithVerifier(st, &storeCheckVerifier{st: st, domain: "forge.example.se"})
+	orch.SetPreviewDomain("forge.example.se")
+	p := seedPreviewProject(t, st, "aaaabbbbccccdddd0000111122223333", "Bageriet")
+
+	got := orch.brandedPreviewURL(context.Background(), p, "https://forge-aaaabbbbcccc.fly.dev")
+	want := "https://bageriet-aaaabb.forge.example.se"
+	if got != want {
+		t.Fatalf("branded url = %q, want %q — host must be persisted before verify so the proxy resolves it", got, want)
 	}
 }
 

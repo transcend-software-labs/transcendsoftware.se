@@ -30,14 +30,23 @@ func (o *Orchestrator) PreviewDomain() string { return o.previewDomain }
 // (DNS wildcard → Forge proxy → site), and return it. On failure — typically
 // the wildcard DNS or cert not being live yet — it returns the direct URL
 // unchanged and alerts the operator: a build must never break on our own
-// front-door plumbing. p is mutated (PreviewHost) but not saved; the caller
-// persists it.
+// front-door plumbing. On a first preview the assigned host is persisted here
+// (so our own proxy can resolve it during verification); the caller still saves
+// p afterward with the final PreviewURL.
 func (o *Orchestrator) brandedPreviewURL(ctx context.Context, p *project.Project, directURL string) string {
 	if o.previewDomain == "" || directURL == "" {
 		return directURL
 	}
 	if p.PreviewHost == "" {
 		p.PreviewHost = o.newPreviewHost(ctx, p)
+		// Persist the host BEFORE verifying: the branded URL is served by OUR
+		// reverse proxy, which resolves it via ProjectByPreviewHost. On a project's
+		// first preview the row must already be in the store, or the probe 404s and
+		// we needlessly fall back to the fly.dev URL (and alert the operator that
+		// the DNS/cert is broken when it isn't).
+		if err := o.save(ctx, p); err != nil {
+			o.log.Error("branded preview: persist host before verify", "project", p.ID, "err", err)
+		}
 	}
 	branded := "https://" + p.PreviewHost + "." + o.previewDomain
 	// The direct URL already verified, so the site is up — give our proxy path a
