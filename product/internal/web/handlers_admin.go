@@ -301,24 +301,27 @@ func (s *Server) handleAdminProject(w http.ResponseWriter, r *http.Request, _ *u
 		}
 		rows = append(rows, adminBuildRow{Iteration: it, CostStr: cost})
 	}
-	plannerKey := p.PlannerProfile
-	if plannerKey == "" {
-		plannerKey = s.cfg.DefaultPlannerProfile
-	}
+	// The dropdowns show the RAW stored choice — "" preselects "Forge default"
+	// (the resolved implKey above is only for pricing the iterations).
 	v := s.view(r, p.Name+" — operator", adminProjectView{
 		Item: s.withScreenshots(r.Context(), p), Iterations: rows, OwnerEmail: owner,
-		Profiles: s.cfg.ModelProfiles(), PlannerProfile: plannerKey, ImplProfile: implKey})
+		Profiles: s.cfg.ModelProfiles(), PlannerProfile: p.PlannerProfile, ImplProfile: p.ImplProfile})
 	v.Lang = "en" // operator pages are English regardless of the customer-facing selector
 	s.render(w, http.StatusOK, "admin_project", v)
 }
 
-// handleAdminBuildModels sets the project's planner + implementation profiles
-// and re-runs the pipeline with them (operator experiment).
-func (s *Server) handleAdminBuildModels(w http.ResponseWriter, r *http.Request, _ *user.User) {
+// handleAdminSetModels saves the project's planner + implementation model choice
+// (operator-only). Save-only — it does not build; the project's next run (retry,
+// change, or reiterate) picks it up. An empty selection tracks Forge's global
+// default; validProfileKey maps unknown/blank keys to "".
+func (s *Server) handleAdminSetModels(w http.ResponseWriter, r *http.Request, _ *user.User) {
 	id := r.PathValue("id")
 	planner := s.validProfileKey(r.FormValue("planner_profile"))
 	impl := s.validProfileKey(r.FormValue("impl_profile"))
-	s.orch.RebuildWithModels(id, planner, impl)
+	if err := s.orch.SetProjectModels(r.Context(), id, planner, impl); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	http.Redirect(w, r, "/admin/projects/"+id, http.StatusSeeOther)
 }
 

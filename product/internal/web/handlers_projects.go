@@ -50,17 +50,14 @@ type newProjectView struct {
 	ImplProfile    string
 }
 
-// newProjectData fills the picker with the enabled profiles + configured
-// defaults for admins; a zero value for everyone else.
+// newProjectData lists the enabled profiles for the admin picker. Planner/Impl
+// default to "" → the picker preselects "Forge default" (track the global
+// models), so a project only pins an override when the admin picks one.
 func (s *Server) newProjectData(u *user.User) newProjectView {
 	if !s.isAdmin(u) {
 		return newProjectView{}
 	}
-	return newProjectView{
-		Profiles:       s.cfg.ModelProfiles(),
-		PlannerProfile: s.cfg.DefaultPlannerProfile,
-		ImplProfile:    s.cfg.DefaultImplProfile,
-	}
+	return newProjectView{Profiles: s.cfg.ModelProfiles()}
 }
 
 // maxBriefLen caps customer-provided text fed into the pipeline (each build

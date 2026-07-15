@@ -12,7 +12,7 @@ import (
 
 // TestAdminProjectModelPicker renders the operator project page with the model
 // registry enabled (the path existing admin tests skip, since they configure no
-// keys) — so the dropdowns, the build-models action, the per-iteration
+// keys) — so the dropdowns, the save-models action, the per-iteration
 // planner/impl labels and the ~cost all render without a template error.
 func TestAdminProjectModelPicker(t *testing.T) {
 	tmpl, err := template.New("").Funcs(templateFuncs()).ParseFS(templatesFS, "templates/*.html")
@@ -43,16 +43,17 @@ func TestAdminProjectModelPicker(t *testing.T) {
 	out := buf.String()
 
 	for _, want := range []string{
-		`/admin/projects/exp1/build-models`, // the form action (correct dot)
+		`/admin/projects/exp1/models`, // the save-only form action
 		`name="planner_profile"`,
 		`name="impl_profile"`,
+		"— Forge default —",        // the track-the-global-default option
 		"Claude Sonnet 5",          // a profile label
 		"DeepSeek V4 Pro",          // a newly-added profile is in the dropdown
-		`value="fable5" selected`,  // the current planner preselected
-		`value="sonnet5" selected`, // the current impl preselected
+		`value="fable5" selected`,  // the current planner override preselected
+		`value="sonnet5" selected`, // the current impl override preselected
 		"claude-sonnet-5 · max",    // the iteration's impl model + effort
 		"claude-fable-5 · xhigh",   // the iteration's planner model + effort
-		"Build with these models",
+		"Save models",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("admin_project model picker missing %q", want)

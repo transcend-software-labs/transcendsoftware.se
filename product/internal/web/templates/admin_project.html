@@ -118,21 +118,23 @@
 
 {{if .Data.Profiles}}
 <section class="panel">
-  <h2>Models (experiment)</h2>
-  <p class="muted small">Re-runs the plan + build with the chosen models. Replaces the current preview — use test projects, and run the same brief as separate projects to A/B.</p>
-  <form method="post" action="/admin/projects/{{.Data.Item.ID}}/build-models" class="model-picker">
+  <h2>Models</h2>
+  <p class="muted small"><strong>Forge default</strong> tracks the global models (upgrades reach this project automatically); pick a specific model to pin an override for this project. Saved for the next build — a retry or a change — it does not rebuild now.</p>
+  <form method="post" action="/admin/projects/{{.Data.Item.ID}}/models" class="model-picker">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
     <label>Planner
       <select name="planner_profile">
+        <option value=""{{if eq $.Data.PlannerProfile ""}} selected{{end}}>— Forge default —</option>
         {{range $.Data.Profiles}}<option value="{{.Key}}"{{if eq .Key $.Data.PlannerProfile}} selected{{end}}>{{.Label}}{{if .Effort}} · {{.Effort}}{{end}}</option>{{end}}
       </select>
     </label>
     <label>Implementation
       <select name="impl_profile">
+        <option value=""{{if eq $.Data.ImplProfile ""}} selected{{end}}>— Forge default —</option>
         {{range $.Data.Profiles}}<option value="{{.Key}}"{{if eq .Key $.Data.ImplProfile}} selected{{end}}>{{.Label}}{{if .Effort}} · {{.Effort}}{{end}}</option>{{end}}
       </select>
     </label>
-    <button class="btn btn-sm" type="submit">Build with these models</button>
+    <button class="btn btn-sm" type="submit">Save models</button>
   </form>
 </section>
 {{end}}

@@ -13,15 +13,17 @@
     </label>
     {{if .IsAdmin}}
     <div class="model-experiment">
-      <p class="muted small">Models <span class="hint">admin · used for this build</span></p>
+      <p class="muted small">Models <span class="hint">admin · Forge default tracks the global models; pick one to pin an override</span></p>
       <div class="model-picker">
         <label>Planner
           <select name="planner_profile">
+            <option value=""{{if eq $.Data.PlannerProfile ""}} selected{{end}}>— Forge default —</option>
             {{range $.Data.Profiles}}<option value="{{.Key}}"{{if eq .Key $.Data.PlannerProfile}} selected{{end}}>{{.Label}}{{if .Effort}} · {{.Effort}}{{end}}</option>{{end}}
           </select>
         </label>
         <label>Implementation
           <select name="impl_profile">
+            <option value=""{{if eq $.Data.ImplProfile ""}} selected{{end}}>— Forge default —</option>
             {{range $.Data.Profiles}}<option value="{{.Key}}"{{if eq .Key $.Data.ImplProfile}} selected{{end}}>{{.Label}}{{if .Effort}} · {{.Effort}}{{end}}</option>{{end}}
           </select>
         </label>

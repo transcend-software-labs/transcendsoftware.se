@@ -29,9 +29,10 @@ func TestNewProjectModelPicker(t *testing.T) {
 	for _, want := range []string{
 		`name="planner_profile"`,
 		`name="impl_profile"`,
+		"— Forge default —", // the track-the-global-default option
 		"Claude Fable 5",
 		"DeepSeek V4 Pro",
-		`value="glm" selected`,
+		`value="glm" selected`, // an explicit override preselects its model
 		`value="kimi" selected`,
 	} {
 		if !strings.Contains(out, want) {

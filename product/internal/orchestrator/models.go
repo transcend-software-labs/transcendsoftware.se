@@ -18,34 +18,19 @@ import (
 // SetModelProfiles enables per-build model selection from the config registry.
 func (o *Orchestrator) SetModelProfiles(cfg config.Config) { o.modelCfg = &cfg }
 
-// RebuildWithModels is the operator's experiment action: set the project's
-// planner + implementation profiles and re-run the whole pipeline (re-plan with
-// the chosen planner, then build with the chosen impl), bypassing the customer
-// approval gate. Async — a rebuild takes minutes. Intended for test projects;
-// it replaces the current plan + preview.
-func (o *Orchestrator) RebuildWithModels(projectID, plannerProfile, implProfile string) {
-	go func() {
-		ctx := context.Background()
-		p, err := o.store.ProjectByID(ctx, projectID)
-		if err != nil {
-			o.log.Error("rebuild with models: load", "project", projectID, "err", err)
-			return
-		}
-		p.PlannerProfile, p.ImplProfile = plannerProfile, implProfile
-		if err := o.save(ctx, p); err != nil {
-			o.log.Error("rebuild with models: save profiles", "project", projectID, "err", err)
-			return
-		}
-		if err := o.runPlanGateBuild(ctx, projectID); err != nil {
-			o.log.Error("rebuild with models: plan", "project", projectID, "err", err)
-			return
-		}
-		// Plan+gate stop at awaiting_approval on allow; the operator is the
-		// approver here, so kick the build.
-		if p2, err := o.store.ProjectByID(ctx, projectID); err == nil && p2.Status == project.StatusAwaitingApproval {
-			o.ApprovePlan(projectID)
-		}
-	}()
+// SetProjectModels persists the operator's planner + implementation choice on a
+// project WITHOUT building — the next build the project runs (a retry, a change,
+// or a reiterate) resolves them. Empty keys mean "track Forge's global default"
+// (so upgrading the global models still reaches every non-overridden project); a
+// set key is an explicit per-project override that sticks. Synchronous: a quick
+// store write.
+func (o *Orchestrator) SetProjectModels(ctx context.Context, projectID, plannerProfile, implProfile string) error {
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	p.PlannerProfile, p.ImplProfile = plannerProfile, implProfile
+	return o.save(ctx, p)
 }
 
 // plannerFor returns the planner client + a display label for a project's build,
@@ -85,14 +70,25 @@ func (o *Orchestrator) resolveProfile(key string, kind profileKind) (config.Reso
 	if o.modelCfg == nil {
 		return config.ResolvedModel{}, false
 	}
-	if key == "" {
-		if kind == plannerKind {
-			key = o.modelCfg.DefaultPlannerProfile
-		} else {
-			key = o.modelCfg.DefaultImplProfile
+	def := o.modelCfg.DefaultPlannerProfile
+	if kind == implKind {
+		def = o.modelCfg.DefaultImplProfile
+	}
+	if key == "" { // no per-project override → track Forge's global default
+		key = def
+	}
+	if rm, ok := o.modelCfg.ResolveModel(key); ok {
+		return rm, true
+	}
+	// The stored override no longer resolves (a model we retired, or its provider
+	// key was removed) → fall back to the current default so the project keeps
+	// building instead of erroring on a stale choice.
+	if key != def {
+		if rm, ok := o.modelCfg.ResolveModel(def); ok {
+			return rm, true
 		}
 	}
-	return o.modelCfg.ResolveModel(key)
+	return config.ResolvedModel{}, false
 }
 
 // modelLabel renders a model + effort for stamping on an iteration.
