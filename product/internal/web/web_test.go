@@ -215,10 +215,10 @@ func TestFullFlow_IntakeToPreview(t *testing.T) {
 		t.Fatal("expected clarifying questions after create")
 	}
 
-	// Answer them, picking one of the suggested design directions (the fake
-	// intake suggests "Clean & minimal").
+	// Answer them per question (one "answer" field each, in order — the fake
+	// intake asks three), picking a suggested design direction ("Clean & minimal").
 	resp, err = c.PostForm(srv.URL+"/projects/"+pid+"/answer", url.Values{
-		"answers":       {"brochure only; I have photos; Swedish"},
+		"answer":        {"brochure only", "I have my own photos", "Swedish"},
 		"design_choice": {"Clean & minimal"},
 		"csrf_token":    {tok},
 	})

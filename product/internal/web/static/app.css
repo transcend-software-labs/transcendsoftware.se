@@ -411,8 +411,17 @@ button.is-busy::after {
 }
 .brief { color: var(--muted); }
 
-.questions { margin: var(--sp-3) 0 var(--sp-4) 1.1rem; display: flex; flex-direction: column; gap: var(--sp-2); }
-.questions li { color: var(--text); }
+/* Intake: each clarifying question gets its own answer field, numbered. */
+.q-list { list-style: none; counter-reset: q; margin: var(--sp-3) 0 var(--sp-2); padding: 0;
+  display: flex; flex-direction: column; gap: var(--sp-5); }
+.q-list .q-item { counter-increment: q; display: flex; flex-direction: column; gap: var(--sp-2); }
+.q-list .q-text { flex-direction: row; align-items: flex-start; gap: .65rem;
+  font-size: var(--fs-md); font-weight: 500; color: var(--text); cursor: text; }
+.q-list .q-text::before { content: counter(q); flex: none; width: 1.6rem; height: 1.6rem;
+  border-radius: 50%; background: var(--accent-fill); color: var(--accent);
+  font-size: var(--fs-sm); font-weight: 600; display: grid; place-items: center; }
+.q-list .q-text span { padding-top: .15rem; } /* optical-align text with the badge */
+.q-list .q-answer { min-height: 3rem; margin-left: 2.25rem; } /* indent under the question text */
 .plan, .log {
   background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius);
   padding: var(--sp-4); white-space: pre-wrap; font-size: var(--fs-md); overflow-x: auto; margin-top: var(--sp-2);

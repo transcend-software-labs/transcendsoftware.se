@@ -136,8 +136,10 @@ func (s *Server) handleAnswer(w http.ResponseWriter, r *http.Request, u *user.Us
 	if !ok {
 		return
 	}
-	answers := strings.TrimSpace(r.FormValue("answers"))
+	// resolveDesign reads a form value first, which parses the body — so
+	// r.PostForm is populated before we read the per-question answers below.
 	design := resolveDesign(p, r.FormValue("design_choice"), r.FormValue("design_custom"))
+	answers := combineAnswers(p.Questions, r.PostForm["answer"])
 	// Require answers when questions were asked; design-only submissions are
 	// fine when intake had no questions.
 	if p.Status != project.StatusNeedsInput || len(answers) > maxBriefLen ||
@@ -147,6 +149,30 @@ func (s *Server) handleAnswer(w http.ResponseWriter, r *http.Request, u *user.Us
 	}
 	s.orch.SubmitAnswers(p.ID, answers, design)
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+}
+
+// combineAnswers pairs each clarifying question with its per-question answer
+// into one readable block for the planner (and the admin view). The form posts
+// one "answer" field per question in order; blank answers are skipped, and each
+// kept pair renders as the question followed by "→ answer".
+func combineAnswers(questions, answers []string) string {
+	var b strings.Builder
+	for i, q := range questions {
+		a := ""
+		if i < len(answers) {
+			a = strings.TrimSpace(answers[i])
+		}
+		if a == "" {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteString("\n\n")
+		}
+		b.WriteString(q)
+		b.WriteString("\n→ ")
+		b.WriteString(a)
+	}
+	return b.String()
 }
 
 // resolveDesign turns the design form fields into the design brief: a picked

@@ -31,10 +31,15 @@
   <form method="post" action="/projects/{{.ID}}/answer" class="stack">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
     {{if .Questions}}
-    <ol class="questions">
-      {{range .Questions}}<li>{{.}}</li>{{end}}
+    <ol class="q-list">
+      {{range $i, $q := .Questions}}
+      <li class="q-item">
+        <label class="q-text" for="q{{$i}}"><span>{{$q}}</span></label>
+        <textarea class="q-answer" id="q{{$i}}" name="answer" rows="2" required
+          placeholder="{{$.T "prj.q.answer_ph"}}"></textarea>
+      </li>
+      {{end}}
     </ol>
-    <textarea name="answers" rows="6" required placeholder="{{$.T "prj.q.answers_ph"}}"></textarea>
     {{end}}
     {{if .DesignOptions}}
     <h3>{{$.T "prj.q.design_h3"}}</h3>
