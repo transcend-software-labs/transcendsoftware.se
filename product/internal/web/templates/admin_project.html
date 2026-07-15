@@ -136,6 +136,13 @@
     </label>
     <button class="btn btn-sm" type="submit">Save models</button>
   </form>
+  {{if .Data.Item.CanRetry}}
+  <p class="muted small">This build failed. Retry re-runs it with the saved models above.</p>
+  <form method="post" action="/admin/projects/{{.Data.Item.ID}}/retry">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <button class="btn btn-sm" type="submit">Retry build</button>
+  </form>
+  {{end}}
 </section>
 {{end}}
 

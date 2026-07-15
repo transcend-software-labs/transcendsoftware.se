@@ -142,6 +142,24 @@
   {{end}}
 </section>
 
+{{if .Data.Failed}}
+<section class="panel">
+  <h2>Failed</h2>
+  <p class="muted small">Builds that errored — open one to retry it or change its models.</p>
+  <ul class="project-list">
+    {{range .Data.Failed}}
+    <li class="project-row">
+      <a href="/admin/projects/{{.ID}}">
+        <span class="project-name">{{.Name}}</span>
+        <span class="badge badge-{{.Status}}">{{statusLabel .Status}}</span>
+      </a>
+      <span class="muted small">{{.OwnerEmail}} · since {{.Since.Format "Jan 2 15:04"}}</span>
+    </li>
+    {{end}}
+  </ul>
+</section>
+{{end}}
+
 <section class="panel">
   <h2>Waiting on the customer</h2>
   <p class="muted small">The customer's turn — answering questions or approving their plan. You can't act, but a nudge may unstick a quiet one.</p>

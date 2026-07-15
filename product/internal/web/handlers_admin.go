@@ -20,6 +20,7 @@ type adminView struct {
 	Escalated []*project.Project
 	Accepted  []reviewItem  // accepted by the customer, awaiting delivery review
 	Waiting   []waitingItem // customer's turn (answering questions / approving the plan)
+	Failed    []waitingItem // failed builds — operator can retry / change models
 	Active    []activeBuild
 	Previews  []reviewItem // live preview apps (cost money; can be destroyed)
 	Stats     buildStats
@@ -193,9 +194,15 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 	}
 	names := make(map[string]string, len(all))
 	var previews, accepted []reviewItem
-	var waiting []waitingItem
+	var waiting, failed []waitingItem
 	for _, p := range all {
 		names[p.ID] = p.Name
+		owner := func() string {
+			if u, err := s.store.UserByID(ctx, p.UserID); err == nil {
+				return u.Email
+			}
+			return ""
+		}
 		switch p.Status {
 		case project.StatusPreviewReady:
 			previews = append(previews, s.withScreenshots(ctx, p))
@@ -204,13 +211,16 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 		case project.StatusNeedsInput, project.StatusAwaitingApproval:
 			// The customer's turn — the operator can't act, but seeing these
 			// lets Rasmus nudge a stalled project instead of it going quiet.
-			owner := ""
-			if u, err := s.store.UserByID(ctx, p.UserID); err == nil {
-				owner = u.Email
-			}
 			waiting = append(waiting, waitingItem{
 				ID: p.ID, Name: p.Name, Status: p.Status,
-				Since: p.UpdatedAt, OwnerEmail: owner,
+				Since: p.UpdatedAt, OwnerEmail: owner(),
+			})
+		case project.StatusFailed:
+			// A failed build needs operator action (retry, maybe change models) —
+			// surface it so its /admin page is reachable, not orphaned.
+			failed = append(failed, waitingItem{
+				ID: p.ID, Name: p.Name, Status: p.Status,
+				Since: p.UpdatedAt, OwnerEmail: owner(),
 			})
 		}
 	}
@@ -238,7 +248,7 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 	}
 
 	v := s.view(r, "Operator review", adminView{
-		Escalated: escalated, Accepted: accepted, Waiting: waiting, Active: active, Previews: previews,
+		Escalated: escalated, Accepted: accepted, Waiting: waiting, Failed: failed, Active: active, Previews: previews,
 		Stats: computeStats(recent, rate), Recent: builds,
 	})
 	v.Lang = "en" // operator pages are English regardless of the customer-facing selector
@@ -308,6 +318,15 @@ func (s *Server) handleAdminProject(w http.ResponseWriter, r *http.Request, _ *u
 		Profiles: s.cfg.ModelProfiles(), PlannerProfile: p.PlannerProfile, ImplProfile: p.ImplProfile})
 	v.Lang = "en" // operator pages are English regardless of the customer-facing selector
 	s.render(w, http.StatusOK, "admin_project", v)
+}
+
+// handleAdminRetry restarts a failed build from /admin (operator-only), reusing
+// the project's saved models — so the operator can set models → Save → Retry all
+// on the admin page. RetryBuild guards on CanRetry internally.
+func (s *Server) handleAdminRetry(w http.ResponseWriter, r *http.Request, _ *user.User) {
+	id := r.PathValue("id")
+	s.orch.RetryBuild(id)
+	http.Redirect(w, r, "/admin/projects/"+id, http.StatusSeeOther)
 }
 
 // handleAdminSetModels saves the project's planner + implementation model choice
