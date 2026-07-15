@@ -75,25 +75,23 @@ fi
 mkdir -p /root/.config/opencode
 perm='"permission": { "edit": "allow", "bash": "allow", "webfetch": "allow", "external_directory": "allow" }'
 if [ "${IMPL_PROVIDER:-}" = "anthropic" ] && [ -n "${ANTHROPIC_MODEL:-}" ]; then
-  # Explicit Anthropic model (per-build model experiment). Reasoning effort maps
-  # to a thinking budget (best-effort — the newest Claude models may reject the
-  # budgetTokens shape; then the model just runs at its default thinking).
-  case "${ANTHROPIC_EFFORT:-}" in
-  low) budget=8000 ;; medium) budget=12000 ;; high) budget=24000 ;;
-  xhigh) budget=32000 ;; max) budget=48000 ;; *) budget=0 ;;
-  esac
-  amodel="{}"
-  if [ "$budget" -gt 0 ]; then
-    amodel="{ \"options\": { \"thinking\": { \"type\": \"enabled\", \"budgetTokens\": ${budget} } } }"
-  fi
-  log "configuring opencode: anthropic provider, model ${ANTHROPIC_MODEL} effort=${ANTHROPIC_EFFORT:-default} (auto-approve all tools)"
+  # Explicit Anthropic model (per-build model experiment). opencode 1.17.18
+  # predates the newest Claude models' thinking API: given a reasoning budget it
+  # emits the deprecated thinking:{type:"enabled",budgetTokens:N} shape, which
+  # Sonnet 5 / Fable 5 / Opus 4.8 reject with a 400 ("use thinking.type.adaptive
+  # and output_config.effort"). So we send NO thinking option and let the model
+  # use its own (adaptive) default — the impl runs the chosen model, just without
+  # a forced budget. Impl-effort control returns once opencode speaks
+  # output_config.effort; the planner effort (our own client) is already exact.
+  # ANTHROPIC_EFFORT is still passed in but intentionally unused here for now.
+  log "configuring opencode: anthropic provider, model ${ANTHROPIC_MODEL} (model-default thinking; auto-approve all tools)"
   cat > /root/.config/opencode/opencode.json <<JSON
 {
   "\$schema": "https://opencode.ai/config.json",
   ${perm},
   "provider": {
     "anthropic": {
-      "models": { "${ANTHROPIC_MODEL}": ${amodel} }
+      "models": { "${ANTHROPIC_MODEL}": {} }
     }
   },
   "model": "anthropic/${ANTHROPIC_MODEL}"
