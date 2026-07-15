@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/id"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 	"github.com/transcend-software-labs/rasmus-ai/internal/stream"
@@ -35,8 +36,31 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request, u *user
 	s.render(w, http.StatusOK, "dashboard", v)
 }
 
-func (s *Server) handleNewProjectForm(w http.ResponseWriter, r *http.Request, _ *user.User) {
-	s.render(w, http.StatusOK, "new_project", s.view(r, s.t(r, "new.h1"), nil))
+func (s *Server) handleNewProjectForm(w http.ResponseWriter, r *http.Request, u *user.User) {
+	s.render(w, http.StatusOK, "new_project", s.view(r, s.t(r, "new.h1"), s.newProjectData(u)))
+}
+
+// newProjectView carries the admin-only model picker onto the new-project form,
+// so the operator can choose the planner + implementation model for the very
+// first build (not just a later rebuild). Zero value for non-admins — the
+// template gates it on IsAdmin, so customers never see or set a model.
+type newProjectView struct {
+	Profiles       []config.ModelProfile
+	PlannerProfile string
+	ImplProfile    string
+}
+
+// newProjectData fills the picker with the enabled profiles + configured
+// defaults for admins; a zero value for everyone else.
+func (s *Server) newProjectData(u *user.User) newProjectView {
+	if !s.isAdmin(u) {
+		return newProjectView{}
+	}
+	return newProjectView{
+		Profiles:       s.cfg.ModelProfiles(),
+		PlannerProfile: s.cfg.DefaultPlannerProfile,
+		ImplProfile:    s.cfg.DefaultImplProfile,
+	}
 }
 
 // maxBriefLen caps customer-provided text fed into the pipeline (each build
@@ -47,7 +71,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request, u *
 	// Email must be confirmed before a project can be created — building spends
 	// real money, so we don't let unverified addresses trigger it.
 	if !u.Verified {
-		v := s.view(r, s.t(r, "new.h1"), nil)
+		v := s.view(r, s.t(r, "new.h1"), s.newProjectData(u))
 		v.Flash = s.t(r, "flash.verify_required")
 		s.render(w, http.StatusForbidden, "new_project", v)
 		return
@@ -55,19 +79,19 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request, u *
 	brief := strings.TrimSpace(r.FormValue("brief"))
 	name := strings.TrimSpace(r.FormValue("name"))
 	if len(brief) < 10 {
-		v := s.view(r, s.t(r, "new.h1"), nil)
+		v := s.view(r, s.t(r, "new.h1"), s.newProjectData(u))
 		v.Flash = s.t(r, "flash.brief_short")
 		s.render(w, http.StatusBadRequest, "new_project", v)
 		return
 	}
 	if len(brief) > maxBriefLen {
-		v := s.view(r, s.t(r, "new.h1"), nil)
+		v := s.view(r, s.t(r, "new.h1"), s.newProjectData(u))
 		v.Flash = s.t(r, "flash.brief_long")
 		s.render(w, http.StatusBadRequest, "new_project", v)
 		return
 	}
 	if flash := s.quotaBlock(r, u); flash != "" {
-		v := s.view(r, s.t(r, "new.h1"), nil)
+		v := s.view(r, s.t(r, "new.h1"), s.newProjectData(u))
 		v.Flash = flash
 		s.render(w, http.StatusTooManyRequests, "new_project", v)
 		return
@@ -86,6 +110,13 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request, u *
 		Locale:    s.lang(r), // the language their emails go out in
 		CreatedAt: now,
 		UpdatedAt: now,
+	}
+	// Admin-only: pick the models for this build up front. Customers never send
+	// these fields (the picker is gated on IsAdmin); unknown/empty keys fall back
+	// to the defaults. The plan + build read them off the project.
+	if s.isAdmin(u) {
+		p.PlannerProfile = s.validProfileKey(r.FormValue("planner_profile"))
+		p.ImplProfile = s.validProfileKey(r.FormValue("impl_profile"))
 	}
 	if err := s.store.CreateProject(r.Context(), p); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)

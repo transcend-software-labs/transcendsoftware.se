@@ -11,6 +11,23 @@
       <textarea name="brief" rows="7" required
         placeholder="{{.T "new.brief_ph"}}"></textarea>
     </label>
+    {{if .IsAdmin}}
+    <div class="model-experiment">
+      <p class="muted small">Models <span class="hint">admin · used for this build</span></p>
+      <div class="model-picker">
+        <label>Planner
+          <select name="planner_profile">
+            {{range $.Data.Profiles}}<option value="{{.Key}}"{{if eq .Key $.Data.PlannerProfile}} selected{{end}}>{{.Label}}{{if .Effort}} · {{.Effort}}{{end}}</option>{{end}}
+          </select>
+        </label>
+        <label>Implementation
+          <select name="impl_profile">
+            {{range $.Data.Profiles}}<option value="{{.Key}}"{{if eq .Key $.Data.ImplProfile}} selected{{end}}>{{.Label}}{{if .Effort}} · {{.Effort}}{{end}}</option>{{end}}
+          </select>
+        </label>
+      </div>
+    </div>
+    {{end}}
     <button class="btn" type="submit">{{.T "new.submit"}}</button>
   </form>
 </section>

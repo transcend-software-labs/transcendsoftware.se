@@ -316,21 +316,22 @@ func (s *Server) handleAdminProject(w http.ResponseWriter, r *http.Request, _ *u
 // and re-runs the pipeline with them (operator experiment).
 func (s *Server) handleAdminBuildModels(w http.ResponseWriter, r *http.Request, _ *user.User) {
 	id := r.PathValue("id")
-	planner := r.FormValue("planner_profile")
-	impl := r.FormValue("impl_profile")
-	// Only accept keys that are actually enabled.
-	valid := map[string]bool{}
-	for _, pr := range s.cfg.ModelProfiles() {
-		valid[pr.Key] = true
-	}
-	if !valid[planner] {
-		planner = ""
-	}
-	if !valid[impl] {
-		impl = ""
-	}
+	planner := s.validProfileKey(r.FormValue("planner_profile"))
+	impl := s.validProfileKey(r.FormValue("impl_profile"))
 	s.orch.RebuildWithModels(id, planner, impl)
 	http.Redirect(w, r, "/admin/projects/"+id, http.StatusSeeOther)
+}
+
+// validProfileKey returns key if it names an enabled model profile, else "".
+// An empty result means "use the default", so an unknown or disabled selection
+// is safely ignored rather than pinned onto the project.
+func (s *Server) validProfileKey(key string) string {
+	for _, pr := range s.cfg.ModelProfiles() {
+		if pr.Key == key {
+			return key
+		}
+	}
+	return ""
 }
 
 // handleAdminDestroyPreview tears down a project's preview app immediately.
