@@ -83,8 +83,15 @@ func (f *fakeCF) SetAutoRenew(_ context.Context, name string, on bool) error {
 // fakeBiller records the Stripe calls: one-off invoice items for a purchased
 // domain's registration cost, and legacy sub-item removals on detach.
 type fakeBiller struct {
-	invoiced []invoiceItem // one-off invoice items added
-	removed  []string      // legacy sub-item ids removed
+	invoiced  []invoiceItem // one-off invoice items added
+	removed   []string      // legacy sub-item ids removed
+	refunds   []refundCall  // upfront-domain refunds issued
+	refundErr error         // when set, RefundSubscriptionCharge fails
+}
+
+type refundCall struct {
+	sub    string
+	amount int
 }
 
 type invoiceItem struct {
@@ -100,6 +107,13 @@ func (b *fakeBiller) AddInvoiceItem(_ context.Context, customerID string, amount
 func (b *fakeBiller) RemoveSubscriptionItem(_ context.Context, itemID string) error {
 	b.removed = append(b.removed, itemID)
 	return nil
+}
+func (b *fakeBiller) RefundSubscriptionCharge(_ context.Context, subscriptionID string, amountMinor int) (string, error) {
+	if b.refundErr != nil {
+		return "", b.refundErr
+	}
+	b.refunds = append(b.refunds, refundCall{sub: subscriptionID, amount: amountMinor})
+	return "re_dom", nil
 }
 
 // seedDomainProject creates a paid, preview_ready project + owner, ready to
@@ -178,6 +192,74 @@ func TestAttachDomain_BYOD_LifecycleAndEmailsOnce(t *testing.T) {
 	n := len(rec.all())
 	if err := orch.VerifyDomain(ctx, "p1"); err != nil || len(rec.all()) != n {
 		t.Errorf("replay should be a no-op: emails %d→%d err=%v", n, len(rec.all()), err)
+	}
+}
+
+// A domain bought upfront in checkout (DomainPrepaid) must NOT be invoiced again
+// when it goes active — it was already charged on the first invoice.
+func TestActivateDomain_SkipsBillingWhenPrepaid(t *testing.T) {
+	st := store.NewMemory()
+	orch, fake := newTestOrchWithVerifier(st, NoopVerifier{})
+	orch.SetNotifications(&recordingNotifier{}, "rasmus@example.com", "https://forge.example")
+	biller := &fakeBiller{}
+	cf := &fakeCF{
+		offers:   []registrar.Offer{{Name: "acme.se", Registrable: true, Price: 129, Renewal: 129, Currency: "SEK"}},
+		regState: registrar.StatePending,
+	}
+	orch.SetDomains(cf, biller, 300)
+	seedDomainProject(t, st, nil)
+	ctx := context.Background()
+
+	if err := orch.BuyDomain(ctx, "p1", "acme.se"); err != nil {
+		t.Fatalf("buy: %v", err)
+	}
+	p, _ := st.ProjectByID(ctx, "p1") // mark prepaid, as the checkout-bundled path does
+	p.DomainPrepaid = true
+	if err := st.UpdateProject(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	_ = orch.VerifyDomain(ctx, "p1") // → verifying
+	fake.SetCertActive(true)
+	if err := orch.VerifyDomain(ctx, "p1"); err != nil { // → active
+		t.Fatalf("reconcile active: %v", err)
+	}
+	if got, _ := st.ProjectByID(ctx, "p1"); got.DomainStatus != project.DomainActive {
+		t.Fatalf("expected active, got %s", got.DomainStatus)
+	}
+	if len(biller.invoiced) != 0 {
+		t.Errorf("prepaid domain must not be invoiced on activation, got %v", biller.invoiced)
+	}
+}
+
+// When a bundled (prepaid) domain can't be registered, the upfront charge is
+// auto-refunded and the prepaid marker cleared (so a later manual buy bills).
+func TestProvisionDomainIntent_RefundsOnFailure(t *testing.T) {
+	st := store.NewMemory()
+	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
+	orch.SetNotifications(&recordingNotifier{}, "rasmus@example.com", "https://forge.example")
+	biller := &fakeBiller{}
+	cf := &fakeCF{offers: []registrar.Offer{{Name: "acme.se", Registrable: false}}} // taken since checkout
+	orch.SetDomains(cf, biller, 300)
+	seedDomainProject(t, st, nil)
+	ctx := context.Background()
+
+	p, _ := st.ProjectByID(ctx, "p1")
+	p.DomainIntent, p.DomainIntentBuy, p.DomainCostOre, p.StripeSubID = "acme.se", true, 12900, "sub_1"
+	if err := st.UpdateProject(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+
+	orch.provisionDomainIntent("p1")
+
+	if len(biller.refunds) != 1 || biller.refunds[0].sub != "sub_1" || biller.refunds[0].amount != 12900 {
+		t.Fatalf("expected a 12900 refund on sub_1, got %v", biller.refunds)
+	}
+	got, _ := st.ProjectByID(ctx, "p1")
+	if got.DomainPrepaid {
+		t.Errorf("prepaid marker must be cleared after a refunded failure")
+	}
+	if len(biller.invoiced) != 0 {
+		t.Errorf("a failed domain must not be invoiced, got %v", biller.invoiced)
 	}
 }
 

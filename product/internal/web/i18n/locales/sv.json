@@ -266,6 +266,7 @@
   "sub.domain.byod": "Använd en domän jag redan äger",
   "sub.domain.legend": "Lägg till en domän (valfritt)",
   "sub.domain.none": "Bestäm senare — jag lägger till en domän efter betalning",
+  "sub.domain.buy_note": "Priset för ett år som visas ingår i denna betalning. DNS och HTTPS konfigureras automatiskt.",
   "sub.h2": "Få din webbplats levererad",
   "sub.incl.changes_many": "%d ändringar per månad ingår — begär fixar och justeringar när du vill.",
   "sub.incl.changes_one": "1 ändring per månad ingår — begär fixar och justeringar när du vill.",

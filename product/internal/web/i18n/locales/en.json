@@ -266,6 +266,7 @@
   "sub.domain.byod": "Use a domain I already own",
   "sub.domain.legend": "Add a domain (optional)",
   "sub.domain.none": "Decide later — I’ll add a domain after paying",
+  "sub.domain.buy_note": "The one-year price shown is included in this payment. DNS and HTTPS are set up automatically.",
   "sub.h2": "Get your website delivered",
   "sub.incl.changes_many": "%d changes a month included — request fixes and tweaks anytime.",
   "sub.incl.changes_one": "1 change a month included — request fixes and tweaks anytime.",

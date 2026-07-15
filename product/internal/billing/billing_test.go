@@ -8,6 +8,41 @@ import (
 	"testing"
 )
 
+func TestCreateCheckoutSession_OneTimeDomainItem(t *testing.T) {
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		gotBody = r.Form.Encode()
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"cs_1","url":"https://pay"}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "sk_test_x")
+	if _, err := c.CreateCheckoutSession(context.Background(), CheckoutParams{
+		ProjectID: "p1",
+		LineItems: []LineItem{
+			{Price: "price_base"},
+			{AmountMinor: 12900, Currency: "sek", Name: "Domän: acme.se (1 år)"}, // bundled domain, upfront
+		},
+	}); err != nil {
+		t.Fatalf("checkout: %v", err)
+	}
+	for _, want := range []string{
+		"line_items%5B0%5D%5Bprice%5D=price_base",                  // recurring plan
+		"line_items%5B1%5D%5Bprice_data%5D%5Bcurrency%5D=sek",      // one-time domain
+		"line_items%5B1%5D%5Bprice_data%5D%5Bunit_amount%5D=12900", // its cost
+		"line_items%5B1%5D%5Bprice_data%5D%5Bproduct_data%5D%5Bname%5D=",
+	} {
+		if !strings.Contains(gotBody, want) {
+			t.Errorf("checkout body missing %q\nbody: %s", want, gotBody)
+		}
+	}
+	if strings.Contains(gotBody, "line_items%5B1%5D%5Bprice%5D=") {
+		t.Errorf("one-time item must use price_data, not a price id:\n%s", gotBody)
+	}
+}
+
 func TestCreateCheckoutSession(t *testing.T) {
 	var gotPath, gotAuth, gotBody string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -278,6 +278,7 @@ type Project struct {
 	DomainIPv6        string         // dedicated apex IPv6 on the Fly app (allocate-once guard)
 	DomainSubItemID   string         // Stripe subscription-item id (legacy flat monthly add-on; empty for GleSYS-era buys)
 	DomainCostOre     int            // GleSYS 1-year registration cost captured at buy time, in öre; billed once to the next invoice on activation
+	DomainPrepaid     bool           // domain bought in the subscription checkout (one-time line item) → skip the activation invoice item; renewals still bill
 	DomainRecords     []DomainRecord // DNS records to show the customer (cached from the cert requirements)
 	DomainCreatedAt   time.Time      // when the domain flow started (stuck-timeout clock)
 	DomainVerifiedAt  time.Time      // when it went active (guards one-time emails/billing)

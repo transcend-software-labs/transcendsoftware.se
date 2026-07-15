@@ -45,11 +45,16 @@ func New(baseURL, key string) *Client {
 	}
 }
 
-// LineItem is one Checkout line. Price is a Stripe price id. A future per-domain
-// DNS charge is simply an extra LineItem — the checkout encodes the whole slice.
+// LineItem is one Checkout line. Either a recurring plan (Price = a Stripe price
+// id) or a one-time inline charge (AmountMinor>0, with Currency+Name). In a
+// subscription Checkout a one-time item lands on the FIRST invoice — that's how a
+// bundled domain is charged upfront alongside the plan, in a single payment.
 type LineItem struct {
-	Price    string
-	Quantity int
+	Price       string
+	Quantity    int
+	AmountMinor int    // one-time inline price (minor units); when >0, Price is ignored
+	Currency    string // one-time currency, e.g. "sek"
+	Name        string // one-time product name shown on checkout + the invoice
 }
 
 // CheckoutParams configures a subscription Checkout Session.
@@ -68,12 +73,19 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, p CheckoutParams) (s
 	form := url.Values{}
 	form.Set("mode", "subscription")
 	for i, li := range p.LineItems {
-		form.Set(fmt.Sprintf("line_items[%d][price]", i), li.Price)
 		q := li.Quantity
 		if q == 0 {
 			q = 1
 		}
 		form.Set(fmt.Sprintf("line_items[%d][quantity]", i), strconv.Itoa(q))
+		if li.AmountMinor > 0 {
+			// One-time inline price → charged on the subscription's first invoice.
+			form.Set(fmt.Sprintf("line_items[%d][price_data][currency]", i), li.Currency)
+			form.Set(fmt.Sprintf("line_items[%d][price_data][unit_amount]", i), strconv.Itoa(li.AmountMinor))
+			form.Set(fmt.Sprintf("line_items[%d][price_data][product_data][name]", i), li.Name)
+			continue
+		}
+		form.Set(fmt.Sprintf("line_items[%d][price]", i), li.Price)
 	}
 	form.Set("client_reference_id", p.ProjectID)
 	form.Set("metadata[project_id]", p.ProjectID)
@@ -204,6 +216,41 @@ func (c *Client) AddInvoiceItem(ctx context.Context, customerID string, amountMi
 	}
 	if out.ID == "" {
 		return "", fmt.Errorf("billing: invoice item returned no id")
+	}
+	return out.ID, nil
+}
+
+// RefundSubscriptionCharge partially refunds the payment that settled a
+// subscription's latest invoice — used to auto-refund a bundled domain we
+// charged upfront but couldn't register. It resolves subscription → latest
+// invoice → payment intent, then refunds amountMinor. Best-effort.
+func (c *Client) RefundSubscriptionCharge(ctx context.Context, subscriptionID string, amountMinor int) (string, error) {
+	var sub struct {
+		LatestInvoice string `json:"latest_invoice"`
+	}
+	if err := c.get(ctx, "/v1/subscriptions/"+subscriptionID, &sub); err != nil {
+		return "", fmt.Errorf("refund: get subscription: %w", err)
+	}
+	if sub.LatestInvoice == "" {
+		return "", fmt.Errorf("refund: subscription %s has no invoice yet", subscriptionID)
+	}
+	var inv struct {
+		PaymentIntent string `json:"payment_intent"`
+	}
+	if err := c.get(ctx, "/v1/invoices/"+sub.LatestInvoice, &inv); err != nil {
+		return "", fmt.Errorf("refund: get invoice: %w", err)
+	}
+	if inv.PaymentIntent == "" {
+		return "", fmt.Errorf("refund: invoice %s has no payment intent", sub.LatestInvoice)
+	}
+	form := url.Values{}
+	form.Set("payment_intent", inv.PaymentIntent)
+	form.Set("amount", strconv.Itoa(amountMinor))
+	var out struct {
+		ID string `json:"id"`
+	}
+	if err := c.post(ctx, "/v1/refunds", form, &out); err != nil {
+		return "", fmt.Errorf("refund: create: %w", err)
 	}
 	return out.ID, nil
 }

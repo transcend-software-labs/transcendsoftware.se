@@ -46,6 +46,9 @@ type DomainRegistrar interface {
 type domainBiller interface {
 	AddInvoiceItem(ctx context.Context, customerID string, amountMinor int, currency, description string) (string, error)
 	RemoveSubscriptionItem(ctx context.Context, itemID string) error
+	// RefundSubscriptionCharge refunds a domain bought upfront in checkout that we
+	// then couldn't register (partial refund off the subscription's first payment).
+	RefundSubscriptionCharge(ctx context.Context, subscriptionID string, amountMinor int) (string, error)
 }
 
 // domainStuckAfter is how long an in-flight domain may sit before the poller
@@ -119,6 +122,7 @@ func (o *Orchestrator) SetDomainIntent(ctx context.Context, projectID, hostname 
 	if !ok {
 		return ErrBadHostname
 	}
+	cost := 0
 	if buy {
 		if !o.DomainBuyEnabled() {
 			return ErrBuyDisabled
@@ -139,8 +143,10 @@ func (o *Orchestrator) SetDomainIntent(ctx context.Context, projectID, hostname 
 		if !offer.Buyable(o.maxDomainPrice) {
 			return ErrDomainTooPricey
 		}
+		// Lock the price in now so checkout can charge it upfront in one payment.
+		cost = domainCostOre(offer.Price, o.maxDomainPrice)
 	}
-	p.DomainIntent, p.DomainIntentBuy = host, buy
+	p.DomainIntent, p.DomainIntentBuy, p.DomainCostOre = host, buy, cost
 	return o.save(ctx, p)
 }
 
@@ -165,7 +171,12 @@ func (o *Orchestrator) provisionDomainIntent(projectID string) {
 	if host == "" {
 		return
 	}
+	prepaidOre, subID := p.DomainCostOre, p.StripeSubID // charged upfront at checkout
 	p.DomainIntent, p.DomainIntentBuy = "", false
+	// A bought domain was charged on the checkout's first invoice → mark it so
+	// activation doesn't invoice it a second time. Persisted before we register,
+	// so the activation poller can never bill ahead of the flag. BYOD is free.
+	p.DomainPrepaid = buy
 	if err := o.save(ctx, p); err != nil {
 		o.log.Error("provision domain intent: clear", "project", projectID, "err", err)
 		return
@@ -176,13 +187,32 @@ func (o *Orchestrator) provisionDomainIntent(projectID string) {
 	} else {
 		derr = o.AttachDomain(ctx, projectID, host)
 	}
-	if derr != nil {
-		o.log.Error("provision domain intent", "project", projectID, "host", host, "buy", buy, "err", derr)
-		o.notifyOperator(ctx, "Forge: bundled domain provisioning failed",
-			fmt.Sprintf("%q chose the domain %s at checkout, but provisioning it failed: %v\n"+
-				"Their subscription is active; they can retry from their project page.\n\n%s",
-				p.Name, host, derr, o.projectLink(projectID)))
+	if derr == nil {
+		return
 	}
+	o.log.Error("provision domain intent", "project", projectID, "host", host, "buy", buy, "err", derr)
+	// The customer already paid for the domain in checkout, but we couldn't
+	// register it — refund the domain amount and clear the prepaid marker (so a
+	// later manual buy bills normally). Their subscription stays active.
+	refunded := false
+	if buy && o.biller != nil && prepaidOre > 0 && subID != "" {
+		if _, rerr := o.biller.RefundSubscriptionCharge(ctx, subID, prepaidOre); rerr != nil {
+			o.log.Error("provision domain intent: refund", "project", projectID, "err", rerr)
+		} else {
+			refunded = true
+		}
+	}
+	if fresh, ferr := o.store.ProjectByID(ctx, projectID); ferr == nil && fresh.DomainPrepaid {
+		fresh.DomainPrepaid = false
+		_ = o.save(ctx, fresh)
+	}
+	note := "Their subscription is active; they can retry from their project page."
+	if refunded {
+		note = "The domain charge was auto-refunded. Their subscription is active; they can retry from their project page."
+	}
+	o.notifyOperator(ctx, "Forge: bundled domain provisioning failed",
+		fmt.Sprintf("%q chose the domain %s at checkout, but provisioning it failed: %v\n%s\n\n%s",
+			p.Name, host, derr, note, o.projectLink(projectID)))
 }
 
 // AttachDomain starts the BYOD flow: request a Fly certificate for the
@@ -623,6 +653,8 @@ func (o *Orchestrator) activateDomain(ctx context.Context, p *project.Project) e
 		// a one-month grace, well under a yearly jump.
 		p.DomainPaidThrough = time.Now().UTC().AddDate(1, 0, 0)
 		switch {
+		case p.DomainPrepaid:
+			// Already charged on the checkout's first invoice — don't invoice again.
 		case o.biller != nil && p.StripeCustomerID != "" && p.DomainCostOre > 0:
 			desc := fmt.Sprintf("Domän: %s (1 år)", p.DomainName)
 			if _, err := o.biller.AddInvoiceItem(ctx, p.StripeCustomerID, p.DomainCostOre, "sek", desc); err != nil {

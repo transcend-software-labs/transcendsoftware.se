@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -49,6 +50,22 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request, u *user
 			http.Redirect(w, r, "/projects/"+p.ID+"?sub=domainbad", http.StatusSeeOther)
 			return
 		}
+		// applyDomainChoice saved the intent (+ locked-in price) on its own copy;
+		// re-read so we can bill a bought domain upfront in this checkout.
+		if fresh, err := s.store.ProjectByID(r.Context(), p.ID); err == nil {
+			p = fresh
+		}
+	}
+	// The subscription plan, plus — when the customer chose to BUY a domain — a
+	// one-time line item for its cost, so they pay 299 + the domain in one payment
+	// (Stripe puts one-time items on the subscription's first invoice). BYOD adds
+	// nothing here.
+	items := []billing.LineItem{{Price: s.cfg.StripePriceID}}
+	if p.DomainIntent != "" && p.DomainIntentBuy && p.DomainCostOre > 0 {
+		items = append(items, billing.LineItem{
+			AmountMinor: p.DomainCostOre, Currency: "sek",
+			Name: fmt.Sprintf("Domän: %s (1 år)", p.DomainIntent),
+		})
 	}
 	base := strings.TrimRight(s.cfg.BaseURL, "/")
 	url, err := s.billing.CreateCheckoutSession(r.Context(), billing.CheckoutParams{
@@ -57,7 +74,7 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request, u *user
 		Locale:        s.lang(r),
 		SuccessURL:    base + "/projects/" + p.ID + "?sub=success",
 		CancelURL:     base + "/projects/" + p.ID + "?sub=cancel",
-		LineItems:     []billing.LineItem{{Price: s.cfg.StripePriceID}},
+		LineItems:     items,
 	})
 	if err != nil {
 		s.log.Error("stripe checkout", "project", p.ID, "err", err)
