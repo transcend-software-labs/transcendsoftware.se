@@ -352,8 +352,12 @@ func Load() Config {
 	if c.ZenAPIKey == "" && strings.Contains(c.LLMBaseURL, "opencode.ai/zen") {
 		c.ZenAPIKey = c.LLMAPIKey
 	}
-	c.DefaultPlannerProfile = envOr("DEFAULT_PLANNER_PROFILE", "glm")
-	c.DefaultImplProfile = envOr("DEFAULT_IMPL_PROFILE", "kimi")
+	// Forge's global default models: Grok 4.5 via the Zen gateway for BOTH the
+	// plan and the implementation (Rasmus, 2026-07-15). Projects that don't pin
+	// an override track this, so changing it here (or via the env vars) moves
+	// every non-overridden project on its next build.
+	c.DefaultPlannerProfile = envOr("DEFAULT_PLANNER_PROFILE", "grok")
+	c.DefaultImplProfile = envOr("DEFAULT_IMPL_PROFILE", "grok")
 	return c
 }
 

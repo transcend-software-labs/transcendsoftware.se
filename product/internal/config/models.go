@@ -43,7 +43,7 @@ func allProfiles() []ModelProfile {
 		{"opus48", "Claude Opus 4.8", ProviderAnthropic, envOr("MODEL_OPUS48", "claude-opus-4-8"), "high", 5, 25},
 		{"kimi", "Kimi K2", ProviderZen, envOr("MODEL_KIMI", "kimi-k2.7-code"), "", 0.6, 2.5},
 		{"glm", "GLM 5.2", ProviderZen, envOr("MODEL_GLM", "glm-5.2"), "", 0.6, 2.2},
-		{"grok", "Grok 4.5", ProviderZen, envOr("MODEL_GROK", "grok-4.5"), "high", 3, 15},
+		{"grok", "Grok 4.5", ProviderZen, envOr("MODEL_GROK", "grok-4.5"), "high", 2, 6},
 		{"minimax", "MiniMax M3", ProviderZen, envOr("MODEL_MINIMAX", "minimax-m3"), "high", 0.5, 2},
 		{"deepseek", "DeepSeek V4 Pro", ProviderZen, envOr("MODEL_DEEPSEEK", "deepseek-v4-pro"), "high", 0.6, 2.5},
 	}
