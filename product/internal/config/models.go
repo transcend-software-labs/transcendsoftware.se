@@ -33,19 +33,26 @@ type ModelProfile struct {
 	Effort   string // reasoning effort: "", low, medium, high, xhigh, max
 	InPerM   float64
 	OutPerM  float64
+	// BaseURL overrides the gateway for a zen profile ("" → the default
+	// OpenCode Zen Go gateway). Grok lives on the MAIN zen gateway (/zen/v1),
+	// not the "opencode go" one (/go/v1) that hosts kimi/glm/minimax — sending
+	// grok-4.5 to /go/v1 fails with "Model grok-4.5 is not supported".
+	BaseURL string
 }
+
+const zenMainGateway = "https://opencode.ai/zen/v1"
 
 // allProfiles is the full catalog (independent of which keys are configured).
 func allProfiles() []ModelProfile {
 	return []ModelProfile{
-		{"sonnet5", "Claude Sonnet 5", ProviderAnthropic, envOr("MODEL_SONNET5", "claude-sonnet-5"), "max", 2, 10},
-		{"fable5", "Claude Fable 5", ProviderAnthropic, envOr("MODEL_FABLE5", "claude-fable-5"), "xhigh", 10, 50},
-		{"opus48", "Claude Opus 4.8", ProviderAnthropic, envOr("MODEL_OPUS48", "claude-opus-4-8"), "high", 5, 25},
-		{"kimi", "Kimi K2", ProviderZen, envOr("MODEL_KIMI", "kimi-k2.7-code"), "", 0.6, 2.5},
-		{"glm", "GLM 5.2", ProviderZen, envOr("MODEL_GLM", "glm-5.2"), "", 0.6, 2.2},
-		{"grok", "Grok 4.5", ProviderZen, envOr("MODEL_GROK", "grok-4.5"), "high", 2, 6},
-		{"minimax", "MiniMax M3", ProviderZen, envOr("MODEL_MINIMAX", "minimax-m3"), "high", 0.5, 2},
-		{"deepseek", "DeepSeek V4 Pro", ProviderZen, envOr("MODEL_DEEPSEEK", "deepseek-v4-pro"), "high", 0.6, 2.5},
+		{Key: "sonnet5", Label: "Claude Sonnet 5", Provider: ProviderAnthropic, Model: envOr("MODEL_SONNET5", "claude-sonnet-5"), Effort: "max", InPerM: 2, OutPerM: 10},
+		{Key: "fable5", Label: "Claude Fable 5", Provider: ProviderAnthropic, Model: envOr("MODEL_FABLE5", "claude-fable-5"), Effort: "xhigh", InPerM: 10, OutPerM: 50},
+		{Key: "opus48", Label: "Claude Opus 4.8", Provider: ProviderAnthropic, Model: envOr("MODEL_OPUS48", "claude-opus-4-8"), Effort: "high", InPerM: 5, OutPerM: 25},
+		{Key: "kimi", Label: "Kimi K2", Provider: ProviderZen, Model: envOr("MODEL_KIMI", "kimi-k2.7-code"), InPerM: 0.6, OutPerM: 2.5},
+		{Key: "glm", Label: "GLM 5.2", Provider: ProviderZen, Model: envOr("MODEL_GLM", "glm-5.2"), InPerM: 0.6, OutPerM: 2.2},
+		{Key: "grok", Label: "Grok 4.5", Provider: ProviderZen, Model: envOr("MODEL_GROK", "grok-4.5"), Effort: "high", InPerM: 2, OutPerM: 6, BaseURL: envOr("MODEL_GROK_BASE", zenMainGateway)},
+		{Key: "minimax", Label: "MiniMax M3", Provider: ProviderZen, Model: envOr("MODEL_MINIMAX", "minimax-m3"), Effort: "high", InPerM: 0.5, OutPerM: 2},
+		{Key: "deepseek", Label: "DeepSeek V4 Pro", Provider: ProviderZen, Model: envOr("MODEL_DEEPSEEK", "deepseek-v4-pro"), Effort: "high", InPerM: 0.6, OutPerM: 2.5},
 	}
 }
 
@@ -102,7 +109,11 @@ func (c Config) ResolveModel(key string) (ResolvedModel, bool) {
 	case ProviderAnthropic:
 		r.APIKey = c.AnthropicAPIKey
 	case ProviderZen:
-		r.BaseURL, r.APIKey = c.ZenBaseURL, c.ZenAPIKey
+		r.APIKey = c.ZenAPIKey
+		r.BaseURL = p.BaseURL // per-profile gateway override (e.g. grok on /zen/v1)
+		if r.BaseURL == "" {
+			r.BaseURL = c.ZenBaseURL
+		}
 	}
 	return r, true
 }

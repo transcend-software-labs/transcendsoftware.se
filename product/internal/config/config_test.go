@@ -22,9 +22,14 @@ func TestModelProfiles(t *testing.T) {
 	}
 	// Zen key enables the gateway profiles with the zen base+key.
 	zen := Config{ZenAPIKey: "zk", ZenBaseURL: "https://zen"}
-	r, ok := zen.ResolveModel("grok")
+	r, ok := zen.ResolveModel("kimi") // a standard go-gateway profile
 	if !ok || r.BaseURL != "https://zen" || r.APIKey != "zk" || r.Model == "" {
-		t.Errorf("grok resolve = %+v ok=%v", r, ok)
+		t.Errorf("kimi resolve = %+v ok=%v", r, ok)
+	}
+	// Grok lives on the MAIN zen gateway, not the go gateway — its profile
+	// overrides the base URL (else "Model grok-4.5 is not supported").
+	if g, ok := zen.ResolveModel("grok"); !ok || g.BaseURL != "https://opencode.ai/zen/v1" || g.APIKey != "zk" {
+		t.Errorf("grok resolve = %+v ok=%v (want the main zen gateway)", g, ok)
 	}
 }
 
