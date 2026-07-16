@@ -29,35 +29,40 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		return
 	}
+	priceStr, priceAmt, priceCur := s.monthlyPrice(r)
 	lv := landingView{
-		PriceStr:        s.monthlyPriceStr(r),
+		PriceStr:        priceStr,
 		IncludedChanges: s.orch.ChangesPerMonth(),
 		OverageStr:      formatPrice(int64(s.orch.OverageOre()), "sek"),
 		Domains:         s.orch.DomainsEnabled(),
 	}
-	s.render(w, http.StatusOK, "landing", s.view(r, s.t(r, "title.landing"), lv))
+	v := s.view(r, s.t(r, "title.landing"), lv)
+	v.JSONLD = s.landingJSONLD(r, priceAmt, priceCur) // Service graph, with an Offer when the price is known
+	s.render(w, http.StatusOK, "landing", v)
 }
 
-// monthlyPriceStr returns the formatted base-plan price (e.g. "299 kr"),
-// cached for an hour so the public landing page never blocks on — or hard-
-// depends on — a live Stripe call. Returns "" when billing is disabled or the
-// first fetch fails (the template falls back to copy).
-func (s *Server) monthlyPriceStr(r *http.Request) string {
+// monthlyPrice returns the base-plan price — formatted (e.g. "299 kr") plus
+// the numeric minor-unit amount and currency for structured data — cached for
+// an hour so the public landing page never blocks on — or hard-depends on — a
+// live Stripe call. Returns zero values when billing is disabled or the first
+// fetch fails (the template falls back to copy; the JSON-LD omits the Offer).
+func (s *Server) monthlyPrice(r *http.Request) (string, int64, string) {
 	if s.billing == nil || s.cfg.StripePriceID == "" {
-		return ""
+		return "", 0, ""
 	}
 	s.priceMu.Lock()
 	defer s.priceMu.Unlock()
 	if s.priceCache != "" && time.Since(s.priceAt) < time.Hour {
-		return s.priceCache
+		return s.priceCache, s.priceAmt, s.priceCur
 	}
 	pr, err := s.billing.Price(r.Context(), s.cfg.StripePriceID)
 	if err != nil {
-		return s.priceCache // stale value if we have one, else "" → copy fallback
+		return s.priceCache, s.priceAmt, s.priceCur // stale values if we have them, else "" → copy fallback
 	}
 	s.priceCache = formatPrice(pr.UnitAmount, pr.Currency)
+	s.priceAmt, s.priceCur = pr.UnitAmount, pr.Currency
 	s.priceAt = time.Now()
-	return s.priceCache
+	return s.priceCache, s.priceAmt, s.priceCur
 }
 
 func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {

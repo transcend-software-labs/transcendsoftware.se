@@ -57,6 +57,8 @@ type Server struct {
 	// call Stripe on every render; refreshed hourly, safe under concurrency.
 	priceMu    sync.Mutex
 	priceCache string
+	priceAmt   int64  // cached numeric price in minor units (öre) — for JSON-LD
+	priceCur   string // cached price currency ("sek")
 	priceAt    time.Time
 }
 
@@ -113,6 +115,12 @@ func (s *Server) Handler() http.Handler {
 	})
 
 	mux.HandleFunc("GET /{$}", s.handleLanding)
+
+	// SEO: crawlable page list + crawl rules for the Forge site itself (see
+	// seo.go). Preview hosts never get here — previewProxy branches on Host
+	// first, so generated sites serve their own robots/sitemap.
+	mux.HandleFunc("GET /sitemap.xml", s.handleSitemap)
+	mux.HandleFunc("GET /robots.txt", s.handleRobots)
 	mux.HandleFunc("GET /login", s.handleLoginForm)
 	mux.HandleFunc("POST /login", s.handleLogin)
 	mux.HandleFunc("GET /signup", s.handleSignupForm)
@@ -231,13 +239,20 @@ func templateFuncs() template.FuncMap {
 
 // View is the data passed to every page template.
 type View struct {
-	Title      string
-	User       *user.User
-	IsAdmin    bool
-	CSRF       string
-	Flash      string
-	Lang       string // resolved UI language ("en", "sv", "ru")
-	Data       any
+	Title   string
+	User    *user.User
+	IsAdmin bool
+	CSRF    string
+	Flash   string
+	Lang    string // resolved UI language ("en", "sv", "ru")
+	Data    any
+
+	// SEO — rendered into <head> by partials.html; filled by s.view (see
+	// seo.go). Canonical pins every page to BaseURL, so the fly.dev host never
+	// competes with the real domain in an index. OGImage is the social card.
+	Canonical  string
+	OGImage    string
+	JSONLD     template.JS
 	Providers  []oauth.Provider // social-login buttons on auth pages
 	MagicLink  bool             // advertise passwordless email login
 	Unverified bool             // logged in but email not yet confirmed → show the verify banner
@@ -294,8 +309,10 @@ func (s *Server) t(r *http.Request, key string) string { return i18n.T(s.lang(r)
 
 func (s *Server) view(r *http.Request, title string, data any) View {
 	u := s.currentUser(r)
+	origin := s.origin(r)
 	return View{Title: title, User: u, IsAdmin: s.isAdmin(u), CSRF: s.csrfToken(r), Lang: s.lang(r),
 		Data: data, Providers: s.oauth.Enabled(), MagicLink: s.cfg.MagicLinkEnabled,
+		Canonical: origin + r.URL.Path, OGImage: origin + "/static/og.png", JSONLD: s.siteJSONLD(r),
 		Unverified: u != nil && !u.Verified}
 }
 
