@@ -39,8 +39,8 @@ func TestModelProfileGateways(t *testing.T) {
 		byKey[p.Key] = p
 	}
 	// deepseek/minimax need opencode's native provider (full list); kimi/glm/grok don't.
-	wantNative := map[string]bool{"deepseek": true, "minimax": true}
-	for _, k := range []string{"kimi", "glm", "grok", "deepseek", "minimax"} {
+	wantNative := map[string]bool{"deepseek": true, "deepseek-flash": true, "minimax": true}
+	for _, k := range []string{"kimi", "glm", "grok", "deepseek", "deepseek-flash", "minimax"} {
 		if byKey[k].NativeGo != wantNative[k] {
 			t.Errorf("%s NativeGo = %v, want %v", k, byKey[k].NativeGo, wantNative[k])
 		}

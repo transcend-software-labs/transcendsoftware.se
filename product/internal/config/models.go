@@ -58,6 +58,7 @@ func allProfiles() []ModelProfile {
 		{Key: "grok", Label: "Grok 4.5", Provider: ProviderZen, Model: envOr("MODEL_GROK", "grok-4.5"), Effort: "high", InPerM: 2, OutPerM: 6, BaseURL: envOr("MODEL_GROK_BASE", zenMainGateway)},
 		{Key: "minimax", Label: "MiniMax M3", Provider: ProviderZen, Model: envOr("MODEL_MINIMAX", "minimax-m3"), Effort: "high", InPerM: 0.5, OutPerM: 2, NativeGo: true},
 		{Key: "deepseek", Label: "DeepSeek V4 Pro", Provider: ProviderZen, Model: envOr("MODEL_DEEPSEEK", "deepseek-v4-pro"), Effort: "high", InPerM: 0.6, OutPerM: 2.5, NativeGo: true},
+		{Key: "deepseek-flash", Label: "DeepSeek V4 Flash", Provider: ProviderZen, Model: envOr("MODEL_DEEPSEEK_FLASH", "deepseek-v4-flash"), Effort: "high", InPerM: 0.3, OutPerM: 1.2, NativeGo: true},
 	}
 }
 
