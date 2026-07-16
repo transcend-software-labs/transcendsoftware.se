@@ -709,11 +709,16 @@ func (b *Sandbox) runFixRound(ctx context.Context, sb *fly.Sandbox, findings []F
 	fctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 
+	// OnSession matters here too: the polish pass is a NEW opencode session, and
+	// whatever session id is persisted is what a restarted orchestrator
+	// re-attaches to. Without it, a mid-polish restart re-attaches to the
+	// finished main session — the log relay goes silent and the watchdog
+	// "finalises" under the still-working polish agent.
 	fres, err := b.newDriver(sb.Addr).Run(fctx, opencode.Spec{
 		Workdir:      "/workspace",
 		SystemPrompt: b.cfg.SystemPrompt,
 		Instruction:  fixRoundInstruction(findings, critique),
-	}, hooks.OnLog, nil)
+	}, hooks.OnLog, hooks.OnSession)
 	res.Log += "\n" + fres.Log
 	res.Tokens += fres.Tokens
 	res.TokensInput += fres.TokensInput

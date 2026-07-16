@@ -201,7 +201,11 @@ func (h *HTTP) Attach(ctx context.Context, sessionID string, onLog func(string))
 			}
 			return Result{Log: c.log, SessionID: sessionID, Tokens: tokens, TokensInput: tokensIn}, c.err
 		case <-ticker.C:
-			cur, _ := h.sessionTokens(ctx, sessionID)
+			// Liveness is ANY session growing, not just the attached one: a build
+			// legitimately spans sessions (the polish pass starts a fresh one), and
+			// watching only the attached session mistakes an active polish for
+			// "finished while detached" — finalising under a working agent.
+			cur := h.totalTokens(ctx)
 			if cur == last {
 				frozen++
 			} else {
@@ -218,6 +222,36 @@ func (h *HTTP) Attach(ctx context.Context, sessionID string, onLog func(string))
 			return Result{Log: c.log, SessionID: sessionID}, ctx.Err()
 		}
 	}
+}
+
+// totalTokens sums token totals across every session on the server,
+// best-effort (0 on failure) — Attach's liveness signal.
+func (h *HTTP) totalTokens(ctx context.Context) int {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, h.BaseURL+"/session", nil)
+	if err != nil {
+		return 0
+	}
+	resp, err := h.client.Do(req)
+	if err != nil {
+		return 0
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	var list []struct {
+		Tokens struct {
+			Input     int `json:"input"`
+			Output    int `json:"output"`
+			Reasoning int `json:"reasoning"`
+		} `json:"tokens"`
+	}
+	if json.Unmarshal(raw, &list) != nil {
+		return 0
+	}
+	sum := 0
+	for _, s := range list {
+		sum += s.Tokens.Input + s.Tokens.Output + s.Tokens.Reasoning
+	}
+	return sum
 }
 
 // sessionTokens reads the session's token totals, best-effort — a failure

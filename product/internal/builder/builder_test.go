@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
 	"github.com/transcend-software-labs/rasmus-ai/internal/opencode"
@@ -412,5 +413,42 @@ func TestFixRoundInstruction(t *testing.T) {
 	instr = fixRoundInstruction([]Finding{{Name: "x"}}, "SHIP — good to go")
 	if strings.Contains(instr, "good to go") {
 		t.Error("SHIP critique should not be included in the fix prompt")
+	}
+}
+
+// sessionDriver announces a session id via onSession, like the real HTTP driver.
+type sessionDriver struct{ id string }
+
+func (d *sessionDriver) Run(_ context.Context, _ opencode.Spec, _ func(string), onSession func(string)) (opencode.Result, error) {
+	if onSession != nil {
+		onSession(d.id)
+	}
+	return opencode.Result{Log: "polished", SessionID: d.id}, nil
+}
+
+func (d *sessionDriver) Attach(_ context.Context, sessionID string, _ func(string)) (opencode.Result, error) {
+	return opencode.Result{Log: "done", SessionID: sessionID}, nil
+}
+
+// The polish pass starts a NEW opencode session, and whatever session id is
+// persisted is what a restarted orchestrator re-attaches to. OnSession must
+// fire for the polish session too — otherwise a mid-polish restart re-attaches
+// to the finished main session: the log relay goes silent and the watchdog
+// finalises under the still-working polish agent.
+func TestFixRound_ReportsPolishSession(t *testing.T) {
+	machines := fly.NewFake()
+	drv := &sessionDriver{id: "ses_polish"}
+	b := NewSandbox(machines, func(string) opencode.Driver { return drv }, Config{})
+
+	var got string
+	res := opencode.Result{}
+	ok := b.runFixRound(context.Background(), &fly.Sandbox{MachineID: "m1", Addr: "http://sbx"},
+		[]Finding{{Name: "low-contrast"}}, "", time.Hour,
+		Hooks{OnSession: func(id string) { got = id }}, &res)
+	if !ok {
+		t.Fatal("fix round should complete")
+	}
+	if got != "ses_polish" {
+		t.Fatalf("polish session id not reported via OnSession: got %q", got)
 	}
 }
