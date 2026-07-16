@@ -49,6 +49,16 @@
       <h3><a href="/admin/projects/{{.ID}}">{{.Name}}</a></h3>
       <p><a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{.PreviewURL}} ↗</a>
         {{if .RepoURL}}· <a class="muted small" href="{{.RepoURL}}" target="_blank" rel="noopener">source ↗</a>{{end}}</p>
+      <div class="review-verdict {{if .ReviewClean}}verdict-clean{{else}}verdict-flag{{end}}">
+        {{if .ReviewClean}}
+        <p class="verdict-line">✓ All automated checks passed — skim the screenshots and hit <strong>Approve &amp; deliver</strong>. Nothing needs your fixing.</p>
+        {{else}}
+        <p class="verdict-line">⚠ Needs your eyes — a check below didn’t pass. Look at the flagged items before you deliver.</p>
+        {{end}}
+        <ul class="review-checks">
+          {{range .ReviewChecks}}<li class="{{if .Pass}}chk-pass{{else}}chk-fail{{end}}">{{if .Pass}}✓{{else}}✗{{end}} {{.Label}}{{if .Note}} <span class="muted small">— {{.Note}}</span>{{end}}</li>{{end}}
+        </ul>
+      </div>
       {{if .Shots}}
       <div class="review-shots">
         {{range .Shots}}

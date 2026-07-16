@@ -12,6 +12,18 @@
 {{if .PreviewURL}}
 <p><a class="btn btn-sm" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{.PreviewURL}} ↗</a>
   {{if .RepoURL}} <a class="muted small" href="{{.RepoURL}}" target="_blank" rel="noopener">source ↗</a>{{end}}</p>
+
+<section class="panel {{if .ReviewClean}}verdict-clean{{else}}verdict-flag{{end}}">
+  <h2>Review</h2>
+  {{if .ReviewClean}}
+  <p class="verdict-line">✓ All automated checks passed — skim the screenshots below, then deliver. Nothing needs your fixing.</p>
+  {{else}}
+  <p class="verdict-line">⚠ Needs your eyes — a check below didn’t pass. Look at the flagged item(s).</p>
+  {{end}}
+  <ul class="review-checks">
+    {{range .ReviewChecks}}<li class="{{if .Pass}}chk-pass{{else}}chk-fail{{end}}">{{if .Pass}}✓{{else}}✗{{end}} {{.Label}}{{if .Note}} <span class="muted small">— {{.Note}}</span>{{end}}</li>{{end}}
+  </ul>
+</section>
 {{end}}
 
 <section class="panel pay-panel">

@@ -652,6 +652,19 @@ label.design-option:hover { border-color: var(--accent); }
 /* Impeccable design-audit checklist (Ready for delivery) + preview flag. */
 .design-audit { margin: .6rem 0; }
 .design-clean { color: var(--green); }
+
+/* Operator review: a go/no-go verdict + pass/fail checklist so the review is
+   guided ("these passed; look here if one didn't"), not a blank stare. */
+.review-verdict { border-radius: var(--radius-lg); padding: var(--sp-4); margin: var(--sp-3) 0; border: 1px solid var(--border); }
+.verdict-clean { border-color: color-mix(in srgb, var(--green) 40%, transparent); background: var(--green-fill); }
+.verdict-flag  { border-color: var(--accent-border); background: var(--accent-glow); }
+.verdict-line { font-weight: 500; margin-bottom: var(--sp-3); }
+.verdict-clean .verdict-line { color: var(--green); }
+.verdict-flag  .verdict-line { color: var(--accent-2); }
+.review-checks { list-style: none; display: flex; flex-direction: column; gap: .3rem; margin: 0; padding: 0; }
+.review-checks li { font-size: var(--fs-sm); }
+.review-checks .chk-pass { color: var(--muted); }
+.review-checks .chk-fail { color: var(--red); font-weight: 500; }
 .findings > summary { cursor: pointer; color: var(--accent); }
 .findings ul { list-style: none; margin: var(--sp-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: .4rem; }
 .finding {

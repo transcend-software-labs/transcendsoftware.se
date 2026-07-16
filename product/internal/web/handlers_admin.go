@@ -63,6 +63,48 @@ type reviewShot struct {
 	URL  string
 }
 
+// reviewCheck is one automated go/no-go gate surfaced to the operator, so the
+// review is "these passed — look here only if one didn't" instead of eyeballing
+// raw signals and guessing what to verify.
+type reviewCheck struct {
+	Label string
+	Pass  bool
+	Note  string
+}
+
+// ReviewChecks composes the build's existing signals (deploy verification,
+// per-page screenshots, the design audit, the visual critic) into a checklist.
+func (r reviewItem) ReviewChecks() []reviewCheck {
+	p := r.Project
+	crit := strings.TrimSpace(p.Critique)
+	critiqueOK := crit == "" || strings.HasPrefix(strings.ToUpper(crit), "SHIP") // "" = not run, don't block
+	critNote := ""
+	if !critiqueOK {
+		critNote = "critic suggests polish — see below"
+	}
+	findNote := ""
+	if n := len(p.Findings); n > 0 {
+		findNote = fmt.Sprintf("%d finding(s) — see below", n)
+	}
+	return []reviewCheck{
+		{"Site deployed & verified live", p.PreviewURL != "" && p.Status != project.StatusFailed, ""},
+		{"Every page rendered & captured", len(r.Shots) > 0, fmt.Sprintf("%d page(s)", len(r.Shots))},
+		{"Design audit clean", len(p.Findings) == 0, findNote},
+		{"Visual critic says ship", critiqueOK, critNote},
+	}
+}
+
+// ReviewClean reports whether every automated check passed — a fast-track
+// "glance and ship". False means at least one check wants the operator's eyes.
+func (r reviewItem) ReviewClean() bool {
+	for _, c := range r.ReviewChecks() {
+		if !c.Pass {
+			return false
+		}
+	}
+	return true
+}
+
 // Thumb returns the first shot's URL (for compact listings), or "".
 func (r reviewItem) Thumb() string {
 	if len(r.Shots) > 0 {
