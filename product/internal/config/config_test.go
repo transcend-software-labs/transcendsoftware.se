@@ -33,6 +33,27 @@ func TestModelProfiles(t *testing.T) {
 	}
 }
 
+func TestModelProfileGateways(t *testing.T) {
+	byKey := map[string]ModelProfile{}
+	for _, p := range allProfiles() {
+		byKey[p.Key] = p
+	}
+	// deepseek/minimax need opencode's native provider (full list); kimi/glm/grok don't.
+	wantNative := map[string]bool{"deepseek": true, "minimax": true}
+	for _, k := range []string{"kimi", "glm", "grok", "deepseek", "minimax"} {
+		if byKey[k].NativeGo != wantNative[k] {
+			t.Errorf("%s NativeGo = %v, want %v", k, byKey[k].NativeGo, wantNative[k])
+		}
+	}
+	// grok routes to the main zen gateway (its own base URL); the others don't.
+	if byKey["grok"].BaseURL == "" {
+		t.Error("grok should override BaseURL to the main zen gateway")
+	}
+	if byKey["kimi"].BaseURL != "" {
+		t.Error("kimi should use the default go gateway (no base override)")
+	}
+}
+
 func TestModelProfileCost(t *testing.T) {
 	// Sonnet-5-ish: $2/M in, $10/M out. 100k in + 24k out(total 124k).
 	p := ModelProfile{InPerM: 2, OutPerM: 10}

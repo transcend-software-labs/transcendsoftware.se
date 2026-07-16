@@ -105,6 +105,27 @@ elif [ -n "${LLM_API_KEY:-}" ]; then
   if [ -n "${LLM_EFFORT:-}" ]; then
     ropts="{ \"options\": { \"reasoningEffort\": \"${LLM_EFFORT}\" } }"
   fi
+  if [ "${IMPL_GO_NATIVE:-}" = "1" ]; then
+    # OpenCode Go FULL model list (deepseek/minimax/…) via opencode's built-in
+    # "opencode-go" provider. The generic openai-compatible shim below only
+    # reaches go's "lite" list (kimi/glm) — "Model deepseek-v4-pro is not
+    # supported on the lite model list". The native provider also routes each
+    # model to the right chat/completions-vs-messages endpoint. Same key.
+    log "configuring opencode: opencode-go provider, model ${model} (auto-approve all tools)"
+    cat > /root/.config/opencode/opencode.json <<JSON
+{
+  "\$schema": "https://opencode.ai/config.json",
+  ${perm},
+  "provider": {
+    "opencode-go": {
+      "options": { "apiKey": "{env:LLM_API_KEY}" },
+      "models": { "${model}": ${ropts} }
+    }
+  },
+  "model": "opencode-go/${model}"
+}
+JSON
+  else
   case "$base" in
   *api.openai.com*)
     # Direct OpenAI: use opencode's NATIVE openai provider, not the generic
@@ -148,6 +169,7 @@ JSON
 JSON
     ;;
   esac
+  fi
 else
   log "configuring opencode (default provider, auto-approve all tools)"
   cat > /root/.config/opencode/opencode.json <<JSON

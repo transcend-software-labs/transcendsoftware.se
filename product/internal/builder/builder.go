@@ -96,6 +96,7 @@ type ModelSpec struct {
 	APIKey   string
 	Model    string
 	Effort   string
+	NativeGo bool // route the impl via opencode's native "opencode-go" provider
 }
 
 // CapturedPage is one screenshot the crawler produced: which slot (PUT URL
@@ -234,6 +235,11 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 		env["LLM_MODEL"] = req.Model.Model
 		if req.Model.Effort != "" {
 			env["LLM_EFFORT"] = req.Model.Effort
+		}
+		if req.Model.NativeGo {
+			// Use opencode's native opencode-go provider (full model list +
+			// per-model endpoint routing), not the lite openai-compatible shim.
+			env["IMPL_GO_NATIVE"] = "1"
 		}
 	default: // no override → the configured global default
 		if b.cfg.AnthropicKey != "" {

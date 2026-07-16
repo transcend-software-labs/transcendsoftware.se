@@ -38,6 +38,11 @@ type ModelProfile struct {
 	// not the "opencode go" one (/go/v1) that hosts kimi/glm/minimax — sending
 	// grok-4.5 to /go/v1 fails with "Model grok-4.5 is not supported".
 	BaseURL string
+	// NativeGo routes the IMPL through opencode's built-in "opencode-go" provider
+	// instead of the generic openai-compatible shim. The shim only reaches go's
+	// "lite" model list (kimi/glm); the full list (deepseek/minimax) — and the
+	// per-model chat-completions-vs-messages routing — needs the native provider.
+	NativeGo bool
 }
 
 const zenMainGateway = "https://opencode.ai/zen/v1"
@@ -51,8 +56,8 @@ func allProfiles() []ModelProfile {
 		{Key: "kimi", Label: "Kimi K2", Provider: ProviderZen, Model: envOr("MODEL_KIMI", "kimi-k2.7-code"), InPerM: 0.6, OutPerM: 2.5},
 		{Key: "glm", Label: "GLM 5.2", Provider: ProviderZen, Model: envOr("MODEL_GLM", "glm-5.2"), InPerM: 0.6, OutPerM: 2.2},
 		{Key: "grok", Label: "Grok 4.5", Provider: ProviderZen, Model: envOr("MODEL_GROK", "grok-4.5"), Effort: "high", InPerM: 2, OutPerM: 6, BaseURL: envOr("MODEL_GROK_BASE", zenMainGateway)},
-		{Key: "minimax", Label: "MiniMax M3", Provider: ProviderZen, Model: envOr("MODEL_MINIMAX", "minimax-m3"), Effort: "high", InPerM: 0.5, OutPerM: 2},
-		{Key: "deepseek", Label: "DeepSeek V4 Pro", Provider: ProviderZen, Model: envOr("MODEL_DEEPSEEK", "deepseek-v4-pro"), Effort: "high", InPerM: 0.6, OutPerM: 2.5},
+		{Key: "minimax", Label: "MiniMax M3", Provider: ProviderZen, Model: envOr("MODEL_MINIMAX", "minimax-m3"), Effort: "high", InPerM: 0.5, OutPerM: 2, NativeGo: true},
+		{Key: "deepseek", Label: "DeepSeek V4 Pro", Provider: ProviderZen, Model: envOr("MODEL_DEEPSEEK", "deepseek-v4-pro"), Effort: "high", InPerM: 0.6, OutPerM: 2.5, NativeGo: true},
 	}
 }
 

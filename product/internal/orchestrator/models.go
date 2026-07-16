@@ -53,7 +53,7 @@ func (o *Orchestrator) implFor(p *project.Project) (builder.ModelSpec, string) {
 	}
 	return builder.ModelSpec{
 		Provider: string(rm.Provider), BaseURL: rm.BaseURL, APIKey: rm.APIKey,
-		Model: rm.Model, Effort: rm.Effort,
+		Model: rm.Model, Effort: rm.Effort, NativeGo: rm.NativeGo,
 	}, modelLabel(rm.Model, rm.Effort)
 }
 
