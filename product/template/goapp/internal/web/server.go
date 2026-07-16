@@ -103,6 +103,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /{$}", s.handleLanding)
 	mux.HandleFunc("POST /contact", s.handleContact)
 
+	// SEO: crawlable page list + crawl rules (see seo.go — add new public pages
+	// to publicPages so they land in the sitemap).
+	mux.HandleFunc("GET /sitemap.xml", s.handleSitemap)
+	mux.HandleFunc("GET /robots.txt", s.handleRobots)
+
 	mux.HandleFunc("GET /signup", s.handleSignupForm)
 	mux.HandleFunc("POST /signup", s.handleSignup)
 	mux.HandleFunc("GET /login", s.handleLoginForm)
@@ -130,14 +135,29 @@ func (s *Server) Handler() http.Handler {
 type View struct {
 	Title    string
 	SiteName string // shown in the Forge-branded admin header
-	User     *auth.User
-	CSRF     string
-	Flash    string
-	Data     any
+
+	// SEO — layout.html renders these into <head>; see seo.go and AGENTS.md.
+	// SET Description ON EVERY PUBLIC PAGE (one honest sentence about THAT page):
+	// it's the snippet Google and every social preview show. OGImage is optional
+	// (an absolute or /static/… URL) and makes shared links show a picture.
+	// Canonical + JSONLD are filled in for you.
+	Description string
+	OGImage     string
+	Canonical   string
+	JSONLD      template.JS
+
+	User  *auth.User
+	CSRF  string
+	Flash string
+	Data  any
 }
 
 func (s *Server) view(r *http.Request, title string, data any) View {
-	return View{Title: title, SiteName: s.siteName, User: s.currentUser(r), CSRF: s.csrfToken(r), Data: data}
+	return View{
+		Title: title, SiteName: s.siteName,
+		Canonical: absURL(r, r.URL.Path), JSONLD: s.siteJSONLD(r),
+		User: s.currentUser(r), CSRF: s.csrfToken(r), Data: data,
+	}
 }
 
 // render executes the template into a buffer first so a template error becomes

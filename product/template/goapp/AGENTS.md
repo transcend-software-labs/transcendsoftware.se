@@ -189,6 +189,39 @@ fails these is not done. Walk this list before you deploy.
   `reduce`). Animate only `transform` and `opacity`; never `transition: all`.
   Motion responds to user action — no autoplaying loops.
 
+### Found on Google — fill in the SEO baseline
+
+A site nobody finds is a site nobody ordered. The plumbing is already here
+(`internal/web/seo.go` + the `<head>` in `layout.html`): canonical URLs, Open
+Graph/Twitter tags, JSON-LD, `/sitemap.xml` and `/robots.txt` all render on their
+own. **What it cannot know is this business.** That part is yours, and it is four
+small edits:
+
+- **A `Description` on every public page.** `s.view(...)` leaves it empty; set it
+  right after (`v.Description = "…"`, see `handleLanding`). One honest, specific
+  sentence about THAT page — it is the snippet Google and every link preview show.
+  ~150 chars, no keyword stuffing, and never the same sentence twice.
+- **Every public page in `publicPages`** (`seo.go`) — that list IS the sitemap. A
+  page missing from it is a page a crawler has to stumble onto.
+- **Upgrade the JSON-LD when the business is local.** `siteJSONLD` ships
+  schema.org `Organization`. If the customer has a physical place — bakery, salon,
+  studio, clinic, restaurant, workshop — change `@type` to the specific
+  [LocalBusiness](https://schema.org/LocalBusiness) subtype (`Bakery`,
+  `HairSalon`, `Restaurant`…) and add their real `address` (PostalAddress),
+  `telephone`, `openingHoursSpecification` and `image`. This is the single biggest
+  win available: it's what earns rich results and Maps eligibility. Use ONLY
+  details the intake actually gave you — invented hours or a made-up phone number
+  are worse than no markup at all. No real details? Leave `Organization`.
+- **`<html lang>`** in `layout.html` is `"en"`. If the site is Swedish, it is
+  `"sv"`. Wrong `lang` mis-signals the audience and breaks screen readers.
+
+Then the on-page basics, which are just good HTML: exactly **one `<h1>`** per page
+naming what the page is (headings descend in order — no jumping h2→h4), real
+`alt` text on every content image (what's IN it, not "image of…"; decorative ones
+get `alt=""`), and `<title>`s that read `Specific thing · Site name` rather than
+"Home". If the business serves a place, say the place in the words on the page —
+"sourdough bakery in Södermalm" is how someone searches.
+
 ## Rules
 
 - Keep `/healthz` working — the platform health check depends on it.

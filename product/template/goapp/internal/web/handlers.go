@@ -13,7 +13,12 @@ import (
 const maxFieldLen = 4000
 
 func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
-	s.render(w, http.StatusOK, "landing", s.view(r, "Welcome", nil))
+	v := s.view(r, "Welcome", nil)
+	// Every public page sets a Description: it's the snippet search engines and
+	// social previews show. Replace this with one honest sentence about what this
+	// site actually offers — and do the same on every page you add (see AGENTS.md).
+	v.Description = "Welcome to " + s.siteName + "."
+	s.render(w, http.StatusOK, "landing", v)
 }
 
 // handleContact stores a message from the public contact form. It is

@@ -4,6 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{.Title}}</title>
+  <!-- SEO + social. Description is the snippet search engines and every chat/
+       social preview show — set View.Description on each page (see seo.go).
+       Canonical/JSONLD are filled automatically; og:image makes shared links
+       show a picture. -->
+  {{if .Description}}<meta name="description" content="{{.Description}}">{{end}}
+  {{if .Canonical}}<link rel="canonical" href="{{.Canonical}}">{{end}}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{.SiteName}}">
+  <meta property="og:title" content="{{.Title}}">
+  {{if .Description}}<meta property="og:description" content="{{.Description}}">{{end}}
+  {{if .Canonical}}<meta property="og:url" content="{{.Canonical}}">{{end}}
+  {{if .OGImage}}<meta property="og:image" content="{{.OGImage}}">{{end}}
+  <meta name="twitter:card" content="{{if .OGImage}}summary_large_image{{else}}summary{{end}}">
+  {{if .JSONLD}}<script type="application/ld+json">{{.JSONLD}}</script>{{end}}
   <!-- Order matters: tokens (the design surface) → components (locked
        structure) → app.css (this project's theme, always wins). The asset
        helper appends a build-content hash so redeploys bust the cache. -->

@@ -263,3 +263,39 @@ func TestAdmin_MasksSecretsAndHidesInternals(t *testing.T) {
 		t.Error("users CSV leaked a bcrypt hash")
 	}
 }
+
+// TestSEO_BaselineSurvives asserts the SEO floor every generated site must keep:
+// the head carries description/canonical/Open Graph/structured data, and the
+// crawl pair (sitemap.xml + robots.txt) works. It checks the TAGS, never the
+// copy — rewriting the words is expected; dropping the tags is a regression.
+func TestSEO_BaselineSurvives(t *testing.T) {
+	srv := newTestServer(t, "")
+	c := srv.Client()
+
+	body, _ := get(t, c, srv.URL+"/")
+	for _, want := range []string{
+		`<meta name="description"`, // the search/social snippet
+		`rel="canonical"`,
+		`property="og:title"`,
+		`property="og:site_name"`,
+		`name="twitter:card"`,
+		`application/ld+json`,    // structured data
+		`"@type":"Organization"`, // …of the right shape
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("landing <head> missing %q", want)
+		}
+	}
+
+	sm, _ := get(t, c, srv.URL+"/sitemap.xml")
+	if !strings.Contains(sm, "<urlset") || !strings.Contains(sm, "<loc>"+srv.URL+"/</loc>") {
+		t.Errorf("sitemap.xml should list absolute public URLs, got:\n%s", sm)
+	}
+
+	rb, _ := get(t, c, srv.URL+"/robots.txt")
+	for _, want := range []string{"User-agent: *", "Disallow: /admin", "Sitemap: " + srv.URL + "/sitemap.xml"} {
+		if !strings.Contains(rb, want) {
+			t.Errorf("robots.txt missing %q, got:\n%s", want, rb)
+		}
+	}
+}
