@@ -168,8 +168,8 @@ func (o *OpenAICompat) completeOnce(ctx context.Context, system, user string, ma
 }
 
 // Questions implements Intake.
-func (o *OpenAICompat) Questions(ctx context.Context, brief string) (IntakeResult, error) {
-	out, err := o.complete(ctx, IntakeSystemPrompt, brief, 3000)
+func (o *OpenAICompat) Questions(ctx context.Context, brief, lang string) (IntakeResult, error) {
+	out, err := o.complete(ctx, IntakeSystemPrompt+intakeLangDirective(lang), brief, 3000)
 	if err != nil {
 		return IntakeResult{}, err
 	}

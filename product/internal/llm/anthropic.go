@@ -122,8 +122,8 @@ func (a *Anthropic) complete(ctx context.Context, system, user string, maxTokens
 }
 
 // Questions implements Intake.
-func (a *Anthropic) Questions(ctx context.Context, brief string) (IntakeResult, error) {
-	out, err := a.complete(ctx, IntakeSystemPrompt, brief, 1000)
+func (a *Anthropic) Questions(ctx context.Context, brief, lang string) (IntakeResult, error) {
+	out, err := a.complete(ctx, IntakeSystemPrompt+intakeLangDirective(lang), brief, 1000)
 	if err != nil {
 		return IntakeResult{}, err
 	}

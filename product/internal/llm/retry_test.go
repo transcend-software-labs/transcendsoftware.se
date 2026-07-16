@@ -28,7 +28,7 @@ func TestComplete_RetriesTransientThenSucceeds(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	res, err := retryTestClient(srv.URL).Questions(context.Background(), "a bakery site")
+	res, err := retryTestClient(srv.URL).Questions(context.Background(), "a bakery site", "en")
 	if err != nil {
 		t.Fatalf("expected success after one retry, got %v", err)
 	}

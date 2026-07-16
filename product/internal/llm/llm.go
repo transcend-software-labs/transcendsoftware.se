@@ -41,7 +41,22 @@ type IntakeResult struct {
 // Intake produces PO-level clarifying questions and design suggestions for a
 // brief, asked before any planning or building happens.
 type Intake interface {
-	Questions(ctx context.Context, brief string) (IntakeResult, error)
+	// lang is the customer's UI language ("en"/"sv"/"ru", "" = English) — the
+	// questions and design options come back in it, since the customer reads them.
+	Questions(ctx context.Context, brief, lang string) (IntakeResult, error)
+}
+
+// intakeLangDirective steers the intake model to write the questions + design
+// options in the customer's language. English is the prompt's default, so it (and
+// unknown codes) need no directive.
+func intakeLangDirective(lang string) string {
+	name := map[string]string{"sv": "Swedish", "ru": "Russian"}[lang]
+	if name == "" {
+		return ""
+	}
+	return "\n\nIMPORTANT: Write every question and all design-option names and " +
+		"descriptions in " + name + " (the customer's language). Keep the JSON " +
+		"structure and field names exactly as specified — translate only the values."
 }
 
 // Planner turns a brief into a build plan.
@@ -380,7 +395,7 @@ type Fake struct{}
 // NewFake returns a deterministic dev planner/gate.
 func NewFake() *Fake { return &Fake{} }
 
-func (Fake) Questions(_ context.Context, _ string) (IntakeResult, error) {
+func (Fake) Questions(_ context.Context, _, _ string) (IntakeResult, error) {
 	return IntakeResult{
 		Questions: []string{
 			"Do you want customers to buy online, or just see the site and contact you?",

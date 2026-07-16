@@ -436,7 +436,7 @@ func (o *Orchestrator) StartIntake(projectID string) {
 		if err := o.setStatus(ctx, p, project.StatusClarifying); err != nil {
 			return err
 		}
-		res, err := o.intake.Questions(ctx, p.Brief)
+		res, err := o.intake.Questions(ctx, p.Brief, p.Locale)
 		if err != nil {
 			return err
 		}
