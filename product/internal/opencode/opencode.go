@@ -336,11 +336,34 @@ func (h *HTTP) openEvents(ctx context.Context) (io.ReadCloser, error) {
 	return resp.Body, nil
 }
 
-// consume reads events for sessionID, streaming each tool action via onLog and
-// returning the final assistant text once the session goes idle.
+// consume reads the event stream, relaying tool activity via onLog and
+// returning the final assistant text once sessionID — the MAIN session — goes
+// idle. Tool lines are relayed from EVERY session, not just the main one: the
+// agent fans work out to task subagents (child sessions), and with a
+// main-only filter the customer log showed "task" and then nothing for the
+// minutes the children worked — indistinguishable from a hang. The sandbox is
+// per-build, so every event on this stream belongs to this build. Completion,
+// final text and errors stay gated to the main session (a child erroring or
+// going idle is the parent's business, not the build's).
 func (h *HTTP) consume(sessionID string, stream io.Reader, onLog func(string)) (string, error) {
 	seen := map[string]bool{}
 	var lastText string
+
+	// The main session's narration ("Now wiring the contacts table…") streams
+	// as text parts that GROW — each event carries the whole text so far, so
+	// emitting per event would spam near-duplicates. Buffer the current block
+	// and flush it when the next part begins (a new text id or a tool call),
+	// so the log shows whole thoughts, in order, exactly once. Subagents'
+	// text stays out — four children narrating at once is noise; their tool
+	// lines already show their work.
+	var textID, textBuf string
+	flushText := func() {
+		if textBuf != "" {
+			emit(onLog, clipText(textBuf))
+		}
+		textID, textBuf = "", ""
+	}
+
 	sc := bufio.NewScanner(stream)
 	sc.Buffer(make([]byte, 64*1024), 8*1024*1024) // tool payloads can be large
 	for sc.Scan() {
@@ -356,28 +379,37 @@ func (h *HTTP) consume(sessionID string, stream io.Reader, onLog func(string)) (
 		if sid == "" {
 			sid = ev.Properties.Part.SessionID
 		}
+		if ev.Type == "message.part.updated" {
+			p := ev.Properties.Part
+			switch p.Type {
+			case "tool":
+				// Any session's tool call — emit once, after the input is
+				// populated (status past "pending").
+				if !seen[p.ID] && partStatus(p.State) != "pending" {
+					seen[p.ID] = true
+					if sid == sessionID {
+						flushText() // the narration that preceded this call
+					}
+					emit(onLog, toolLine(p.Tool, p.State))
+				}
+			case "text":
+				if sid == sessionID && p.Text != "" {
+					if p.ID != textID {
+						flushText()
+						textID = p.ID
+					}
+					textBuf = p.Text
+					lastText = p.Text
+				}
+			}
+			continue
+		}
 		if sid != sessionID {
 			continue
 		}
 		switch ev.Type {
-		case "message.part.updated":
-			p := ev.Properties.Part
-			switch p.Type {
-			case "tool":
-				// Emit once, after the input is populated (status past "pending").
-				if !seen[p.ID] && partStatus(p.State) != "pending" {
-					seen[p.ID] = true
-					emit(onLog, toolLine(p.Tool, p.State))
-				}
-			case "text":
-				if p.Text != "" {
-					lastText = p.Text
-				}
-			}
 		case "session.idle":
-			if lastText != "" {
-				emit(onLog, lastText)
-			}
+			flushText() // the final message, unless a tool call already flushed it
 			return lastText, nil
 		case "session.error":
 			// Surface the actual error payload — "agent reported an error" alone
@@ -396,6 +428,16 @@ func (h *HTTP) consume(sessionID string, stream io.Reader, onLog func(string)) (
 		return lastText, fmt.Errorf("opencode: event stream error: %w", err)
 	}
 	return lastText, fmt.Errorf("opencode: event stream ended before the build finished")
+}
+
+// clipText bounds one narration block in the log — reasoning models sometimes
+// write essays, and the log is for following along, not archiving them.
+func clipText(s string) string {
+	const max = 4000
+	if len(s) > max {
+		return s[:max] + "…"
+	}
+	return s
 }
 
 func partStatus(state json.RawMessage) string {
