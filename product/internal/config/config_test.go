@@ -116,7 +116,7 @@ func TestGlesysEnabledAndDomainGates(t *testing.T) {
 
 func TestRegistrantComplete(t *testing.T) {
 	full := Registrant{
-		Organization: "Transcend Software", NationalID: 5566778899,
+		Organization: "Transcend Software", NationalID: "556677-8899",
 		Address: "Storgatan 1", City: "Stockholm", ZipCode: "11122",
 		Country: "SE", Email: "rasmus@transcendsoftware.se",
 	}

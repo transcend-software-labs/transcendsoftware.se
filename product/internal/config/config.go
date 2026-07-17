@@ -198,7 +198,7 @@ type Registrant struct {
 	Firstname    string
 	Lastname     string
 	Organization string
-	NationalID   int
+	NationalID   string // organisationsnummer, e.g. "559218-1050" — a STRING (hyphen, leading zeros; GleSYS 400s on a JSON number)
 	Address      string
 	City         string
 	ZipCode      string
@@ -210,7 +210,7 @@ type Registrant struct {
 // Complete reports whether the registrant has the minimum GleSYS needs to
 // register a domain (a missing organisationsnummer is the usual gap).
 func (r Registrant) Complete() bool {
-	return r.NationalID > 0 && r.Organization != "" && r.Address != "" &&
+	return r.NationalID != "" && r.Organization != "" && r.Address != "" &&
 		r.City != "" && r.ZipCode != "" && r.Country != "" && r.Email != ""
 }
 
@@ -432,7 +432,7 @@ func loadRegistrant() Registrant {
 		Firstname:    envOr("GLESYS_REGISTRANT_FIRSTNAME", "Rasmus"),
 		Lastname:     envOr("GLESYS_REGISTRANT_LASTNAME", "Kockum"),
 		Organization: envOr("GLESYS_REGISTRANT_ORG", "Transcend Software AB"),
-		NationalID:   envIntOr("GLESYS_REGISTRANT_NATIONAL_ID", 5592181050), // organisationsnummer 559218-1050
+		NationalID:   envOr("GLESYS_REGISTRANT_NATIONAL_ID", "559218-1050"),
 		Address:      envOr("GLESYS_REGISTRANT_ADDRESS", "Salagatan 36A"),
 		City:         envOr("GLESYS_REGISTRANT_CITY", "Uppsala"),
 		ZipCode:      envOr("GLESYS_REGISTRANT_ZIP", "75326"),

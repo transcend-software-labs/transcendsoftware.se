@@ -15,7 +15,7 @@ import (
 func testRegistrant() Registrant {
 	return Registrant{
 		Firstname: "Rasmus", Lastname: "Kockum", Organization: "Transcend Software",
-		NationalID: 5566778899, Address: "Storgatan 1", City: "Stockholm",
+		NationalID: "556677-8899", Address: "Storgatan 1", City: "Stockholm",
 		ZipCode: "11122", Country: "SE", Email: "rasmus@transcendsoftware.se", PhoneNumber: "+46700000000",
 	}
 }
@@ -140,7 +140,7 @@ func TestRegisterDomain_UsesRegistrantAndAutoRenew(t *testing.T) {
 	if regParams["domainname"] != "mittbageri.se" || regParams["numyears"] != float64(1) {
 		t.Errorf("register params domainname/numyears: %+v", regParams)
 	}
-	if regParams["organization"] != "Transcend Software" || regParams["nationalid"] != float64(5566778899) ||
+	if regParams["organization"] != "Transcend Software" || regParams["nationalid"] != "556677-8899" ||
 		regParams["country"] != "SE" || regParams["email"] == "" {
 		t.Errorf("registrant not applied: %+v", regParams)
 	}

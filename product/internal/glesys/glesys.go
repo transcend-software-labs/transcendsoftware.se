@@ -54,7 +54,7 @@ type Registrant struct {
 	Firstname    string
 	Lastname     string
 	Organization string
-	NationalID   int
+	NationalID   string // sent verbatim — GleSYS requires a JSON string ("The nationalid must be a string")
 	Address      string
 	City         string
 	ZipCode      string

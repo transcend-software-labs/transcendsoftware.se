@@ -194,21 +194,28 @@ func (o *Orchestrator) provisionDomainIntent(projectID string) {
 	// The customer already paid for the domain in checkout, but we couldn't
 	// register it — refund the domain amount and clear the prepaid marker (so a
 	// later manual buy bills normally). Their subscription stays active.
-	refunded := false
-	if buy && o.biller != nil && prepaidOre > 0 && subID != "" {
+	// This is money handling — the operator email must say EXACTLY what
+	// happened to the charge, especially when the refund itself fails: a
+	// silent refund failure means a customer paid for nothing.
+	note := "Their subscription is active; they can retry from their project page."
+	switch {
+	case !buy:
+		// BYOD — nothing was charged.
+	case o.biller == nil || prepaidOre <= 0 || subID == "":
+		note = fmt.Sprintf("NO REFUND ATTEMPTED — no upfront charge on record "+
+			"(amount=%d öre, subscription=%q). Check the Stripe invoice manually. ", prepaidOre, subID) + note
+	default:
 		if _, rerr := o.biller.RefundSubscriptionCharge(ctx, subID, prepaidOre); rerr != nil {
 			o.log.Error("provision domain intent: refund", "project", projectID, "err", rerr)
+			note = fmt.Sprintf("REFUND FAILED (%v) — refund %d öre manually in Stripe (subscription %s). ",
+				rerr, prepaidOre, subID) + note
 		} else {
-			refunded = true
+			note = fmt.Sprintf("The %d öre domain charge was auto-refunded. ", prepaidOre) + note
 		}
 	}
 	if fresh, ferr := o.store.ProjectByID(ctx, projectID); ferr == nil && fresh.DomainPrepaid {
 		fresh.DomainPrepaid = false
 		_ = o.save(ctx, fresh)
-	}
-	note := "Their subscription is active; they can retry from their project page."
-	if refunded {
-		note = "The domain charge was auto-refunded. Their subscription is active; they can retry from their project page."
 	}
 	o.notifyOperator(ctx, "Forge: bundled domain provisioning failed",
 		fmt.Sprintf("%q chose the domain %s at checkout, but provisioning it failed: %v\n%s\n\n%s",
