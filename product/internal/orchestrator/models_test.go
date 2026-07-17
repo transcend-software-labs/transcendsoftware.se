@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
+	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
+	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 )
 
 // TestResolveProfile covers the per-project model resolution: empty = track the
@@ -37,5 +39,27 @@ func TestResolveProfile(t *testing.T) {
 	// No registry wired → not ok (caller falls back to the global client).
 	if _, ok := (&Orchestrator{}).resolveProfile("glm", implKind); ok {
 		t.Error("nil modelCfg should resolve ok=false")
+	}
+}
+
+// The intake follows the SAME planner profile as the plan step: the questions
+// and design options come from the model that will plan the site. With no
+// registry wired (dev), both fall back to the global client.
+func TestIntakeFor_TracksPlannerProfile(t *testing.T) {
+	cfg := config.Config{
+		AnthropicAPIKey: "sk", ZenAPIKey: "zk", ZenBaseURL: "https://zen",
+		DefaultPlannerProfile: "glm", DefaultImplProfile: "kimi",
+	}
+	def := llm.NewFake()
+	o := &Orchestrator{modelCfg: &cfg, intake: def}
+
+	if got := o.intakeFor(&project.Project{PlannerProfile: "fable5"}); got == llm.Intake(def) {
+		t.Error("a resolvable profile should build a per-project intake client, not the default")
+	}
+
+	// No registry wired → the global intake client.
+	bare := &Orchestrator{intake: def}
+	if got := bare.intakeFor(&project.Project{PlannerProfile: "fable5"}); got != llm.Intake(def) {
+		t.Error("without a profile registry the default intake client must be used")
 	}
 }

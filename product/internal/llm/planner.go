@@ -14,3 +14,14 @@ func NewPlanner(provider, baseURL, apiKey, model, effort string) Planner {
 	}
 	return NewOpenAICompat(baseURL, apiKey, model).WithEffort(effort)
 }
+
+// NewIntake builds an Intake client from the same resolved model spec. The
+// clarifying questions and design options should come from the SAME model
+// that will plan the site — they shape what it plans, and a mismatched pair
+// means the intake asks for things the planner then ignores (or vice versa).
+func NewIntake(provider, baseURL, apiKey, model, effort string) Intake {
+	if provider == "anthropic" {
+		return NewAnthropic(apiKey, model, effort)
+	}
+	return NewOpenAICompat(baseURL, apiKey, model).WithEffort(effort)
+}

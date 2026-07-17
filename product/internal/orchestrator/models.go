@@ -44,6 +44,17 @@ func (o *Orchestrator) plannerFor(p *project.Project) (llm.Planner, string) {
 	return llm.NewPlanner(string(rm.Provider), rm.BaseURL, rm.APIKey, rm.Model, rm.Effort), modelLabel(rm.Model, rm.Effort)
 }
 
+// intakeFor returns the intake client for a project, honoring its
+// PlannerProfile the same way plannerFor does — the clarifying questions and
+// design options come from the model that will plan the site.
+func (o *Orchestrator) intakeFor(p *project.Project) llm.Intake {
+	rm, ok := o.resolveProfile(p.PlannerProfile, plannerKind)
+	if !ok {
+		return o.intake
+	}
+	return llm.NewIntake(string(rm.Provider), rm.BaseURL, rm.APIKey, rm.Model, rm.Effort)
+}
+
 // implFor returns the implementation model override + a display label. A zero
 // ModelSpec means "use the builder's configured default" (current behavior).
 func (o *Orchestrator) implFor(p *project.Project) (builder.ModelSpec, string) {
