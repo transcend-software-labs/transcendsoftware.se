@@ -31,6 +31,22 @@ func TestModelProfiles(t *testing.T) {
 	if g, ok := zen.ResolveModel("grok"); !ok || g.BaseURL != "https://opencode.ai/zen/v1" || g.APIKey != "zk" {
 		t.Errorf("grok resolve = %+v ok=%v (want the main zen gateway)", g, ok)
 	}
+	// Kimi K3 has two routes: via the go gateway (zen key) and first-party
+	// Moonshot (its own key + base URL). Each resolves only with its own key.
+	if k3, ok := zen.ResolveModel("kimi-k3"); !ok || k3.BaseURL != "https://zen" || k3.APIKey != "zk" {
+		t.Errorf("kimi-k3 resolve = %+v ok=%v (want the go gateway)", k3, ok)
+	}
+	if _, ok := zen.ResolveModel("kimi-k3-moonshot"); ok {
+		t.Error("moonshot profile must not resolve without a moonshot key")
+	}
+	moon := Config{MoonshotAPIKey: "mk"}
+	m, ok := moon.ResolveModel("kimi-k3-moonshot")
+	if !ok || m.BaseURL != "https://api.moonshot.ai/v1" || m.APIKey != "mk" || m.Model == "" {
+		t.Errorf("kimi-k3-moonshot resolve = %+v ok=%v", m, ok)
+	}
+	if _, ok := moon.ResolveModel("kimi-k3"); ok {
+		t.Error("zen profile must not resolve with only a moonshot key")
+	}
 }
 
 func TestModelProfileGateways(t *testing.T) {
@@ -38,9 +54,10 @@ func TestModelProfileGateways(t *testing.T) {
 	for _, p := range allProfiles() {
 		byKey[p.Key] = p
 	}
-	// deepseek/minimax need opencode's native provider (full list); kimi/glm/grok don't.
-	wantNative := map[string]bool{"deepseek": true, "deepseek-flash": true, "minimax": true}
-	for _, k := range []string{"kimi", "glm", "grok", "deepseek", "deepseek-flash", "minimax"} {
+	// deepseek/minimax/kimi-k3 need opencode's native provider (full list);
+	// kimi/glm/grok — and kimi-k3-moonshot (not a go-gateway model) — don't.
+	wantNative := map[string]bool{"deepseek": true, "deepseek-flash": true, "minimax": true, "kimi-k3": true}
+	for _, k := range []string{"kimi", "glm", "grok", "deepseek", "deepseek-flash", "minimax", "kimi-k3", "kimi-k3-moonshot"} {
 		if byKey[k].NativeGo != wantNative[k] {
 			t.Errorf("%s NativeGo = %v, want %v", k, byKey[k].NativeGo, wantNative[k])
 		}

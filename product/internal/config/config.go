@@ -97,10 +97,13 @@ type Config struct {
 	// Per-build model profiles (see models.go): the operator picks a planner +
 	// implementation model per build from /admin. ZenAPIKey/ZenBaseURL back the
 	// OpenAI-compatible profiles (Kimi/GLM/Grok/MiniMax/DeepSeek via the OpenCode
-	// Zen gateway); the anthropic profiles use AnthropicAPIKey. Default* is the
-	// combo used when a project hasn't overridden it (reproduces current wiring).
+	// Zen gateway); MoonshotAPIKey backs the first-party Kimi profiles (same
+	// models, Moonshot's own api.moonshot.ai); the anthropic profiles use
+	// AnthropicAPIKey. Default* is the combo used when a project hasn't
+	// overridden it (reproduces current wiring).
 	ZenAPIKey             string
 	ZenBaseURL            string
+	MoonshotAPIKey        string
 	DefaultPlannerProfile string
 	DefaultImplProfile    string
 
@@ -352,6 +355,9 @@ func Load() Config {
 	if c.ZenAPIKey == "" && strings.Contains(c.LLMBaseURL, "opencode.ai/zen") {
 		c.ZenAPIKey = c.LLMAPIKey
 	}
+	// Moonshot first-party (the kimi-*-moonshot profiles): same Kimi models as
+	// the Go gateway, but direct — lets a build A/B the route, not just the model.
+	c.MoonshotAPIKey = os.Getenv("MOONSHOT_API_KEY")
 	// Forge's global default models: Grok 4.5 via the Zen gateway for BOTH the
 	// plan and the implementation (Rasmus, 2026-07-15). Projects that don't pin
 	// an override track this, so changing it here (or via the env vars) moves

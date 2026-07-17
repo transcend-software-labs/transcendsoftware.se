@@ -6,12 +6,16 @@ package config
 // {provider, base URL, key, model id, effort}, so a profile bundles all of it;
 // the credentials/URL are resolved from Config at use time (ResolveModel).
 //
-// Two provider families:
+// Three provider families:
 //   - anthropic: the native Anthropic Messages API (internal/llm.Anthropic for
 //     the planner; opencode's anthropic provider for the impl). Needs
 //     ANTHROPIC_API_KEY.
 //   - zen: OpenAI-compatible via the OpenCode Zen Go gateway
 //     (opencode.ai/zen/go/v1). Needs OPENCODE_GO_API_KEY.
+//   - moonshot: Moonshot's own OpenAI-compatible API (api.moonshot.ai/v1),
+//     first-party Kimi. Needs MOONSHOT_API_KEY. Same OpenAI-compatible path as
+//     zen everywhere (planner shim + the sandbox entrypoint's generic provider
+//     block) — only the base URL and key differ.
 //
 // Gateway model slugs are env-overridable (MODEL_*) since the exact Zen catalog
 // id may differ from the label.
@@ -21,6 +25,7 @@ type ModelProvider string
 const (
 	ProviderAnthropic ModelProvider = "anthropic"
 	ProviderZen       ModelProvider = "zen"
+	ProviderMoonshot  ModelProvider = "moonshot"
 )
 
 // ModelProfile is one selectable model. In/Out prices are USD per 1M tokens,
@@ -45,7 +50,10 @@ type ModelProfile struct {
 	NativeGo bool
 }
 
-const zenMainGateway = "https://opencode.ai/zen/v1"
+const (
+	zenMainGateway  = "https://opencode.ai/zen/v1"
+	moonshotGateway = "https://api.moonshot.ai/v1"
+)
 
 // allProfiles is the full catalog (independent of which keys are configured).
 func allProfiles() []ModelProfile {
@@ -54,6 +62,12 @@ func allProfiles() []ModelProfile {
 		{Key: "fable5", Label: "Claude Fable 5", Provider: ProviderAnthropic, Model: envOr("MODEL_FABLE5", "claude-fable-5"), Effort: "xhigh", InPerM: 10, OutPerM: 50},
 		{Key: "opus48", Label: "Claude Opus 4.8", Provider: ProviderAnthropic, Model: envOr("MODEL_OPUS48", "claude-opus-4-8"), Effort: "high", InPerM: 5, OutPerM: 25},
 		{Key: "kimi", Label: "Kimi K2", Provider: ProviderZen, Model: envOr("MODEL_KIMI", "kimi-k2.7-code"), InPerM: 0.6, OutPerM: 2.5},
+		// Kimi K3 twice, to compare routes: via OpenCode Go (native provider —
+		// a brand-new model is safer on the full list than the lite shim) and
+		// via Moonshot first-party. Same model, same list price ($3/$15); no
+		// forced effort — K3 is a reasoning model, let it use its default.
+		{Key: "kimi-k3", Label: "Kimi K3", Provider: ProviderZen, Model: envOr("MODEL_KIMI_K3", "kimi-k3"), InPerM: 3, OutPerM: 15, NativeGo: true},
+		{Key: "kimi-k3-moonshot", Label: "Kimi K3 (Moonshot)", Provider: ProviderMoonshot, Model: envOr("MODEL_KIMI_K3_MOONSHOT", "kimi-k3"), InPerM: 3, OutPerM: 15},
 		{Key: "glm", Label: "GLM 5.2", Provider: ProviderZen, Model: envOr("MODEL_GLM", "glm-5.2"), InPerM: 0.6, OutPerM: 2.2},
 		{Key: "grok", Label: "Grok 4.5", Provider: ProviderZen, Model: envOr("MODEL_GROK", "grok-4.5"), Effort: "high", InPerM: 2, OutPerM: 6, BaseURL: envOr("MODEL_GROK_BASE", zenMainGateway)},
 		{Key: "minimax", Label: "MiniMax M3", Provider: ProviderZen, Model: envOr("MODEL_MINIMAX", "minimax-m3"), Effort: "high", InPerM: 0.5, OutPerM: 2, NativeGo: true},
@@ -79,6 +93,8 @@ func (c Config) profileEnabled(p ModelProfile) bool {
 		return c.AnthropicAPIKey != ""
 	case ProviderZen:
 		return c.ZenAPIKey != ""
+	case ProviderMoonshot:
+		return c.MoonshotAPIKey != ""
 	}
 	return false
 }
@@ -119,6 +135,12 @@ func (c Config) ResolveModel(key string) (ResolvedModel, bool) {
 		r.BaseURL = p.BaseURL // per-profile gateway override (e.g. grok on /zen/v1)
 		if r.BaseURL == "" {
 			r.BaseURL = c.ZenBaseURL
+		}
+	case ProviderMoonshot:
+		r.APIKey = c.MoonshotAPIKey
+		r.BaseURL = p.BaseURL
+		if r.BaseURL == "" {
+			r.BaseURL = moonshotGateway
 		}
 	}
 	return r, true
