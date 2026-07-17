@@ -61,10 +61,13 @@ type Machines interface {
 	// IPs). Destroying an already-absent app is not an error — the reaper and
 	// the admin destroy action must be idempotent.
 	DestroyApp(ctx context.Context, appName string) error
-	// SweepSandboxes destroys sandbox machines older than olderThan, returning
-	// how many were reaped. A build never legitimately outlives its pipeline
-	// timeout, so anything older is a leak (e.g. manual testing leftovers).
-	SweepSandboxes(ctx context.Context, olderThan time.Duration) (int, error)
+	// SweepSandboxes destroys leaked sandbox machines, returning how many were
+	// reaped. A machine older than grace whose ID is not in keep has no active
+	// build driving it — an orphan (e.g. a restart interrupted its teardown) —
+	// and every orphan burns an agent's tokens until killed. Machines in keep
+	// belong to running builds and survive until max, the hard backstop no
+	// legitimate build outlives (the pipeline timeout is well under it).
+	SweepSandboxes(ctx context.Context, grace, max time.Duration, keep []string) (int, error)
 	// AppDeployToken returns a deploy token for appName, injected into the
 	// sandbox so the agent can run `fly deploy`. Scoped to appName alone, minted
 	// per build (see HTTP.AppDeployToken).
@@ -124,9 +127,10 @@ type Fake struct {
 	execs         []FakeExec
 	destroyedApps []string
 	appSecrets    map[string]map[string]string
-	certs         map[string]bool // "app|hostname" → cert requested
-	certActive    bool            // what CheckCertificate reports (settable to drive poller tests)
-	allocatedIPv6 []string        // apps a dedicated IPv6 was allocated on
+	certs         map[string]bool      // "app|hostname" → cert requested
+	certActive    bool                 // what CheckCertificate reports (settable to drive poller tests)
+	allocatedIPv6 []string             // apps a dedicated IPv6 was allocated on
+	sandboxes     map[string]time.Time // live sandbox machines: id → created (drives sweep tests)
 }
 
 // FakeExec is one recorded Exec call.
@@ -139,12 +143,46 @@ type FakeExec struct {
 func NewFake() *Fake { return &Fake{} }
 
 func (f *Fake) SpawnSandbox(_ context.Context, spec SpawnSpec) (*Sandbox, error) {
+	id := "dev-machine-" + spec.TaskID
+	f.mu.Lock()
+	if f.sandboxes == nil {
+		f.sandboxes = map[string]time.Time{}
+	}
+	f.sandboxes[id] = time.Now()
+	f.mu.Unlock()
 	// Addr empty → the driver factory uses the fake opencode driver (dev mode).
-	return &Sandbox{MachineID: "dev-machine-" + spec.TaskID, AppName: "dev-app", Addr: ""}, nil
+	return &Sandbox{MachineID: id, AppName: "dev-app", Addr: ""}, nil
 }
 
-func (f *Fake) DestroySandbox(_ context.Context, _ *Sandbox) error { return nil }
-func (f *Fake) EnsureApp(_ context.Context, _ string) error        { return nil }
+func (f *Fake) DestroySandbox(_ context.Context, sb *Sandbox) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.sandboxes, sb.MachineID)
+	return nil
+}
+
+// AddSandboxMachine registers a machine with a chosen creation time — tests
+// use it to simulate leaked/orphaned sandboxes.
+func (f *Fake) AddSandboxMachine(id string, created time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.sandboxes == nil {
+		f.sandboxes = map[string]time.Time{}
+	}
+	f.sandboxes[id] = created
+}
+
+// SandboxMachines lists the ids of machines still alive.
+func (f *Fake) SandboxMachines() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ids := make([]string, 0, len(f.sandboxes))
+	for id := range f.sandboxes {
+		ids = append(ids, id)
+	}
+	return ids
+}
+func (f *Fake) EnsureApp(_ context.Context, _ string) error { return nil }
 
 func (f *Fake) SetAppSecrets(_ context.Context, appName string, secrets map[string]string) error {
 	f.mu.Lock()
@@ -182,7 +220,25 @@ func (f *Fake) DestroyedApps() []string {
 	return out
 }
 
-func (f *Fake) SweepSandboxes(_ context.Context, _ time.Duration) (int, error) { return 0, nil }
+// SweepSandboxes mirrors the real client's logic over the tracked machines.
+func (f *Fake) SweepSandboxes(_ context.Context, grace, max time.Duration, keep []string) (int, error) {
+	kept := make(map[string]bool, len(keep))
+	for _, id := range keep {
+		kept[id] = true
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	reaped := 0
+	for id, created := range f.sandboxes {
+		age := time.Since(created)
+		if age <= grace || (kept[id] && age <= max) {
+			continue
+		}
+		delete(f.sandboxes, id)
+		reaped++
+	}
+	return reaped, nil
+}
 
 func (f *Fake) Exec(_ context.Context, machineID string, command []string, _ int) (ExecResult, error) {
 	f.mu.Lock()

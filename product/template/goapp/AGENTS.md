@@ -252,6 +252,15 @@ get `alt=""`), and `<title>`s that read `Specific thing · Site name` rather tha
   and do NOT weaken auth/CSRF/persistence coverage. Unit tests are a compile +
   invariant check; the browser smoke test above is the real functional gate —
   don't rabbit-hole here.
+- **Test the POST paths, not just the pages.** The starter's render test only
+  GETs pages — it cannot catch a form handler that crashes on submit. The trap:
+  a template reading a field your result type no longer has renders FINE on GET
+  (the data block hides behind `{{with .Data}}`) and 500s only when a visitor
+  actually submits. Every handler that re-renders a template with data — form →
+  results, order → confirmation — needs a test that POSTs it and asserts a
+  clean 200. Know that after you deploy, Forge submits the site's primary
+  public form with test data: a 5xx or template error there is a build defect
+  that comes straight back to you as a finding.
 - **Test every user path in a real browser before deploying — required.** Unit
   tests and `curl`/health checks run no JavaScript, so they miss broken
   form/redirect/script flows (the #1 "I click the button and nothing happens"

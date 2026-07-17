@@ -491,6 +491,16 @@ func (b *Sandbox) review(ctx context.Context, sb *fly.Sandbox, preview string, r
 	} else {
 		emit(hooks.OnLog, fmt.Sprintf("Design audit: %d finding(s).", len(findings)))
 	}
+
+	// The audit proves the pages render; this proves the money path RUNS —
+	// submit the primary public form and require it not to crash (see
+	// formcheck.go). A failure lands in findings, so the polish pass fixes it
+	// and the operator review shows it.
+	formFinding, note := auditPrimaryForm(ctx, preview)
+	emit(hooks.OnLog, note)
+	if formFinding != nil {
+		findings = append(findings, *formFinding)
+	}
 	return shots, critique, findings
 }
 

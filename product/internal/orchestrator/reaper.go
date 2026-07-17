@@ -11,15 +11,24 @@ import (
 )
 
 // sandboxMaxAge is how old a sandbox machine may get before the sweep reaps
-// it. Builds are bounded by pipelineTimeout (110m), so 2h means "leaked".
-const sandboxMaxAge = 150 * time.Minute
+// it regardless of ownership. Builds are bounded by pipelineTimeout (110m),
+// so 2h means "leaked". sandboxOrphanGrace is the much shorter leash for a
+// machine no active build owns — e.g. a restart interrupted its teardown and
+// left agents running in it, burning tokens (seen live on SEO Probe). The
+// grace covers the window between machine creation and the iteration's
+// MachineID being persisted.
+const (
+	sandboxMaxAge      = 150 * time.Minute
+	sandboxOrphanGrace = 15 * time.Minute
+)
 
 // Reap removes infrastructure that should no longer exist:
 //
 //   - preview apps of failed projects (a failed project keeps no site up),
 //   - preview apps untouched longer than previewTTL — the project is marked
 //     expired so the customer sees why the link died,
-//   - sandbox machines older than any legitimate build (leak sweep).
+//   - sandbox machines no active build owns (orphan sweep, minutes) and any
+//     older than a legitimate build could be (hard backstop).
 //
 // Idempotent and best-effort: one broken project must not stop the sweep.
 // Called on startup and periodically (see StartReaper).
@@ -31,8 +40,12 @@ func (o *Orchestrator) Reap(ctx context.Context, previewTTL time.Duration) {
 	// every restart. Re-attach if its sandbox is still alive, else reap — the
 	// same idempotent pair startup recovery uses.
 	const zombieAfter = 20 * time.Minute
+	var keepMachines []string // machines owned by an active build — the sweep spares them
 	if its, err := o.store.ActiveIterations(ctx); err == nil {
 		for _, it := range its {
+			if it.MachineID != "" {
+				keepMachines = append(keepMachines, it.MachineID)
+			}
 			if time.Since(it.HeartbeatAt) < zombieAfter || o.hasActive(it.ProjectID) {
 				continue
 			}
@@ -68,7 +81,7 @@ func (o *Orchestrator) Reap(ctx context.Context, previewTTL time.Duration) {
 		}
 	}
 
-	if n, err := o.machines.SweepSandboxes(ctx, sandboxMaxAge); err != nil {
+	if n, err := o.machines.SweepSandboxes(ctx, sandboxOrphanGrace, sandboxMaxAge, keepMachines); err != nil {
 		o.log.Error("reap: sweep sandboxes", "err", err)
 	} else if n > 0 {
 		o.log.Warn("reap: destroyed leaked sandbox machines", "count", n)

@@ -91,7 +91,9 @@ func main() {
 	orch.RecoverInterrupted(context.Background()) // reap builds left running by a prior run
 	// Reap zombie infrastructure hourly: preview apps of failed projects,
 	// previews idle past PREVIEW_TTL_DAYS, and leaked sandbox machines.
-	orch.StartReaper(context.Background(), time.Hour, cfg.PreviewTTL)
+	// 10-minute cadence: the sweep is cheap, and it bounds how long an orphaned
+	// sandbox (agents running, nobody driving) can burn tokens.
+	orch.StartReaper(context.Background(), 10*time.Minute, cfg.PreviewTTL)
 	// Branded preview URLs: previews are handed out as <host>.<PREVIEW_DOMAIN>
 	// and reverse-proxied by the web layer, hiding the internal fly.dev URLs.
 	if cfg.PreviewDomain != "" {

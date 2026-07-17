@@ -178,3 +178,42 @@ func TestPurgeAllProjects_CleansEverything(t *testing.T) {
 		}
 	}
 }
+
+// The orphan sweep: a sandbox machine whose project has no active build dies
+// after the short grace; a machine owned by a running build survives. This is
+// the "restart interrupted the teardown, agents left burning tokens" case —
+// before this sweep an orphan lived until the 150-minute age backstop.
+func TestReap_SweepsOrphanedSandboxes(t *testing.T) {
+	st := store.NewMemory()
+	orch, machines := newTestOrchWithVerifier(st, NoopVerifier{})
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	// An active build owns m-active (fresh heartbeat, so the zombie pass
+	// leaves it alone and it lands on the sweep's keep-list).
+	seedWithStatus(t, st, "building", project.StatusBuilding, "", now)
+	_ = st.CreateIteration(ctx, &project.Iteration{
+		ID: "i-act", ProjectID: "building", Number: 1, Status: project.StatusBuilding,
+		MachineID: "m-active", CreatedAt: now, HeartbeatAt: now,
+	})
+
+	machines.AddSandboxMachine("m-active", now.Add(-60*time.Minute)) // old but owned → keep
+	machines.AddSandboxMachine("m-orphan", now.Add(-30*time.Minute)) // old, unowned → reap
+	machines.AddSandboxMachine("m-fresh", now.Add(-5*time.Minute))   // young, unowned → grace
+	machines.AddSandboxMachine("m-ancient", now.Add(-3*time.Hour))   // unowned + past backstop → reap
+
+	orch.Reap(ctx, 0)
+
+	alive := machines.SandboxMachines()
+	if !slices.Contains(alive, "m-active") {
+		t.Errorf("active build's machine was reaped; alive: %v", alive)
+	}
+	if !slices.Contains(alive, "m-fresh") {
+		t.Errorf("machine inside the grace window was reaped; alive: %v", alive)
+	}
+	for _, gone := range []string{"m-orphan", "m-ancient"} {
+		if slices.Contains(alive, gone) {
+			t.Errorf("%s should have been reaped; alive: %v", gone, alive)
+		}
+	}
+}

@@ -443,9 +443,10 @@ func (h *HTTP) DestroyApp(ctx context.Context, appName string) error {
 	return err
 }
 
-// SweepSandboxes destroys machines in the sandbox app older than olderThan.
-// Builds are bounded by the pipeline timeout, so anything older is a leak.
-func (h *HTTP) SweepSandboxes(ctx context.Context, olderThan time.Duration) (int, error) {
+// SweepSandboxes destroys leaked machines in the sandbox app: orphans (older
+// than grace, not in keep — no active build owns them) and anything past max,
+// the hard backstop no legitimate build outlives.
+func (h *HTTP) SweepSandboxes(ctx context.Context, grace, max time.Duration, keep []string) (int, error) {
 	var machines []struct {
 		ID        string    `json:"id"`
 		CreatedAt time.Time `json:"created_at"`
@@ -454,10 +455,14 @@ func (h *HTTP) SweepSandboxes(ctx context.Context, olderThan time.Duration) (int
 		fmt.Sprintf("/apps/%s/machines", h.sandboxApp), nil, &machines); err != nil {
 		return 0, err
 	}
-	cutoff := time.Now().Add(-olderThan)
+	kept := make(map[string]bool, len(keep))
+	for _, id := range keep {
+		kept[id] = true
+	}
 	reaped := 0
 	for _, m := range machines {
-		if m.CreatedAt.After(cutoff) {
+		age := time.Since(m.CreatedAt)
+		if age <= grace || (kept[m.ID] && age <= max) {
 			continue
 		}
 		if err := h.do(ctx, http.MethodDelete,
