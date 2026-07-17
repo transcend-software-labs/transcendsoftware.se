@@ -10,6 +10,8 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"time"
 
@@ -20,6 +22,18 @@ import (
 // "forge.transcendsoftware.se"). Empty keeps previews on their direct URLs.
 func (o *Orchestrator) SetPreviewDomain(domain string) {
 	o.previewDomain = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(domain)), ".")
+}
+
+// SetPreviewSelfProbe points branded-preview verification at our OWN HTTP
+// listener (e.g. "http://127.0.0.1:8080"). Probing the public branded URL from
+// inside Fly hairpins through our own dedicated edge IP — a route that proved
+// flaky from this vantage point while working fine from the customer's — and
+// the static parts of the chain (wildcard DNS, cert, edge routing) don't need
+// per-build re-verification anyway. What DOES need it per build is ours:
+// the persisted host resolving through the reverse proxy to a live backend —
+// exactly what a localhost request with the branded Host header exercises.
+func (o *Orchestrator) SetPreviewSelfProbe(baseURL string) {
+	o.previewSelfProbe = strings.TrimRight(baseURL, "/")
 }
 
 // PreviewDomain reports the configured branded-preview domain ("" = off).
@@ -53,7 +67,7 @@ func (o *Orchestrator) brandedPreviewURL(ctx context.Context, p *project.Project
 	// short window, not the full deploy window.
 	vctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
-	if err := o.verifier.Verify(vctx, branded); err != nil {
+	if err := o.verifyBranded(vctx, p.PreviewHost); err != nil {
 		o.log.Error("branded preview host not reachable — serving the direct URL",
 			"project", p.ID, "branded", branded, "err", err)
 		o.notifyOperator(ctx, "Forge: branded preview host failed",
@@ -65,6 +79,49 @@ func (o *Orchestrator) brandedPreviewURL(ctx context.Context, p *project.Project
 		return directURL
 	}
 	return branded
+}
+
+// verifyBranded checks that the branded host serves. With a self-probe
+// configured it asks our OWN listener with the branded Host header — the
+// per-build chain (persisted host → reverse proxy → live backend) without the
+// flaky in-Fly hairpin through the public edge. Otherwise it probes the public
+// URL via the verifier (dev, tests).
+func (o *Orchestrator) verifyBranded(ctx context.Context, host string) error {
+	branded := "https://" + host + "." + o.previewDomain
+	if o.previewSelfProbe == "" {
+		return o.verifier.Verify(ctx, branded)
+	}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		// The proxied app may 303 to /login (absolute URL on the branded host) —
+		// following it would dial the public edge, the exact path we're avoiding.
+		// The redirect itself already proves the proxy resolved and the backend
+		// answered.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	var lastErr error
+	for attempt := 0; ; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, o.previewSelfProbe+"/", nil)
+		if err != nil {
+			return err
+		}
+		req.Host = host + "." + o.previewDomain // previewProxy branches on this
+		resp, err := client.Do(req)
+		if err == nil {
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+			resp.Body.Close()
+			if resp.StatusCode < 400 {
+				return nil
+			}
+			err = fmt.Errorf("status %d via self-probe", resp.StatusCode)
+		}
+		lastErr = err
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("branded host not serving: %w", lastErr)
+		case <-time.After(3 * time.Second):
+		}
+	}
 }
 
 // healBrandedPreviews retries the branded host for projects stuck on their
@@ -87,7 +144,7 @@ func (o *Orchestrator) healBrandedPreviews(ctx context.Context) {
 		}
 		branded := "https://" + p.PreviewHost + "." + o.previewDomain
 		vctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		err := o.verifier.Verify(vctx, branded)
+		err := o.verifyBranded(vctx, p.PreviewHost)
 		cancel()
 		if err != nil {
 			continue

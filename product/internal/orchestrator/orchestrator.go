@@ -81,6 +81,10 @@ type Orchestrator struct {
 	changesPerMonth int
 	overageOre      int
 
+	// previewSelfProbe is our own listener's base URL for verifying branded
+	// hosts without hairpinning through the public edge (see SetPreviewSelfProbe).
+	previewSelfProbe string
+
 	// previewDomain serves previews under our own domain ("<host>.<domain>")
 	// through the web layer's reverse proxy, hiding the internal fly.dev URLs.
 	// "" = feature off, previews keep their direct URLs (see preview.go).

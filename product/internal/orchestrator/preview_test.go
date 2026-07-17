@@ -3,6 +3,8 @@ package orchestrator
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -268,5 +270,47 @@ func TestHealBrandedPreviews_UpgradesWhenHostAnswers(t *testing.T) {
 		if strings.Contains(u, "bageriet") {
 			t.Errorf("healed project should not be probed again, saw %v", v.seen)
 		}
+	}
+}
+
+// With a self-probe configured, branded verification asks OUR listener with
+// the branded Host header — proving row → proxy → backend without hairpinning
+// through the public edge (the vantage point that produced false alarms on
+// real first-previews). A redirect (e.g. a CRM's / → /login) counts as
+// serving; a proxy 404 (host not resolvable) does not.
+func TestVerifyBranded_SelfProbeUsesHostHeader(t *testing.T) {
+	var gotHost string
+	status := http.StatusSeeOther // a CRM-style redirect must PASS
+	web := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHost = r.Host
+		if status == http.StatusSeeOther {
+			w.Header().Set("Location", "https://"+r.Host+"/login")
+		}
+		w.WriteHeader(status)
+	}))
+	defer web.Close()
+
+	st := store.NewMemory()
+	v := &urlVerifier{failSubstr: "https://"} // the public path must never be used
+	orch, _ := newTestOrchWithVerifier(st, v)
+	orch.SetPreviewDomain("forge.example.se")
+	orch.SetPreviewSelfProbe(web.URL)
+
+	if err := orch.verifyBranded(context.Background(), "bageriet-aaaabb"); err != nil {
+		t.Fatalf("redirect via self-probe should verify, got %v", err)
+	}
+	if gotHost != "bageriet-aaaabb.forge.example.se" {
+		t.Errorf("probe Host = %q, want the branded host", gotHost)
+	}
+	if len(v.seen) != 0 {
+		t.Errorf("public verifier must not be used when self-probe is set, saw %v", v.seen)
+	}
+
+	// A proxy miss (404) fails within the ctx window.
+	status = http.StatusNotFound
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if err := orch.verifyBranded(ctx, "unknown-host"); err == nil {
+		t.Fatal("a 404 from the proxy must fail verification")
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -99,6 +100,15 @@ func main() {
 	if cfg.PreviewDomain != "" {
 		log.Info("previews: branded domain enabled", "domain", cfg.PreviewDomain)
 		orch.SetPreviewDomain(cfg.PreviewDomain)
+		// Verify branded hosts via our own listener (Host-header probe): probing
+		// the public URL from inside Fly hairpins through our own edge IP, which
+		// failed the 45s window on real first-previews while the host worked
+		// fine from the customer's side.
+		probeAddr := cfg.Addr
+		if strings.HasPrefix(probeAddr, ":") {
+			probeAddr = "127.0.0.1" + probeAddr
+		}
+		orch.SetPreviewSelfProbe("http://" + probeAddr)
 		// Self-provision the wildcard cert on this app (idempotent — Fly returns
 		// the existing cert on repeat) and log the DNS records the owner must set
 		// at the DNS host. Best-effort: until DNS + cert are live, each build's
