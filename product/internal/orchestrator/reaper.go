@@ -86,6 +86,10 @@ func (o *Orchestrator) Reap(ctx context.Context, previewTTL time.Duration) {
 	} else if n > 0 {
 		o.log.Warn("reap: destroyed leaked sandbox machines", "count", n)
 	}
+
+	// Not a reap, but the same cadence: upgrade previews stuck on their direct
+	// fly.dev URL to the branded host once it answers (see preview.go).
+	o.healBrandedPreviews(ctx)
 }
 
 // StartReaper runs Reap now and then every interval until ctx is done.

@@ -239,6 +239,13 @@ get `alt=""`), and `<title>`s that read `Specific thing · Site name` rather tha
   seeing their own booking — are fine; the ban is on owner/staff management UIs.)
 - Don't name columns with `password`/`hash`/`token`/`secret` unless the value
   is genuinely secret — the admin masks such columns.
+- **Never build a flow that needs the customer's API credentials.** No Gmail/
+  Google OAuth setup, no Stripe keys, no third-party tokens — the site owner
+  is non-technical and cannot produce them, and a text box is no place for a
+  secret. Email notifications are already provided: the built-in hooks
+  notifier (`internal/hooks`, configured by the platform) sends them — use it.
+  If the plan mentions an external integration, build the site to work fully
+  without it; the platform arranges integrations after delivery.
 - Stdlib only unless the plan clearly needs more. No JS frameworks, ever; the
   only client-side JS lives in `web/src/app.ts` (see "Client-side JS" above).
 - Validate and length-cap all user input (see `maxFieldLen`).

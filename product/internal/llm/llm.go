@@ -185,6 +185,14 @@ customer's language. Exact shape:
   For image kinds ("file"/"files") we could create ourselves — a logo, a
   background/hero, decorative art — also set "generatable": true. Don't ask for
   a file when the answer is a sentence.
+  NEVER ask for credentials: no API keys, OAuth client ids/secrets, account
+  logins or tokens, in any kind. The customer is non-technical and cannot
+  produce them, and secrets don't belong in a content box. The site must work
+  end-to-end without customer-supplied keys — email is provided by the
+  platform's built-in notifier (never Gmail/SMTP setup). If the request truly
+  hinges on an external account (a payment provider, a booking system), plan
+  the site to work without it and list the integration under not_included as
+  something arranged with the operator after delivery.
 Emit valid JSON only inside that block. It must agree with the markdown.
 
 Begin the response with a single line: "NAME: <a short 2-4 word project name>".`

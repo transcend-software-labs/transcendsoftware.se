@@ -58,11 +58,47 @@ func (o *Orchestrator) brandedPreviewURL(ctx context.Context, p *project.Project
 			"project", p.ID, "branded", branded, "err", err)
 		o.notifyOperator(ctx, "Forge: branded preview host failed",
 			fmt.Sprintf("%s did not come up for %q (falling back to %s).\n"+
-				"Check the wildcard DNS record and certificate for *.%s.\n\n%s",
-				branded, p.Name, directURL, o.previewDomain, o.projectLink(p.ID)))
+				"Probe error: %v\n"+
+				"The healer retries every reaper tick and upgrades the URL when the host answers; "+
+				"if this repeats, check the wildcard DNS record and certificate for *.%s.\n\n%s",
+				branded, p.Name, directURL, err, o.previewDomain, o.projectLink(p.ID)))
 		return directURL
 	}
 	return branded
+}
+
+// healBrandedPreviews retries the branded host for projects stuck on their
+// direct fly.dev URL. The build-time probe gets only 45 seconds — when it
+// loses the race (cold path, edge propagation), the customer used to keep the
+// internal URL until the next restart's backfill happened to fix it. Called
+// every reaper tick; verifies before flipping, so a genuinely broken host
+// changes nothing.
+func (o *Orchestrator) healBrandedPreviews(ctx context.Context) {
+	if o.previewDomain == "" {
+		return
+	}
+	ps, err := o.store.Projects(ctx)
+	if err != nil {
+		return
+	}
+	for _, p := range ps {
+		if p.PreviewURL == "" || p.PreviewHost == "" || !strings.Contains(p.PreviewURL, ".fly.dev") {
+			continue
+		}
+		branded := "https://" + p.PreviewHost + "." + o.previewDomain
+		vctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		err := o.verifier.Verify(vctx, branded)
+		cancel()
+		if err != nil {
+			continue
+		}
+		p.PreviewURL = branded
+		if err := o.save(ctx, p); err != nil {
+			o.log.Error("preview heal: save", "project", p.ID, "err", err)
+			continue
+		}
+		o.log.Info("preview heal: branded host recovered", "project", p.ID, "url", branded)
+	}
 }
 
 // BackfillPreviewHosts rewrites existing direct (fly.dev) preview URLs to the

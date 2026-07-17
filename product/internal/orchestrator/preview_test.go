@@ -226,3 +226,47 @@ func TestNormalizeCustomerHostname_RejectsPreviewDomain(t *testing.T) {
 		t.Error("fly.dev must still be rejected")
 	}
 }
+
+// The healer upgrades a preview stuck on its direct fly.dev URL (the 45s
+// build-time probe lost the race) to the branded host once it answers —
+// without waiting for a restart's backfill. A host that still fails, and
+// projects without a preview, stay untouched.
+func TestHealBrandedPreviews_UpgradesWhenHostAnswers(t *testing.T) {
+	st := store.NewMemory()
+	v := &urlVerifier{}
+	orch, _ := newTestOrchWithVerifier(st, v)
+	orch.SetPreviewDomain("forge.example.se")
+	ctx := context.Background()
+
+	stuck := seedPreviewProject(t, st, "aaaabbbbccccdddd0000111122223333", "Bageriet")
+	stuck.PreviewHost = "bageriet-aaaabb"
+	stuck.PreviewURL = "https://forge-aaaabbbbcccc.fly.dev"
+	_ = st.UpdateProject(ctx, stuck)
+
+	broken := seedPreviewProject(t, st, "eeeeffff00001111222233334444aaaa", "Salongen")
+	broken.PreviewHost = "salongen-eeeeff"
+	broken.PreviewURL = "https://forge-eeeeffff0000.fly.dev"
+	_ = st.UpdateProject(ctx, broken)
+
+	v.failSubstr = "salongen" // the salon's branded host still doesn't answer
+
+	orch.healBrandedPreviews(ctx)
+
+	got, _ := st.ProjectByID(ctx, stuck.ID)
+	if got.PreviewURL != "https://bageriet-aaaabb.forge.example.se" {
+		t.Errorf("stuck preview should be upgraded, got %q", got.PreviewURL)
+	}
+	still, _ := st.ProjectByID(ctx, broken.ID)
+	if still.PreviewURL != "https://forge-eeeeffff0000.fly.dev" {
+		t.Errorf("a failing host must not be flipped, got %q", still.PreviewURL)
+	}
+
+	// Second tick: the already-branded project is not re-probed.
+	v.seen = nil
+	orch.healBrandedPreviews(ctx)
+	for _, u := range v.seen {
+		if strings.Contains(u, "bageriet") {
+			t.Errorf("healed project should not be probed again, saw %v", v.seen)
+		}
+	}
+}
