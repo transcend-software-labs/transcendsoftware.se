@@ -64,6 +64,7 @@ var (
 	ErrBuyDisabled     = errors.New("buying domains is not available")
 	ErrDomainTooPricey = errors.New("domain price exceeds the allowed maximum")
 	ErrNotRegistrable  = errors.New("domain is not available to register")
+	ErrNoPrepaidAmount = errors.New("no captured prepaid amount for this domain")
 )
 
 // SetDomains wires the custom-domain feature: the registrar client, the Stripe
@@ -336,6 +337,53 @@ func (o *Orchestrator) BuyDomain(ctx context.Context, projectID, domain string) 
 	if state == registrar.StateSucceeded {
 		go o.reconcileInBackground(projectID)
 	}
+	return nil
+}
+
+// RetryPaidDomain re-runs provisioning for a bundled domain the customer already
+// paid for at checkout but that failed to provision (the GleSYS 404 bug, or any
+// transient failure). The operator supplies the hostname because a failed
+// provision clears the intent and never stored the name on the project. It
+// re-arms the checkout intent and runs the normal provisionDomainIntent path,
+// which marks the domain prepaid — so the already-paid registration is NOT
+// billed a second time on activation. Requires the captured prepaid amount
+// (DomainCostOre) to still be on the project, as a guard against silently
+// registering a domain the customer never paid for.
+func (o *Orchestrator) RetryPaidDomain(ctx context.Context, projectID, hostname string) error {
+	if o.domains == nil {
+		return ErrDomainsDisabled
+	}
+	host, ok := o.normalizeCustomerHostname(hostname)
+	if !ok {
+		return ErrBadHostname
+	}
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if !p.Paid {
+		return ErrNotPaid
+	}
+	if !p.CanAttachDomain() {
+		if p.HasDomain() {
+			return ErrDomainExists
+		}
+		return ErrNotEligible
+	}
+	if p.DomainCostOre <= 0 || p.StripeSubID == "" {
+		// Without the captured cost + subscription we can't prove it was prepaid,
+		// and provisionDomainIntent couldn't refund if this attempt also failed.
+		return ErrNoPrepaidAmount
+	}
+	// Re-arm the intent the checkout captured (cleared when the first attempt
+	// failed). Buy=true → provisionDomainIntent sets DomainPrepaid, so activation
+	// skips billing. DomainCostOre is left as captured (the prepaid amount).
+	p.DomainIntent = host
+	p.DomainIntentBuy = true
+	if err := o.save(ctx, p); err != nil {
+		return err
+	}
+	go o.provisionDomainIntent(projectID)
 	return nil
 }
 

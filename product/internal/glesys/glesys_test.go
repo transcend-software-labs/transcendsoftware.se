@@ -113,10 +113,16 @@ func TestAvailable_SurfacesError(t *testing.T) {
 }
 
 func TestRegisterDomain_UsesRegistrantAndAutoRenew(t *testing.T) {
-	var regParams map[string]any
+	var regParams, addParams map[string]any
+	var calls []string
 	autoRenew := false
 	c := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, r.URL.Path)
 		switch r.URL.Path {
+		case "/domain/add":
+			raw, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(raw, &addParams)
+			_, _ = io.WriteString(w, `{"response":{"domain":{"domainname":"mittbageri.se"}}}`)
 		case "/domain/register":
 			raw, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(raw, &regParams)
@@ -137,6 +143,14 @@ func TestRegisterDomain_UsesRegistrantAndAutoRenew(t *testing.T) {
 	if state != registrar.StatePending { // "REGISTER" → still registering
 		t.Errorf("state = %q, want pending", state)
 	}
+	// The domain must be ADDED to the account before it's registered, or GleSYS
+	// 404s the register call (the prod bug). Order matters: add, then register.
+	if len(calls) < 2 || calls[0] != "/domain/add" || calls[1] != "/domain/register" {
+		t.Fatalf("expected domain/add before domain/register, got call order %v", calls)
+	}
+	if addParams["domainname"] != "mittbageri.se" || addParams["createrecords"] != "0" {
+		t.Errorf("add params: %+v (want domainname + createrecords=0)", addParams)
+	}
 	if regParams["domainname"] != "mittbageri.se" || regParams["numyears"] != float64(1) {
 		t.Errorf("register params domainname/numyears: %+v", regParams)
 	}
@@ -146,6 +160,56 @@ func TestRegisterDomain_UsesRegistrantAndAutoRenew(t *testing.T) {
 	}
 	if !autoRenew {
 		t.Error("auto-renew not set after registration")
+	}
+}
+
+// TestRegisterDomain_ToleratesAlreadyAdded: on a retry the domain is already in
+// the account, so domain/add fails with an "already exists" message — register
+// must still proceed rather than abort.
+func TestRegisterDomain_ToleratesAlreadyAdded(t *testing.T) {
+	registered := false
+	c := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/domain/add":
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"response":{"status":{"text":"Domain already exists in the account"}}}`)
+		case "/domain/register":
+			registered = true
+			_, _ = io.WriteString(w, `{"response":{"domain":{"domainname":"x.se","registrarinfo":{"state":"REGISTER"}}}}`)
+		default:
+			_, _ = io.WriteString(w, `{"response":{}}`)
+		}
+	})
+	if _, err := c.RegisterDomain(context.Background(), "x.se"); err != nil {
+		t.Fatalf("an already-added domain must not abort registration: %v", err)
+	}
+	if !registered {
+		t.Error("register was not called after a tolerated already-added add")
+	}
+}
+
+// TestRegisterDomain_AddFailureAborts: a genuine domain/add failure (not
+// "already exists") must abort — we don't want to attempt a register that will
+// 404, or mask a real GleSYS problem.
+func TestRegisterDomain_AddFailureAborts(t *testing.T) {
+	registered := false
+	c := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/domain/add":
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = io.WriteString(w, `{"response":{"status":{"text":"Permission denied for this project"}}}`)
+		case "/domain/register":
+			registered = true
+			_, _ = io.WriteString(w, `{"response":{}}`)
+		default:
+			_, _ = io.WriteString(w, `{"response":{}}`)
+		}
+	})
+	if _, err := c.RegisterDomain(context.Background(), "x.se"); err == nil {
+		t.Fatal("a real add failure should abort registration")
+	}
+	if registered {
+		t.Error("register must not be attempted after a real add failure")
 	}
 }
 

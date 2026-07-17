@@ -4,11 +4,12 @@
 // subscribe flow, billing-portal sessions for self-serve management, and reads
 // the plan Price for display. Webhook signature verification is in webhook.go.
 //
-// No Stripe-Version header is sent: the endpoints and parameters used here
-// (Checkout Sessions, Billing Portal, Prices, and the three webhook events we
-// read) have been stable for years, so the account's default API version
-// applies — pinning would add a maintenance surface with no benefit at this
-// scope.
+// Most calls send no Stripe-Version header: the endpoints and parameters used
+// here (Checkout Sessions, Billing Portal, Prices, and the three webhook events
+// we read) have been stable for years, so the account's default API version
+// applies. The one exception is the invoice read in RefundSubscriptionCharge,
+// which pins a version (stripeBasilVersion) because the Invoice payment linkage
+// moved between API versions — see there.
 package billing
 
 import (
@@ -234,17 +235,46 @@ func (c *Client) RefundSubscriptionCharge(ctx context.Context, subscriptionID st
 	if sub.LatestInvoice == "" {
 		return "", fmt.Errorf("refund: subscription %s has no invoice yet", subscriptionID)
 	}
+	// Resolve the invoice's payment. Stripe's "basil" API versions (2025-03-31+,
+	// now the account default) removed the top-level invoice.payment_intent /
+	// invoice.charge and moved the linkage into an invoice.payments sub-list that
+	// must be expanded — reading the old field is why this returned "no payment
+	// intent" and the refund never fired. Pin basil so the shape is deterministic
+	// regardless of the account default, and expand the list.
 	var inv struct {
-		PaymentIntent string `json:"payment_intent"`
+		PaymentIntent string `json:"payment_intent"` // pre-basil (kept as a fallback)
+		Charge        string `json:"charge"`         // pre-basil
+		Payments      struct {
+			Data []struct {
+				Payment struct {
+					PaymentIntent string `json:"payment_intent"`
+					Charge        string `json:"charge"`
+				} `json:"payment"`
+			} `json:"data"`
+		} `json:"payments"` // basil+
 	}
-	if err := c.get(ctx, "/v1/invoices/"+sub.LatestInvoice, &inv); err != nil {
+	if err := c.getVersioned(ctx, "/v1/invoices/"+sub.LatestInvoice+"?expand[]=payments", stripeBasilVersion, &inv); err != nil {
 		return "", fmt.Errorf("refund: get invoice: %w", err)
 	}
-	if inv.PaymentIntent == "" {
-		return "", fmt.Errorf("refund: invoice %s has no payment intent", sub.LatestInvoice)
+	paymentIntent, charge := inv.PaymentIntent, inv.Charge
+	for _, pm := range inv.Payments.Data {
+		if paymentIntent == "" {
+			paymentIntent = pm.Payment.PaymentIntent
+		}
+		if charge == "" {
+			charge = pm.Payment.Charge
+		}
 	}
+	// Refunds accept either a payment_intent or a charge; prefer the PI.
 	form := url.Values{}
-	form.Set("payment_intent", inv.PaymentIntent)
+	switch {
+	case paymentIntent != "":
+		form.Set("payment_intent", paymentIntent)
+	case charge != "":
+		form.Set("charge", charge)
+	default:
+		return "", fmt.Errorf("refund: invoice %s has no resolvable payment (checked payment_intent, charge, payments)", sub.LatestInvoice)
+	}
 	form.Set("amount", strconv.Itoa(amountMinor))
 	var out struct {
 		ID string `json:"id"`
@@ -266,11 +296,26 @@ func (c *Client) post(ctx context.Context, path string, form url.Values, out any
 }
 
 func (c *Client) get(ctx context.Context, path string, out any) error {
+	return c.getVersioned(ctx, path, "", out)
+}
+
+// stripeBasilVersion pins the invoice read in RefundSubscriptionCharge to a
+// version whose Invoice object exposes the payments sub-list, so the refund
+// doesn't depend on (or break with) the account's default API version.
+const stripeBasilVersion = "2025-03-31.basil"
+
+// getVersioned is get with an optional Stripe-Version header ("" = account
+// default). Pinning a version makes a response shape deterministic for the few
+// calls that read version-sensitive fields.
+func (c *Client) getVersioned(ctx context.Context, path, apiVersion string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("authorization", "Bearer "+c.key)
+	if apiVersion != "" {
+		req.Header.Set("Stripe-Version", apiVersion)
+	}
 	return c.do(req, out)
 }
 

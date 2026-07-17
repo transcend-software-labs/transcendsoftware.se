@@ -210,6 +210,115 @@ func TestAddInvoiceItem(t *testing.T) {
 	}
 }
 
+// stubStripe routes GET subscription → invoice → POST refund for the refund
+// tests. invoiceJSON is the body returned for the invoice retrieve; it captures
+// the Stripe-Version header and refund form for assertions.
+type refundStub struct {
+	invoiceJSON    string
+	gotVersion     string
+	gotInvoicePath string
+	gotRefundForm  string
+}
+
+func (s *refundStub) server(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/v1/subscriptions/"):
+			_, _ = w.Write([]byte(`{"id":"sub_1","latest_invoice":"in_1"}`))
+		case strings.HasPrefix(r.URL.Path, "/v1/invoices/"):
+			s.gotVersion = r.Header.Get("Stripe-Version")
+			s.gotInvoicePath = r.URL.RequestURI()
+			_, _ = w.Write([]byte(s.invoiceJSON))
+		case r.URL.Path == "/v1/refunds":
+			_ = r.ParseForm()
+			s.gotRefundForm = r.Form.Encode()
+			_, _ = w.Write([]byte(`{"id":"re_123","object":"refund"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestRefund_BasilPaymentsShape: on basil+ accounts the invoice has no top-level
+// payment_intent — the id lives in payments.data[].payment.payment_intent. The
+// refund must pin the basil version, expand payments, and refund that PI. This
+// is the prod bug: reading the removed field gave "no payment intent".
+func TestRefund_BasilPaymentsShape(t *testing.T) {
+	s := &refundStub{invoiceJSON: `{"id":"in_1","payment_intent":null,"charge":null,` +
+		`"payments":{"object":"list","data":[{"payment":{"type":"payment_intent","payment_intent":"pi_basil","charge":null}}]}}`}
+	srv := s.server(t)
+
+	id, err := New(srv.URL, "sk_test_x").RefundSubscriptionCharge(context.Background(), "sub_1", 28000)
+	if err != nil {
+		t.Fatalf("refund: %v", err)
+	}
+	if id != "re_123" {
+		t.Fatalf("refund id = %q", id)
+	}
+	if s.gotVersion != stripeBasilVersion {
+		t.Errorf("invoice read must pin %q, got version %q", stripeBasilVersion, s.gotVersion)
+	}
+	if !strings.Contains(s.gotInvoicePath, "expand") || !strings.Contains(s.gotInvoicePath, "payments") {
+		t.Errorf("invoice read must expand payments, got %q", s.gotInvoicePath)
+	}
+	for _, want := range []string{"payment_intent=pi_basil", "amount=28000"} {
+		if !strings.Contains(s.gotRefundForm, want) {
+			t.Errorf("refund form missing %q\nform: %s", want, s.gotRefundForm)
+		}
+	}
+}
+
+// TestRefund_ChargeFallback: a payment recorded as a bare charge (no PI) must
+// still refund, via the charge parameter.
+func TestRefund_ChargeFallback(t *testing.T) {
+	s := &refundStub{invoiceJSON: `{"id":"in_1",` +
+		`"payments":{"data":[{"payment":{"type":"charge","payment_intent":null,"charge":"ch_bare"}}]}}`}
+	srv := s.server(t)
+
+	if _, err := New(srv.URL, "sk_test_x").RefundSubscriptionCharge(context.Background(), "sub_1", 28000); err != nil {
+		t.Fatalf("refund: %v", err)
+	}
+	if !strings.Contains(s.gotRefundForm, "charge=ch_bare") {
+		t.Errorf("refund should fall back to the charge, got form: %s", s.gotRefundForm)
+	}
+	if strings.Contains(s.gotRefundForm, "payment_intent=") {
+		t.Errorf("no PI available — must not send payment_intent; form: %s", s.gotRefundForm)
+	}
+}
+
+// TestRefund_LegacyPaymentIntent: a pre-basil account still returns the
+// top-level payment_intent; the fallback must use it.
+func TestRefund_LegacyPaymentIntent(t *testing.T) {
+	s := &refundStub{invoiceJSON: `{"id":"in_1","payment_intent":"pi_legacy","payments":{"data":[]}}`}
+	srv := s.server(t)
+
+	if _, err := New(srv.URL, "sk_test_x").RefundSubscriptionCharge(context.Background(), "sub_1", 100); err != nil {
+		t.Fatalf("refund: %v", err)
+	}
+	if !strings.Contains(s.gotRefundForm, "payment_intent=pi_legacy") {
+		t.Errorf("legacy top-level payment_intent should be used, got form: %s", s.gotRefundForm)
+	}
+}
+
+// TestRefund_NoPaymentResolvable: when neither a PI nor a charge can be found,
+// the refund errors clearly instead of silently no-op-ing.
+func TestRefund_NoPaymentResolvable(t *testing.T) {
+	s := &refundStub{invoiceJSON: `{"id":"in_1","payments":{"data":[]}}`}
+	srv := s.server(t)
+
+	_, err := New(srv.URL, "sk_test_x").RefundSubscriptionCharge(context.Background(), "sub_1", 100)
+	if err == nil || !strings.Contains(err.Error(), "no resolvable payment") {
+		t.Fatalf("want a clear no-payment error, got %v", err)
+	}
+	if s.gotRefundForm != "" {
+		t.Error("no refund should be attempted when no payment resolves")
+	}
+}
+
 func TestRemoveSubscriptionItem(t *testing.T) {
 	var gotPath, gotMethod string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

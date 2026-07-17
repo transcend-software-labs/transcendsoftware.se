@@ -263,6 +263,63 @@ func TestProvisionDomainIntent_RefundsOnFailure(t *testing.T) {
 	}
 }
 
+// TestRetryPaidDomain reproduces the ippfnotti.nu recovery: a bundled domain
+// paid at checkout but failed to register. The operator retries with the
+// hostname; it registers on the PREPAID path (DomainPrepaid=true), so no second
+// charge — and guards reject a project that can't be shown to have prepaid.
+func TestRetryPaidDomain(t *testing.T) {
+	st := store.NewMemory()
+	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
+	orch.SetNotifications(&recordingNotifier{}, "rasmus@example.com", "https://forge.example")
+	biller := &fakeBiller{}
+	cf := &fakeCF{
+		offers:   []registrar.Offer{{Name: "ippfnotti.nu", Registrable: true, Price: 280, Renewal: 280, Currency: "SEK"}},
+		regState: registrar.StatePending, // no async success goroutine
+	}
+	orch.SetDomains(cf, biller, 300)
+	// A paid project whose bundled-domain buy failed: the cost was captured at
+	// checkout but no domain is attached and the intent was cleared.
+	seedDomainProject(t, st, func(p *project.Project) { p.DomainCostOre = 28000 })
+	ctx := context.Background()
+
+	if err := orch.RetryPaidDomain(ctx, "p1", "ippfnotti.nu"); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	// provisionDomainIntent runs async → wait for the registration + prepaid mark.
+	p := waitForDomain(t, st, "p1", func(p *project.Project) bool {
+		return p.DomainStatus == project.DomainRegistering && p.DomainPrepaid
+	})
+	if p.DomainName != "ippfnotti.nu" {
+		t.Errorf("domain name = %q, want ippfnotti.nu", p.DomainName)
+	}
+	if len(cf.registered) != 1 || cf.registered[0] != "ippfnotti.nu" {
+		t.Fatalf("expected one registration of ippfnotti.nu, got %v", cf.registered)
+	}
+	// Prepaid → activation must not add an invoice item (already covered in
+	// depth by the prepaid-activation test; here we just confirm the flag).
+	if !p.DomainPrepaid {
+		t.Error("domain must be marked prepaid so activation skips billing")
+	}
+
+	// Guards: an unpaid project, and a paid one with no captured cost, both refuse.
+	seedGuard := func(id string, mutate func(*project.Project)) {
+		u := &user.User{ID: "u-" + id, Email: id + "@x.se", CreatedAt: time.Now().UTC()}
+		_ = st.CreateUser(ctx, u)
+		gp := &project.Project{ID: id, UserID: u.ID, Name: id, Status: project.StatusPreviewReady,
+			PreviewURL: "https://x.fly.dev", StripeSubID: "sub_x", CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+		mutate(gp)
+		_ = st.CreateProject(ctx, gp)
+	}
+	seedGuard("unpaid", func(p *project.Project) { p.Paid = false; p.DomainCostOre = 28000 })
+	if err := orch.RetryPaidDomain(ctx, "unpaid", "x.se"); !errors.Is(err, ErrNotPaid) {
+		t.Errorf("unpaid retry: got %v, want ErrNotPaid", err)
+	}
+	seedGuard("nocost", func(p *project.Project) { p.Paid = true; p.DomainCostOre = 0 })
+	if err := orch.RetryPaidDomain(ctx, "nocost", "x.se"); !errors.Is(err, ErrNoPrepaidAmount) {
+		t.Errorf("no-cost retry: got %v, want ErrNoPrepaidAmount", err)
+	}
+}
+
 func TestBuyDomain_Lifecycle_BillsRegistrationCost(t *testing.T) {
 	st := store.NewMemory()
 	orch, fake := newTestOrchWithVerifier(st, NoopVerifier{})

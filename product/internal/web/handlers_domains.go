@@ -144,6 +144,21 @@ func (s *Server) handleAdminDomainDetach(w http.ResponseWriter, r *http.Request,
 	http.Redirect(w, r, "/admin/projects/"+id, http.StatusSeeOther)
 }
 
+// handleAdminDomainRetry re-runs provisioning for a bundled domain the customer
+// paid for at checkout but that failed to register (the operator supplies the
+// hostname, which the failed attempt didn't persist). It does not re-charge —
+// RetryPaidDomain runs the prepaid path.
+func (s *Server) handleAdminDomainRetry(w http.ResponseWriter, r *http.Request, _ *user.User) {
+	id := r.PathValue("id")
+	host := strings.TrimSpace(r.FormValue("host"))
+	if err := s.orch.RetryPaidDomain(r.Context(), id, host); err != nil {
+		s.log.Error("admin domain retry", "project", id, "host", host, "err", err)
+		http.Redirect(w, r, "/admin/projects/"+id+"?domainretry=failed", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/admin/projects/"+id+"?domainretry=started", http.StatusSeeOther)
+}
+
 // renderFragment executes a named template fragment for an htmx swap, supplying
 // Lang/CSRF so it can translate and post safely.
 func (s *Server) renderFragment(w http.ResponseWriter, r *http.Request, name string, data map[string]any) {

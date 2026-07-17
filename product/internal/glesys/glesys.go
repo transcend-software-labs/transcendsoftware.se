@@ -296,6 +296,15 @@ func (c *Client) CheckDomains(ctx context.Context, names []string) ([]registrar.
 // on auto-renew so a customer site never lapses (re-billing renewals is a
 // follow-up). It returns the neutral workflow state from the registrar.
 func (c *Client) RegisterDomain(ctx context.Context, name string) (string, error) {
+	// GleSYS requires a domain to be in the account before it can be registered
+	// at the registry: domain/register returns 404 ("not in the account")
+	// otherwise — which is exactly the failure we hit in prod. domain/add
+	// incorporates it into the DNS system first. createrecords=0 keeps GleSYS from
+	// seeding default parking A/MX/www records that would shadow the Fly records we
+	// add after registration (provisionPurchased → EnsureDNSRecord).
+	if err := c.addDomain(ctx, name); err != nil {
+		return "", fmt.Errorf("glesys: add %q before register: %w", name, err)
+	}
 	params := map[string]any{
 		"domainname":   name,
 		"numyears":     1,
@@ -327,6 +336,32 @@ func (c *Client) RegisterDomain(ctx context.Context, name string) (string, error
 		slog.Warn("glesys set auto-renew", "domain", name, "err", err)
 	}
 	return mapState(name, out.Response.Domain.RegistrarInfo.State), nil
+}
+
+// addDomain incorporates name into the account's DNS system so it can then be
+// registered. createrecords=0 → GleSYS creates only NS + SOA (no parking A/MX/
+// www that would shadow our Fly records). A domain already in the account (a
+// customer retry, or a webhook re-fire after add succeeded but register didn't)
+// is not an error — GleSYS reports it with a 4xx whose text says the domain
+// already exists; treat that as success so registration proceeds.
+func (c *Client) addDomain(ctx context.Context, name string) error {
+	err := c.do(ctx, "domain/add", map[string]any{"domainname": name, "createrecords": "0"}, nil)
+	if err == nil || isAlreadyInAccount(err) {
+		return nil
+	}
+	return err
+}
+
+// isAlreadyInAccount reports whether err is GleSYS rejecting domain/add because
+// the domain is already present (so we can proceed to register it).
+func isAlreadyInAccount(err error) bool {
+	var ae *apiError
+	if !errors.As(err, &ae) {
+		return false
+	}
+	t := strings.ToLower(ae.text)
+	return strings.Contains(t, "already") || strings.Contains(t, "exists") ||
+		strings.Contains(t, "in use") || strings.Contains(t, "registered")
 }
 
 // SetAutoRenew turns GleSYS auto-renew on or off for a domain. Off is used when
