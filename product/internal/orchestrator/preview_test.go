@@ -60,9 +60,12 @@ func (v *urlVerifier) Verify(_ context.Context, url string) error {
 	return nil
 }
 
-// storeCheckVerifier mimics the real reverse proxy: it "reaches" a branded URL
-// only if the preview host already resolves in the store — proving the host was
-// persisted BEFORE verification (else a first preview 404s and falls back).
+// storeCheckVerifier mimics the real reverse proxy's full rejection contract
+// (web.servePreview): a branded URL is only "reachable" if the preview host
+// resolves in the store AND the project's PreviewURL is already persisted —
+// servePreview 404s an unknown host and 410s a project with an empty PreviewURL.
+// Both must be true BEFORE verification, or a first preview falls back to the
+// fly.dev URL.
 type storeCheckVerifier struct {
 	st     store.Store
 	domain string
@@ -70,8 +73,12 @@ type storeCheckVerifier struct {
 
 func (v *storeCheckVerifier) Verify(ctx context.Context, rawURL string) error {
 	label := strings.TrimSuffix(strings.TrimPrefix(rawURL, "https://"), "."+v.domain)
-	if _, err := v.st.ProjectByPreviewHost(ctx, label); err != nil {
-		return errors.New("preview host not resolvable in store yet: " + label)
+	p, err := v.st.ProjectByPreviewHost(ctx, label)
+	if err != nil {
+		return errors.New("preview host not resolvable in store yet (proxy 404): " + label)
+	}
+	if p.PreviewURL == "" {
+		return errors.New("preview URL not persisted yet (proxy 410): " + label)
 	}
 	return nil
 }
@@ -128,9 +135,11 @@ func TestBrandedPreviewURL_AssignsHostAndBrands(t *testing.T) {
 }
 
 // TestBrandedPreviewURL_PersistsHostBeforeVerify guards the fix for the first-
-// preview fallback bug: the host must be in the store when we verify the branded
-// URL, because our own proxy resolves it that way. With storeCheckVerifier this
-// only passes if brandedPreviewURL saved the host before probing.
+// preview fallback bug: both the host AND the PreviewURL must be in the store
+// when we verify the branded URL, because our own proxy resolves the host that
+// way and 410s a project with an empty PreviewURL. With storeCheckVerifier
+// (which models both proxy rejections) this only passes if brandedPreviewURL
+// saved host+url before probing.
 func TestBrandedPreviewURL_PersistsHostBeforeVerify(t *testing.T) {
 	st := store.NewMemory()
 	orch, _ := newTestOrchWithVerifier(st, &storeCheckVerifier{st: st, domain: "forge.example.se"})
@@ -140,7 +149,49 @@ func TestBrandedPreviewURL_PersistsHostBeforeVerify(t *testing.T) {
 	got := orch.brandedPreviewURL(context.Background(), p, "https://forge-aaaabbbbcccc.fly.dev")
 	want := "https://bageriet-aaaabb.forge.example.se"
 	if got != want {
-		t.Fatalf("branded url = %q, want %q — host must be persisted before verify so the proxy resolves it", got, want)
+		t.Fatalf("branded url = %q, want %q — host+url must be persisted before verify so the proxy serves it", got, want)
+	}
+}
+
+// TestBrandedPreviewURL_FirstBuildSelfProbe reproduces the production first-
+// build fallback end-to-end through the real self-probe HTTP path. The probe
+// server enforces web.servePreview's contract against the live store: resolve
+// the host, then 410 Gone any project whose PreviewURL is still empty. Before
+// the fix, brandedPreviewURL persisted only the host, so the very first probe
+// 410'd — every first preview fell back to the fly.dev URL and emailed the
+// operator "branded preview host failed" (the "status 410 via self-probe" seen
+// live for liljebaren-pizzeria-cd553a).
+func TestBrandedPreviewURL_FirstBuildSelfProbe(t *testing.T) {
+	st := store.NewMemory()
+	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
+	orch.SetPreviewDomain("forge.example.se")
+
+	probe := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		label := strings.TrimSuffix(r.Host, ".forge.example.se")
+		p, err := st.ProjectByPreviewHost(r.Context(), label)
+		if err != nil {
+			t.Errorf("self-probe: host %q not resolvable (proxy would 404)", label)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		// The bug: probing before PreviewURL is persisted. Fail loudly, but still
+		// answer 200 so the test doesn't wait out the 45s retry window.
+		if p.PreviewURL == "" {
+			t.Errorf("self-probe ran before PreviewURL persisted — proxy 410s (first-build race)")
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer probe.Close()
+	orch.SetPreviewSelfProbe(probe.URL)
+
+	// A genuine first preview: a fresh project with no host and no URL yet.
+	p := seedPreviewProject(t, st, "cd553a7cb4fa0f2fe220f30ae4ab068f", "Liljebaren Pizzeria")
+	direct := "https://forge-cd553a7cb4fa.fly.dev"
+	got := orch.brandedPreviewURL(context.Background(), p, direct)
+
+	want := "https://liljebaren-pizzeria-cd553a.forge.example.se"
+	if got != want {
+		t.Fatalf("first-build branded probe = %q; want %q (410-race regression)", got, want)
 	}
 }
 

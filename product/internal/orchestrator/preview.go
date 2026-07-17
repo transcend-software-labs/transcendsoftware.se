@@ -51,15 +51,27 @@ func (o *Orchestrator) brandedPreviewURL(ctx context.Context, p *project.Project
 	if o.previewDomain == "" || directURL == "" {
 		return directURL
 	}
+	// Persist BEFORE verifying: the branded URL is served by OUR reverse proxy
+	// (web.servePreview), which resolves the host via ProjectByPreviewHost AND
+	// refuses — 410 Gone — any project whose PreviewURL is still empty. On a
+	// project's FIRST preview both are unset here, so also seed PreviewURL with
+	// the already-verified direct URL; the caller overwrites it with the final
+	// (branded or fallback) value afterwards. Persisting the host alone fixed the
+	// proxy's 404 miss but left the 410: every first-build self-probe hit it and
+	// fell back to the fly.dev URL for no reason (and cried wolf to the operator).
+	// Only save when something actually changed (reiterations already have both).
+	changed := false
 	if p.PreviewHost == "" {
 		p.PreviewHost = o.newPreviewHost(ctx, p)
-		// Persist the host BEFORE verifying: the branded URL is served by OUR
-		// reverse proxy, which resolves it via ProjectByPreviewHost. On a project's
-		// first preview the row must already be in the store, or the probe 404s and
-		// we needlessly fall back to the fly.dev URL (and alert the operator that
-		// the DNS/cert is broken when it isn't).
+		changed = true
+	}
+	if p.PreviewURL == "" {
+		p.PreviewURL = directURL
+		changed = true
+	}
+	if changed {
 		if err := o.save(ctx, p); err != nil {
-			o.log.Error("branded preview: persist host before verify", "project", p.ID, "err", err)
+			o.log.Error("branded preview: persist host/url before verify", "project", p.ID, "err", err)
 		}
 	}
 	branded := "https://" + p.PreviewHost + "." + o.previewDomain
