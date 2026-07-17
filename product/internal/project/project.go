@@ -243,11 +243,14 @@ type Project struct {
 	PreviewHost      string                     // branded preview subdomain label ("bageriet-a1fa81"); assigned once, stable across rebuilds
 	PlannerProfile   string                     // model-profile key for the plan step ("" → default); operator override for experiments
 	ImplProfile      string                     // model-profile key for the build agent ("" → default)
+	ReviewProfile    string                     // model-profile key for the post-payment code review ("" → default)
 	RepoURL          string                     // vestigial: GitHub mirroring was removed; kept to avoid a DB migration (always "")
 	SnapshotKey      string                     // object-storage key of the workspace snapshot from the last successful build
 	Screenshots      []Screenshot               // one per page of the deployed site (for /admin review)
 	Findings         []Finding                  // impeccable design-audit findings from the last build (for /admin review)
 	Critique         string                     // design critic's verdict on the preview screenshots ("SHIP" or "POLISH" + issues)
+	CodeReview       string                     // one-shot post-payment code review report ("" = not run; first line SHIP or FIX)
+	CodeReviewAt     time.Time                  // when the code review ran (zero = not yet) — the one-shot guard
 	Locale           string                     // customer's UI language at creation ("en"/"sv"/"ru"), for their emails
 	ContentAnswers   map[string]string          // text the customer typed for text-kind content slots (slug → value)
 	ContentRosters   map[string][]RosterEntry   // structured people for roster-kind slots (slug → members)

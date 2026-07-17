@@ -50,7 +50,7 @@ func main() {
 	}
 	defer st.Close()
 
-	intake, planner, gate := newLLM(cfg, log)
+	intake, planner, gate, reviewer := newLLM(cfg, log)
 	machines := newMachines(cfg, log)
 	newDriver := driverFactory(cfg, log)
 
@@ -89,6 +89,8 @@ func main() {
 	orch.SetModels(cfg.LLMModel, cfg.PlannerLLMModel)
 	// Per-build model selection from /admin (config.ModelProfile registry).
 	orch.SetModelProfiles(cfg)
+	// Fallback client for the post-payment code review when no profile resolves.
+	orch.SetReviewer(reviewer)
 	orch.RecoverInterrupted(context.Background()) // reap builds left running by a prior run
 	// Reap zombie infrastructure hourly: preview apps of failed projects,
 	// previews idle past PREVIEW_TTL_DAYS, and leaked sandbox machines.
@@ -243,33 +245,37 @@ func newStore(cfg config.Config, log *slog.Logger) (store.Store, error) {
 	return store.NewPostgres(context.Background(), cfg.DatabaseURL)
 }
 
-func newLLM(cfg config.Config, log *slog.Logger) (llm.Intake, llm.Planner, llm.SafetyGate) {
+func newLLM(cfg config.Config, log *slog.Logger) (llm.Intake, llm.Planner, llm.SafetyGate, llm.Reviewer) {
 	// Base client drives intake + safety-gate (and the plan step unless a
 	// dedicated planner is configured below).
 	var intake llm.Intake
 	var planner llm.Planner
 	var gate llm.SafetyGate
+	var reviewer llm.Reviewer
 	switch {
 	case cfg.LLMAPIKey != "":
 		log.Info("llm: openai-compatible", "base", cfg.LLMBaseURL, "model", cfg.LLMModel)
 		c := llm.NewOpenAICompat(cfg.LLMBaseURL, cfg.LLMAPIKey, cfg.LLMModel)
-		intake, planner, gate = c, c, c
+		intake, planner, gate, reviewer = c, c, c, c
 	case cfg.AnthropicAPIKey != "":
 		log.Info("llm: anthropic")
 		a := llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.AnthropicModel, "")
-		intake, planner, gate = a, a, a
+		intake, planner, gate, reviewer = a, a, a, a
 	default:
 		log.Info("llm: fake (dev)")
 		f := llm.NewFake()
-		intake, planner, gate = f, f, f
+		intake, planner, gate, reviewer = f, f, f, f
 	}
 	// Optionally run the PLAN step on a dedicated model (e.g. GLM 5.2 via
-	// OpenCode Zen), leaving intake/gate/impl unchanged.
+	// OpenCode Zen), leaving intake/gate/impl unchanged. The code review's
+	// fallback follows the planner — same "more capable model" reasoning —
+	// though in practice the profile registry resolves the review model first.
 	if cfg.PlannerLLMAPIKey != "" {
 		log.Info("llm: dedicated planner", "base", cfg.PlannerLLMBaseURL, "model", cfg.PlannerLLMModel)
-		planner = llm.NewOpenAICompat(cfg.PlannerLLMBaseURL, cfg.PlannerLLMAPIKey, cfg.PlannerLLMModel)
+		p := llm.NewOpenAICompat(cfg.PlannerLLMBaseURL, cfg.PlannerLLMAPIKey, cfg.PlannerLLMModel)
+		planner, reviewer = p, p
 	}
-	return intake, planner, gate
+	return intake, planner, gate, reviewer
 }
 
 // driverFactory decides how to reach opencode for each build:

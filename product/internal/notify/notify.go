@@ -25,9 +25,11 @@ func (Noop) Send(context.Context, string, string, string) error { return nil }
 // to see exactly what would go out.
 type Log struct{ Logger *slog.Logger }
 
-func (l Log) Send(_ context.Context, to, subject, _ string) error {
+func (l Log) Send(_ context.Context, to, subject, body string) error {
 	if l.Logger != nil {
-		l.Logger.Info("notify (log-only)", "to", to, "subject", subject)
+		// The body carries the actionable part (confirmation/magic links) —
+		// without it dev sign-in is a dead end.
+		l.Logger.Info("notify (log-only)", "to", to, "subject", subject, "body", body)
 	}
 	return nil
 }

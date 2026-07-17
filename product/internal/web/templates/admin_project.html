@@ -11,7 +11,7 @@
 
 {{if .PreviewURL}}
 <p><a class="btn btn-sm" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{.PreviewURL}} ↗</a>
-  {{if .RepoURL}} <a class="muted small" href="{{.RepoURL}}" target="_blank" rel="noopener">source ↗</a>{{end}}</p>
+  {{if .SnapshotKey}} <a class="muted small" href="/admin/projects/{{.ID}}/source">browse source</a> · <a class="muted small" href="/admin/projects/{{.ID}}/source.tgz">download .tgz</a>{{end}}</p>
 
 <section class="panel {{if .ReviewClean}}verdict-clean{{else}}verdict-flag{{end}}">
   <h2>Review</h2>
@@ -23,6 +23,18 @@
   <ul class="review-checks">
     {{range .ReviewChecks}}<li class="{{if .Pass}}chk-pass{{else}}chk-fail{{end}}">{{if .Pass}}✓{{else}}✗{{end}} {{.Label}}{{if .Note}} <span class="muted small">— {{.Note}}</span>{{end}}</li>{{end}}
   </ul>
+</section>
+{{end}}
+
+{{if or (eq .Status "accepted") (eq .Status "preview_ready")}}
+<section class="panel">
+  <h2>Operator fix</h2>
+  <p class="muted small">Run your own improvement pass with AI — it consumes none of the customer's changes and sends them no email. An accepted project returns to your review queue when the build finishes.</p>
+  <form method="post" action="/admin/projects/{{.ID}}/iterate">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <textarea name="instructions" rows="3" placeholder="What should be improved? Be concrete — this goes straight to the build agent." required></textarea>
+    <button class="btn btn-sm" type="submit">Run fix build</button>
+  </form>
 </section>
 {{end}}
 
@@ -60,6 +72,18 @@
   <form method="post" action="/admin/projects/{{.ID}}/domain/detach" class="inline" onsubmit="return confirm('Detach {{.DomainName}}?')">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
     <button class="linklike danger" type="submit">Detach domain</button>
+  </form>
+</section>
+{{else if and .Paid (gt .DomainCostOre 0)}}
+<section class="panel">
+  <h2>Recover bundled domain</h2>
+  <p class="muted small">This project paid for a bundled domain at checkout ({{.DomainCostOre}} öre) but none is attached — provisioning likely failed. Re-run registration below. It uses the already-paid (prepaid) path, so the customer is <strong>not</strong> charged again. Enter the exact domain they chose.</p>
+  {{if eq $.Data.DomainRetryFlash "started"}}<p class="verdict-line">✓ Retry started — watch the registration progress and refresh.</p>{{end}}
+  {{if eq $.Data.DomainRetryFlash "failed"}}<p class="verdict-line">⚠ Retry could not start — check the logs (eligibility, captured amount, or hostname).</p>{{end}}
+  <form method="post" action="/admin/projects/{{.ID}}/domain/retry" onsubmit="return confirm('Register this domain on the prepaid path (no new charge)?')">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <input type="text" name="host" placeholder="e.g. ippfnotti.nu" required>
+    <button class="btn btn-sm" type="submit">Register (no re-charge)</button>
   </form>
 </section>
 {{end}}
@@ -113,6 +137,26 @@
 {{end}}
 
 <section class="panel">
+  <h2>Code review{{if .CodeReview}} {{if .CodeReviewClean}}— SHIP ✓{{else}}— FIX ⚠{{end}}{{end}}</h2>
+  {{if .CodeReview}}
+  <p class="muted small">Ran {{.CodeReviewAt.Format "2 Jan 2006 15:04"}} on the source snapshot.</p>
+  <pre class="plan">{{.CodeReview}}</pre>
+  {{else if .Paid}}
+  <p class="muted small">Not run yet — it starts automatically when payment settles. If it hasn't landed, start it here.</p>
+  {{else}}
+  <p class="muted small">Runs once, automatically, when the customer's payment settles. You can also run it now.</p>
+  {{end}}
+  {{if .SnapshotKey}}
+  <form method="post" action="/admin/projects/{{.ID}}/code-review" class="inline">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <button class="btn btn-sm" type="submit">{{if .CodeReview}}Run again{{else}}Run code review{{end}}</button>
+  </form>
+  {{else}}
+  <p class="muted small">No source snapshot yet — the review can run after the first successful build.</p>
+  {{end}}
+</section>
+
+<section class="panel">
   <h2>Brief</h2>
   <p class="brief">{{.Brief}}</p>
   {{if .Answers}}<h3>Answers</h3><p class="brief">{{.Answers}}</p>{{end}}
@@ -144,6 +188,12 @@
       <select name="impl_profile">
         <option value=""{{if eq $.Data.ImplProfile ""}} selected{{end}}>— Forge default —</option>
         {{range $.Data.Profiles}}<option value="{{.Key}}"{{if eq .Key $.Data.ImplProfile}} selected{{end}}>{{.Label}}{{if .Effort}} · {{.Effort}}{{end}}</option>{{end}}
+      </select>
+    </label>
+    <label>Code review
+      <select name="review_profile">
+        <option value=""{{if eq $.Data.ReviewProfile ""}} selected{{end}}>— Forge default —</option>
+        {{range $.Data.Profiles}}<option value="{{.Key}}"{{if eq .Key $.Data.ReviewProfile}} selected{{end}}>{{.Label}}{{if .Effort}} · {{.Effort}}{{end}}</option>{{end}}
       </select>
     </label>
     <button class="btn btn-sm" type="submit">Save models</button>

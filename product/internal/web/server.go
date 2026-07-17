@@ -182,9 +182,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /admin/projects/{id}/mark-paid", s.requireAdmin(s.handleAdminMarkPaid))
 	mux.HandleFunc("POST /admin/projects/{id}/mark-unpaid", s.requireAdmin(s.handleAdminMarkUnpaid))
 	mux.HandleFunc("POST /admin/projects/{id}/return", s.requireAdmin(s.handleAdminReturn))
+	mux.HandleFunc("POST /admin/projects/{id}/iterate", s.requireAdmin(s.handleAdminIterate))
 	mux.HandleFunc("POST /admin/projects/{id}/models", s.requireAdmin(s.handleAdminSetModels))
+	mux.HandleFunc("GET /admin/projects/{id}/source", s.requireAdmin(s.handleAdminSource))
+	mux.HandleFunc("GET /admin/projects/{id}/source/{path...}", s.requireAdmin(s.handleAdminSource))
+	mux.HandleFunc("GET /admin/projects/{id}/source.tgz", s.requireAdmin(s.handleAdminSourceDownload))
 	mux.HandleFunc("POST /admin/projects/{id}/retry", s.requireAdmin(s.handleAdminRetry))
+	mux.HandleFunc("POST /admin/projects/{id}/code-review", s.requireAdmin(s.handleAdminRunReview))
 	mux.HandleFunc("POST /admin/projects/{id}/domain/detach", s.requireAdmin(s.handleAdminDomainDetach))
+	mux.HandleFunc("POST /admin/projects/{id}/domain/retry", s.requireAdmin(s.handleAdminDomainRetry))
 
 	// Preview hosts branch off before langSelector (?lang= must not redirect a
 	// proxied preview); logging stays outermost so those requests are logged too.

@@ -42,4 +42,24 @@ func TestReviewChecks(t *testing.T) {
 	if !noCrit.ReviewClean() {
 		t.Errorf("empty critique should not block: %+v", noCrit.ReviewChecks())
 	}
+
+	// The code-review check: unpaid + not run → clean (not due yet); paid +
+	// not run → flagged (due, hold delivery); FIX verdict → flagged; SHIP → clean.
+	base := project.Project{PreviewURL: "https://x", Status: project.StatusAccepted, Critique: "SHIP"}
+	shots := []reviewShot{{Path: "/"}}
+	paidPending := base
+	paidPending.Paid = true
+	if (reviewItem{Project: &paidPending, Shots: shots}).ReviewClean() {
+		t.Error("paid with no code review yet must be flagged")
+	}
+	fixed := paidPending
+	fixed.CodeReview = "FIX\n\nSQL injection in contact form"
+	if it := (reviewItem{Project: &fixed, Shots: shots}); it.ReviewClean() || it.CodeReviewClean() {
+		t.Error("a FIX code review must flag the build")
+	}
+	shipped := paidPending
+	shipped.CodeReview = "SHIP\n\nAll good."
+	if it := (reviewItem{Project: &shipped, Shots: shots}); !it.ReviewClean() || !it.CodeReviewClean() {
+		t.Errorf("a SHIP code review should pass: %+v", it.ReviewChecks())
+	}
 }

@@ -3,8 +3,11 @@
   "configurations": [
     {
       "name": "rasmus-ai",
-      "runtimeExecutable": "/Users/rasmus/Repositories/transcendsoftware.se/product/bin/server",
-      "runtimeArgs": [],
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": [
+        "-c",
+        "ADMIN_EMAIL=admin@example.com exec /Users/rasmus/Repositories/transcendsoftware.se/product/bin/server"
+      ],
       "autoPort": true,
       "port": 8080
     },

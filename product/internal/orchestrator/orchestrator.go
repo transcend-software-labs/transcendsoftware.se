@@ -61,6 +61,7 @@ type Orchestrator struct {
 	templateKey   string          // object-storage key of the starter-app tarball ("" = greenfield)
 	implModel     string          // default build model label, stamped on iterations when no per-build profile is chosen
 	plannerModel  string          // default planning model label
+	reviewer      llm.Reviewer    // global fallback for the post-payment code review (nil → skip when no profile resolves)
 	modelCfg      *config.Config  // model-profile registry for per-build model selection (nil → global wiring only)
 	activeMu      sync.Mutex      // guards active
 	active        map[string]bool // projects with an in-flight pipeline goroutine in THIS process
@@ -121,6 +122,11 @@ func (o *Orchestrator) SetModels(impl, planner string) { o.implModel, o.plannerM
 func New(s store.Store, in llm.Intake, p llm.Planner, g llm.SafetyGate, b builder.Builder, m fly.Machines, as storage.Store, br *stream.Broker, v Verifier, log *slog.Logger) *Orchestrator {
 	return &Orchestrator{store: s, intake: in, planner: p, gate: g, builder: b, machines: m, storage: as, broker: br, verifier: v, log: log, notifier: notify.Noop{}, active: map[string]bool{}, activity: activity.NewTracker()}
 }
+
+// SetReviewer wires the global fallback client for the post-payment code
+// review — used when the model-profile registry can't resolve a review model
+// (dev mode, or a bare deployment without profile credentials).
+func (o *Orchestrator) SetReviewer(r llm.Reviewer) { o.reviewer = r }
 
 // SetNotifications wires transactional email. operatorEmail receives escalation
 // and failure notices; customers are emailed when a preview is ready. baseURL
@@ -628,7 +634,13 @@ func (o *Orchestrator) MarkPaid(projectID, via string) error {
 	p.Paid = true
 	p.PaidAt = time.Now().UTC()
 	p.PaidVia = via
-	return o.save(ctx, p)
+	if err := o.save(ctx, p); err != nil {
+		return err
+	}
+	// The customer has paid → run the one-shot code review on what they bought.
+	// Background + best-effort: a review failure never touches the payment.
+	o.StartCodeReview(projectID, false)
+	return nil
 }
 
 // MarkUnpaid reverses MarkPaid — for correcting a mistaken manual mark.
@@ -698,6 +710,51 @@ func (o *Orchestrator) ReturnToCustomer(projectID, note string) error {
 	body += "\n\nOpen your project: " + o.projectLink(p.ID)
 	o.notifyCustomer(ctx, p.UserID, "An update on your website", body)
 	return nil
+}
+
+// OperatorIterate runs an operator-driven fix build: Rasmus's own instructions,
+// billed to no one. It reuses the internal-build path (iteration #0), so it
+// consumes no customer credit and sends no customer email. Allowed while the
+// project sits in the operator's review queue (accepted) or at a settled
+// preview; an accepted project returns to accepted afterwards, so it stays in
+// the review queue instead of silently swapping the customer's accepted site.
+func (o *Orchestrator) OperatorIterate(projectID, prompt string) {
+	ctx := context.Background()
+	if strings.TrimSpace(prompt) == "" {
+		return
+	}
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		o.log.Error("operator iterate: load", "err", err)
+		return
+	}
+	if p.Status != project.StatusAccepted && p.Status != project.StatusPreviewReady {
+		return
+	}
+	wasAccepted := p.Status == project.StatusAccepted
+	if err := o.setStatus(ctx, p, project.StatusBuilding); err != nil {
+		o.log.Error("operator iterate: set building", "err", err)
+		return
+	}
+	o.async(projectID, func(ctx context.Context) error {
+		if err := o.runBuild(ctx, projectID, prompt, true); err != nil {
+			return err
+		}
+		if !wasAccepted {
+			return nil
+		}
+		// The fix ran on an already-accepted project: finishBuild left it at
+		// preview_ready, so put it back in the operator's review queue.
+		p, err := o.store.ProjectByID(ctx, projectID)
+		if err != nil {
+			return err
+		}
+		if p.Status == project.StatusPreviewReady {
+			p.Status = project.StatusAccepted
+			return o.save(ctx, p)
+		}
+		return nil
+	})
 }
 
 // ApproveEscalated lets an operator clear an escalated project. It does NOT
@@ -1088,6 +1145,12 @@ func (o *Orchestrator) finishBuild(ctx context.Context, p *project.Project, it *
 	p.Status = project.StatusPreviewReady
 	if err := o.save(ctx, p); err != nil {
 		return err
+	}
+	// A project can be marked paid before its first successful build (a comp,
+	// or a checkout that settles early) — in that case the post-payment code
+	// review found no snapshot and skipped. Now there is one; run it.
+	if p.Paid && p.CodeReviewAt.IsZero() {
+		o.StartCodeReview(p.ID, false)
 	}
 	// Email the customer once, only now — after the whole build (including any
 	// polish pass) has returned — so the "it's ready" notice never lands while

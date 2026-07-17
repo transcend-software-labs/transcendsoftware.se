@@ -18,18 +18,18 @@ import (
 // SetModelProfiles enables per-build model selection from the config registry.
 func (o *Orchestrator) SetModelProfiles(cfg config.Config) { o.modelCfg = &cfg }
 
-// SetProjectModels persists the operator's planner + implementation choice on a
-// project WITHOUT building — the next build the project runs (a retry, a change,
-// or a reiterate) resolves them. Empty keys mean "track Forge's global default"
-// (so upgrading the global models still reaches every non-overridden project); a
-// set key is an explicit per-project override that sticks. Synchronous: a quick
-// store write.
-func (o *Orchestrator) SetProjectModels(ctx context.Context, projectID, plannerProfile, implProfile string) error {
+// SetProjectModels persists the operator's planner + implementation + review
+// choice on a project WITHOUT building — the next build the project runs (a
+// retry, a change, or a reiterate) resolves them. Empty keys mean "track
+// Forge's global default" (so upgrading the global models still reaches every
+// non-overridden project); a set key is an explicit per-project override that
+// sticks. Synchronous: a quick store write.
+func (o *Orchestrator) SetProjectModels(ctx context.Context, projectID, plannerProfile, implProfile, reviewProfile string) error {
 	p, err := o.store.ProjectByID(ctx, projectID)
 	if err != nil {
 		return err
 	}
-	p.PlannerProfile, p.ImplProfile = plannerProfile, implProfile
+	p.PlannerProfile, p.ImplProfile, p.ReviewProfile = plannerProfile, implProfile, reviewProfile
 	return o.save(ctx, p)
 }
 
@@ -68,11 +68,25 @@ func (o *Orchestrator) implFor(p *project.Project) (builder.ModelSpec, string) {
 	}, modelLabel(rm.Model, rm.Effort)
 }
 
+// reviewerFor returns the code-review client + a display label for a project,
+// honoring its ReviewProfile (or the review default, which itself tracks the
+// planner default) and falling back to the globally wired reviewer — the
+// dev-mode Fake, or the same client as the planner (see cmd/server). nil means
+// no reviewer is available at all; the caller skips the review.
+func (o *Orchestrator) reviewerFor(p *project.Project) (llm.Reviewer, string) {
+	rm, ok := o.resolveProfile(p.ReviewProfile, reviewKind)
+	if !ok {
+		return o.reviewer, o.plannerModel
+	}
+	return llm.NewReviewer(string(rm.Provider), rm.BaseURL, rm.APIKey, rm.Model, rm.Effort), modelLabel(rm.Model, rm.Effort)
+}
+
 type profileKind int
 
 const (
 	plannerKind profileKind = iota
 	implKind
+	reviewKind
 )
 
 // resolveProfile resolves a project's chosen profile key (or the configured
@@ -82,8 +96,11 @@ func (o *Orchestrator) resolveProfile(key string, kind profileKind) (config.Reso
 		return config.ResolvedModel{}, false
 	}
 	def := o.modelCfg.DefaultPlannerProfile
-	if kind == implKind {
+	switch kind {
+	case implKind:
 		def = o.modelCfg.DefaultImplProfile
+	case reviewKind:
+		def = o.modelCfg.DefaultReviewProfile
 	}
 	if key == "" { // no per-project override → track Forge's global default
 		key = def

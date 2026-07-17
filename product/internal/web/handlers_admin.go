@@ -86,12 +86,31 @@ func (r reviewItem) ReviewChecks() []reviewCheck {
 	if n := len(p.Findings); n > 0 {
 		findNote = fmt.Sprintf("%d finding(s) — see below", n)
 	}
+	// The one-shot post-payment code review: three states — not due yet
+	// (unpaid; don't flag), due but not landed (paid; hold delivery), done
+	// (its SHIP/FIX verdict decides).
+	crOK, crNote := true, ""
+	switch {
+	case p.CodeReview == "" && !p.Paid:
+		crNote = "runs when payment settles"
+	case p.CodeReview == "":
+		crOK, crNote = false, "running — refresh shortly, or start it from the project page"
+	case !orchestrator.CodeReviewVerdictClean(p.CodeReview):
+		crOK, crNote = false, "FIX — read it before delivering"
+	}
 	return []reviewCheck{
 		{"Site deployed & verified live", p.PreviewURL != "" && p.Status != project.StatusFailed, ""},
 		{"Every page rendered & captured", len(r.Shots) > 0, fmt.Sprintf("%d page(s)", len(r.Shots))},
 		{"Design audit clean", len(p.Findings) == 0, findNote},
 		{"Visual critic says ship", critiqueOK, critNote},
+		{"Code review clean", crOK, crNote},
 	}
+}
+
+// CodeReviewClean reports whether the stored code review's verdict is SHIP —
+// for the templates that show the report.
+func (r reviewItem) CodeReviewClean() bool {
+	return orchestrator.CodeReviewVerdictClean(r.CodeReview)
 }
 
 // ReviewClean reports whether every automated check passed — a fast-track
@@ -311,6 +330,11 @@ type adminProjectView struct {
 	Profiles       []config.ModelProfile
 	PlannerProfile string
 	ImplProfile    string
+	ReviewProfile  string
+
+	// DomainRetryFlash surfaces the outcome of the "Recover bundled domain"
+	// action ("started" | "failed" | ""), read from the redirect's query param.
+	DomainRetryFlash string
 }
 
 // adminBuildRow is one iteration plus its rough LLM cost (from the token split
@@ -357,7 +381,8 @@ func (s *Server) handleAdminProject(w http.ResponseWriter, r *http.Request, _ *u
 	// (the resolved implKey above is only for pricing the iterations).
 	v := s.view(r, p.Name+" — operator", adminProjectView{
 		Item: s.withScreenshots(r.Context(), p), Iterations: rows, OwnerEmail: owner,
-		Profiles: s.cfg.ModelProfiles(), PlannerProfile: p.PlannerProfile, ImplProfile: p.ImplProfile})
+		Profiles: s.cfg.ModelProfiles(), PlannerProfile: p.PlannerProfile, ImplProfile: p.ImplProfile, ReviewProfile: p.ReviewProfile,
+		DomainRetryFlash: r.URL.Query().Get("domainretry")})
 	v.Lang = "en" // operator pages are English regardless of the customer-facing selector
 	s.render(w, http.StatusOK, "admin_project", v)
 }
@@ -371,18 +396,29 @@ func (s *Server) handleAdminRetry(w http.ResponseWriter, r *http.Request, _ *use
 	http.Redirect(w, r, "/admin/projects/"+id, http.StatusSeeOther)
 }
 
-// handleAdminSetModels saves the project's planner + implementation model choice
-// (operator-only). Save-only — it does not build; the project's next run (retry,
-// change, or reiterate) picks it up. An empty selection tracks Forge's global
-// default; validProfileKey maps unknown/blank keys to "".
+// handleAdminSetModels saves the project's planner + implementation + review
+// model choice (operator-only). Save-only — it does not build; the project's
+// next run (retry, change, reiterate, or code review) picks it up. An empty
+// selection tracks Forge's global default; validProfileKey maps unknown/blank
+// keys to "".
 func (s *Server) handleAdminSetModels(w http.ResponseWriter, r *http.Request, _ *user.User) {
 	id := r.PathValue("id")
 	planner := s.validProfileKey(r.FormValue("planner_profile"))
 	impl := s.validProfileKey(r.FormValue("impl_profile"))
-	if err := s.orch.SetProjectModels(r.Context(), id, planner, impl); err != nil {
+	review := s.validProfileKey(r.FormValue("review_profile"))
+	if err := s.orch.SetProjectModels(r.Context(), id, planner, impl, review); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	http.Redirect(w, r, "/admin/projects/"+id, http.StatusSeeOther)
+}
+
+// handleAdminRunReview starts (or re-runs) the code review on demand — the
+// recovery path when the post-payment run failed, and the way to re-review
+// after an operator fix. force=true bypasses the one-shot guard.
+func (s *Server) handleAdminRunReview(w http.ResponseWriter, r *http.Request, _ *user.User) {
+	id := r.PathValue("id")
+	s.orch.StartCodeReview(id, true)
 	http.Redirect(w, r, "/admin/projects/"+id, http.StatusSeeOther)
 }
 
@@ -452,6 +488,17 @@ func (s *Server) handleAdminReturn(w http.ResponseWriter, r *http.Request, _ *us
 		return
 	}
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
+// handleAdminIterate runs an operator fix build with Rasmus's own instructions
+// — no customer credit consumed, no customer email (see OperatorIterate).
+func (s *Server) handleAdminIterate(w http.ResponseWriter, r *http.Request, _ *user.User) {
+	id := r.PathValue("id")
+	if instructions := strings.TrimSpace(r.FormValue("instructions")); instructions != "" {
+		s.orch.OperatorIterate(id, instructions)
+	}
+	// The project page shows the live build stream — land the operator there.
+	http.Redirect(w, r, "/admin/projects/"+id, http.StatusSeeOther)
 }
 
 // handleAdminMarkPaid records a manual payment (comps for Rasmus + friends; the

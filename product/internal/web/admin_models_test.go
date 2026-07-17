@@ -34,6 +34,7 @@ func TestAdminProjectModelPicker(t *testing.T) {
 		Profiles:       cfg.ModelProfiles(),
 		PlannerProfile: "fable5",
 		ImplProfile:    "sonnet5",
+		ReviewProfile:  "fable5",
 	}
 
 	var buf bytes.Buffer
@@ -46,6 +47,7 @@ func TestAdminProjectModelPicker(t *testing.T) {
 		`/admin/projects/exp1/models`, // the save-only form action
 		`name="planner_profile"`,
 		`name="impl_profile"`,
+		`name="review_profile"`,    // the code-review picker (same profile set)
 		"— Forge default —",        // the track-the-global-default option
 		"Claude Sonnet 5",          // a profile label
 		"DeepSeek V4 Pro",          // a newly-added profile is in the dropdown

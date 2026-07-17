@@ -48,7 +48,7 @@
     <li class="card">
       <h3><a href="/admin/projects/{{.ID}}">{{.Name}}</a></h3>
       <p><a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{.PreviewURL}} ↗</a>
-        {{if .RepoURL}}· <a class="muted small" href="{{.RepoURL}}" target="_blank" rel="noopener">source ↗</a>{{end}}</p>
+        {{if .SnapshotKey}}· <a class="muted small" href="/admin/projects/{{.ID}}/source">source</a>{{end}}</p>
       <div class="review-verdict {{if .ReviewClean}}verdict-clean{{else}}verdict-flag{{end}}">
         {{if .ReviewClean}}
         <p class="verdict-line">✓ All automated checks passed — skim the screenshots and hit <strong>Approve &amp; deliver</strong>. Nothing needs your fixing.</p>
@@ -94,6 +94,12 @@
         <p class="small critique-text">{{.Critique}}</p>
       </details>
       {{end}}
+      {{if .CodeReview}}
+      <details class="findings critique">
+        <summary>Code review {{if .CodeReviewClean}}— SHIP ✓{{else}}— FIX ⚠{{end}}</summary>
+        <pre class="plan small">{{.CodeReview}}</pre>
+      </details>
+      {{end}}
       <p class="brief muted small">{{.Brief}}</p>
       <div class="pay-row">
         {{if .Paid}}
@@ -123,6 +129,13 @@
           <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
           <input type="text" name="note" placeholder="Send back with a note (optional)">
           <button class="linklike" type="submit">Send back</button>
+        </form>
+      </div>
+      <div class="admin-actions">
+        <form method="post" action="/admin/projects/{{.ID}}/iterate" class="inline-actions">
+          <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+          <input type="text" name="instructions" placeholder="Or fix it yourself with AI — instructions to the build agent">
+          <button class="linklike" type="submit">Run fix build</button>
         </form>
       </div>
     </li>

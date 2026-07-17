@@ -106,6 +106,7 @@ type Config struct {
 	MoonshotAPIKey        string
 	DefaultPlannerProfile string
 	DefaultImplProfile    string
+	DefaultReviewProfile  string
 
 	// Image generation for content slots ("Generate with AI"). Defaults to
 	// OpenAI gpt-image-2 using OPENAI_API_KEY. Disabled when no key is set.
@@ -364,6 +365,9 @@ func Load() Config {
 	// every non-overridden project on its next build.
 	c.DefaultPlannerProfile = envOr("DEFAULT_PLANNER_PROFILE", "grok")
 	c.DefaultImplProfile = envOr("DEFAULT_IMPL_PROFILE", "grok")
+	// The post-payment code review defaults to the planner's model — same
+	// registry, so the /admin picker offers the identical set.
+	c.DefaultReviewProfile = envOr("DEFAULT_REVIEW_PROFILE", c.DefaultPlannerProfile)
 	return c
 }
 
