@@ -1,139 +1,141 @@
-// Command domainctl is the operator's GleSYS diagnosis tool: it exercises the
-// EXACT client code Forge uses (internal/glesys), one step at a time, with
-// every request/outcome printed — so a failure can be pinned to our code, our
-// account, or GleSYS, and the output pasted to GleSYS support as evidence.
+// Command domainctl is the operator's name.com diagnosis tool: it exercises
+// the EXACT client code Forge uses (internal/namecom), one step at a time,
+// with every outcome printed — so a failure can be pinned to our code, our
+// account, or the registrar, and the output pasted to support as evidence.
 //
-// Read-only by default. Registering costs real money and needs the explicit
-// -register flag.
+// Read-only by default. Registering costs real money in production; against
+// the sandbox (https://api.dev.name.com — the default in dev mode) it is
+// simulated and free. It needs the explicit -register flag either way.
 //
-//	GLESYS_PROJECT_ID=CLxxxxx GLESYS_API_KEY=... go run ./cmd/domainctl            # account survey
-//	... go run ./cmd/domainctl -domain ippfnotti.nu                                # + availability, state, records
-//	... go run ./cmd/domainctl -domain ippfnotti.nu -register                      # REAL registration attempt
-//	... go run ./cmd/domainctl -domain ippfnotti.nu -ensure-dns 1.2.3.4            # write an apex A record (config test)
+//	NAME_DOT_COM_USERNAME=user-test NAME_DOT_COM_API_KEY=... go run ./cmd/domainctl                       # hello + account survey
+//	... go run ./cmd/domainctl -domain forgetest123.com                                                   # + state, availability, records
+//	... go run ./cmd/domainctl -domain forgetest123.com -register                                         # registration attempt
+//	... go run ./cmd/domainctl -domain forgetest123.com -ensure-dns 66.241.125.213                        # write an apex A record
+//	... go run ./cmd/domainctl -domain forgetest123.com -autorenew=off                                    # toggle auto-renew
 package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"time"
 
-	"flag"
-
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
-	"github.com/transcend-software-labs/rasmus-ai/internal/glesys"
+	"github.com/transcend-software-labs/rasmus-ai/internal/namecom"
 	"github.com/transcend-software-labs/rasmus-ai/internal/registrar"
 )
 
 func main() {
-	domain := flag.String("domain", "", "domain to inspect (e.g. ippfnotti.nu)")
-	register := flag.Bool("register", false, "actually attempt registration (REAL MONEY; requires -domain)")
+	domain := flag.String("domain", "", "domain to inspect (e.g. forgetest123.com)")
+	register := flag.Bool("register", false, "actually attempt registration (REAL MONEY in prod; requires -domain)")
 	ensureDNS := flag.String("ensure-dns", "", "write an apex A record with this IP to the domain's zone (requires -domain)")
-	deleteZone := flag.Bool("delete-zone", false, "delete the domain's DNS zone — refused for registered domains (requires -domain)")
+	autorenew := flag.String("autorenew", "", "set auto-renew on|off (requires -domain)")
 	flag.Parse()
 
 	cfg := config.Load()
-	if cfg.GlesysProjectID == "" || cfg.GlesysAPIKey == "" {
-		fatal("GLESYS_PROJECT_ID and GLESYS_API_KEY must be set")
+	if !cfg.NameComEnabled() {
+		fatal("NAME_DOT_COM_USERNAME and NAME_DOT_COM_API_KEY must be set")
 	}
-	fmt.Printf("== domainctl: project %s, registrant complete: %v ==\n", cfg.GlesysProjectID, cfg.GlesysRegistrant.Complete())
-	c := glesys.New(cfg.GlesysProjectID, cfg.GlesysAPIKey, glesys.Registrant(cfg.GlesysRegistrant))
+	fmt.Printf("== domainctl: name.com @ %s, user %s ==\n", cfg.NameComAPIURL, cfg.NameComUsername)
+	c := namecom.New(cfg.NameComAPIURL, cfg.NameComUsername, cfg.NameComAPIKey, cfg.SekPerUSD)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	// 1) Account survey — proves auth + shows every domain and its registrar
-	// state ("" = DNS-only zone, never registered / not registered here).
-	fmt.Println("\n-- account domains (domain/list) --")
+	// 1) Hello — proves connectivity + credentials.
+	user, server, err := c.Hello(ctx)
+	if err != nil {
+		fatal("hello failed (credentials? sandbox needs the -test username + its own token): %v", err)
+	}
+	fmt.Printf("   hello OK — authenticated as %q on %s\n", user, server)
+
+	// 2) Account survey.
+	fmt.Println("\n-- account domains --")
 	ds, err := c.ListDomains(ctx)
 	if err != nil {
-		fatal("list domains failed (auth? IP allowlist on the API key?): %v", err)
+		fatal("list domains: %v", err)
 	}
 	if len(ds) == 0 {
 		fmt.Println("   (none)")
 	}
 	for _, d := range ds {
-		state := d.State
-		if state == "" {
-			state = "DNS-ONLY (no registrar state)"
-		}
-		fmt.Printf("   %-30s state=%s", d.Name, state)
-		if d.Expire != "" {
-			fmt.Printf(" expires=%s", d.Expire)
-		}
-		fmt.Println()
+		fmt.Printf("   %-30s expires=%s autorenew=%v\n", d.Name, d.Expire, d.Autorenew)
 	}
 
 	if *domain == "" {
 		return
 	}
 
-	// 2) The target domain: in-account state, availability + price, records.
-	fmt.Printf("\n-- %s: state in account (domain/details) --\n", *domain)
-	state, inAccount, err := c.DomainState(ctx, *domain)
+	// 3) The target domain: in-account state, availability + price, records.
+	fmt.Printf("\n-- %s: state in account --\n", *domain)
+	st, err := c.RegistrationStatus(ctx, *domain)
 	switch {
 	case err != nil:
-		fmt.Printf("   details ERROR: %v\n", err)
-	case !inAccount:
-		fmt.Println("   not in the account at all (details 404)")
-	case state == "":
-		fmt.Println("   in the account as a DNS zone only — NOT registered (registrarinfo None)")
+		fmt.Printf("   status ERROR: %v\n", err)
+	case st == registrar.StateSucceeded:
+		fmt.Println("   registered in this account")
 	default:
-		fmt.Printf("   registrar state: %s\n", state)
+		fmt.Println("   not in the account")
 	}
 
-	fmt.Printf("\n-- %s: availability + price (domain/available) --\n", *domain)
+	fmt.Printf("\n-- %s: availability + price --\n", *domain)
 	offers, err := c.CheckDomains(ctx, []string{*domain})
 	if err != nil {
 		fmt.Printf("   availability ERROR: %v\n", err)
 	}
 	for _, o := range offers {
-		fmt.Printf("   %s registrable=%v price=%.2f %s\n", o.Name, o.Registrable, o.Price, o.Currency)
+		fmt.Printf("   %s registrable=%v price=%.2f %s (1y)\n", o.Name, o.Registrable, o.Price, o.Currency)
 	}
 
-	if inAccount {
-		fmt.Printf("\n-- %s: DNS records (domain/listrecords) --\n", *domain)
+	if st == registrar.StateSucceeded {
+		fmt.Printf("\n-- %s: DNS records --\n", *domain)
 		recs, err := c.Records(ctx, *domain)
 		if err != nil {
 			fmt.Printf("   records ERROR: %v\n", err)
 		}
+		if len(recs) == 0 {
+			fmt.Println("   (none)")
+		}
 		for _, r := range recs {
-			fmt.Printf("   %-6s %-25s %s\n", r.Type, r.Name, r.Content)
+			host := r.Name
+			if host == "" {
+				host = "@"
+			}
+			fmt.Printf("   %-6s %-25s %s\n", r.Type, host, r.Content)
 		}
 	}
 
-	// 3) Optional writes.
-	if *deleteZone {
-		fmt.Printf("\n-- %s: DELETE DNS ZONE (domain/delete; refused for registered domains) --\n", *domain)
-		if err := c.DeleteDomainZone(ctx, *domain); err != nil {
-			fmt.Printf("   delete FAILED: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("   delete OK")
-	}
-
+	// 4) Optional writes.
 	if *register {
-		fmt.Printf("\n-- %s: REGISTRATION ATTEMPT (details→add→register, the real code path) --\n", *domain)
-		st, err := c.RegisterDomain(ctx, *domain)
+		fmt.Printf("\n-- %s: REGISTRATION ATTEMPT (the real code path) --\n", *domain)
+		state, err := c.RegisterDomain(ctx, *domain)
 		if err != nil {
 			fmt.Printf("   register FAILED: %v\n", err)
-			fmt.Println("\n   If this is a 403 \"not allowed to register any more domains\":")
-			fmt.Println("   the block is on the GleSYS ACCOUNT (their side) — this exact request,")
-			fmt.Println("   params and auth otherwise succeed. Paste this output to GleSYS support.")
 			os.Exit(1)
 		}
-		fmt.Printf("   register OK — workflow state: %s\n", st)
-		st2, in2, _ := c.DomainState(ctx, *domain)
-		fmt.Printf("   post-register details: inAccount=%v state=%q\n", in2, st2)
+		fmt.Printf("   register OK — state: %s\n", state)
+		if exp, err := c.DomainExpiry(ctx, *domain); err == nil && !exp.IsZero() {
+			fmt.Printf("   expires: %s\n", exp.Format("2006-01-02"))
+		}
 	}
 
 	if *ensureDNS != "" {
-		fmt.Printf("\n-- %s: ensure apex A %s (domain/addrecord) --\n", *domain, *ensureDNS)
-		err := c.EnsureDNSRecord(ctx, *domain, registrar.Record{Type: "A", Name: *domain, Content: *ensureDNS})
-		if err != nil {
+		fmt.Printf("\n-- %s: ensure apex A %s --\n", *domain, *ensureDNS)
+		if err := c.EnsureDNSRecord(ctx, *domain, registrar.Record{Type: "A", Name: *domain, Content: *ensureDNS}); err != nil {
 			fmt.Printf("   ensure FAILED: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println("   ensure OK (created or already present)")
+	}
+
+	if *autorenew != "" {
+		on := *autorenew == "on"
+		fmt.Printf("\n-- %s: set auto-renew %v --\n", *domain, on)
+		if err := c.SetAutoRenew(ctx, *domain, on); err != nil {
+			fmt.Printf("   autorenew FAILED: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("   autorenew OK")
 	}
 }
 

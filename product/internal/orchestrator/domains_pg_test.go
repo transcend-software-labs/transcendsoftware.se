@@ -7,60 +7,81 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/transcend-software-labs/rasmus-ai/internal/hostup"
+	"github.com/transcend-software-labs/rasmus-ai/internal/namecom"
 	"github.com/transcend-software-labs/rasmus-ai/internal/pgtest"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
 )
 
-// hostupMock is a canned Hostup REST API: every queried name is available &
-// registrable at a fixed SEK price, and register orders come back pending. It
-// records the register calls so a test can assert the provision actually fired.
-type hostupMock struct {
+// namecomMock is a canned name.com Core API: every queried name is available &
+// registrable at a fixed USD price (9.9/16.9 → 99/169 SEK at the test rate of
+// 10), creation succeeds synchronously, and created domains resolve on GET. It
+// records register calls so a test can assert the provision actually fired.
+type namecomMock struct {
 	*httptest.Server
 	mu         sync.Mutex
 	registered []string
 }
 
-func newHostupMock() *hostupMock {
-	m := &hostupMock{}
+func newNamecomMock() *namecomMock {
+	m := &namecomMock{}
 	m.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/api/v2/domains/availability":
+		switch {
+		case r.URL.Path == "/core/v1/domains:checkAvailability":
 			var body struct {
-				Names []string `json:"names"`
+				DomainNames []string `json:"domainNames"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			_, _ = io.WriteString(w, `{"data":[`)
-			for i, n := range body.Names {
+			_, _ = io.WriteString(w, `{"results":[`)
+			for i, n := range body.DomainNames {
 				if i > 0 {
 					_, _ = io.WriteString(w, ",")
 				}
-				fmt.Fprintf(w, `{"name":%q,"available":true,"premium":false,`+
-					`"actions":{"canRegister":{"allowed":true}},`+
-					`"billing":{"amount":99,"currencyCode":"SEK"},"renewalAmount":169}`, n)
+				fmt.Fprintf(w, `{"domainName":%q,"sld":"x","tld":"se","purchasable":true,`+
+					`"purchaseType":"registration","purchasePrice":9.9,"renewalPrice":16.9}`, n)
 			}
 			_, _ = io.WriteString(w, `]}`)
-		case "/api/v2/orders":
+		case r.Method == http.MethodPost && r.URL.Path == "/core/v1/domains":
 			var body struct {
-				Items []struct {
+				Domain struct {
 					DomainName string `json:"domainName"`
-				} `json:"items"`
+				} `json:"domain"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			m.mu.Lock()
-			for _, it := range body.Items {
-				m.registered = append(m.registered, it.DomainName)
+			m.registered = append(m.registered, body.Domain.DomainName)
+			m.mu.Unlock()
+			fmt.Fprintf(w, `{"order":1,"totalPaid":9.9,"domain":{"domainName":%q,`+
+				`"expireDate":"2027-07-18T00:00:00Z","autorenewEnabled":true}}`, body.Domain.DomainName)
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/core/v1/domains/") && !strings.Contains(r.URL.Path, "/records"):
+			name := strings.TrimPrefix(r.URL.Path, "/core/v1/domains/")
+			m.mu.Lock()
+			owned := false
+			for _, n := range m.registered {
+				if n == name {
+					owned = true
+				}
 			}
 			m.mu.Unlock()
-			w.WriteHeader(http.StatusCreated)
-			_, _ = io.WriteString(w, `{"id":"ord_1","status":"pending"}`)
+			if !owned {
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = io.WriteString(w, `{"message":"Not Found"}`)
+				return
+			}
+			fmt.Fprintf(w, `{"domainName":%q,"expireDate":"2027-07-18T00:00:00Z","autorenewEnabled":true}`, name)
+		case strings.Contains(r.URL.Path, "/records"):
+			if r.Method == http.MethodGet {
+				_, _ = io.WriteString(w, `{"records":[],"to":0,"from":0,"totalCount":0}`)
+				return
+			}
+			_, _ = io.WriteString(w, `{"id":1}`)
 		default:
 			http.NotFound(w, r)
 		}
@@ -68,7 +89,7 @@ func newHostupMock() *hostupMock {
 	return m
 }
 
-func (m *hostupMock) registeredNames() []string {
+func (m *namecomMock) registeredNames() []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return append([]string(nil), m.registered...)
@@ -93,13 +114,13 @@ func seedPGProject(t *testing.T, st store.Store, uid, pid string) {
 	}
 }
 
-// TestDomainAtCheckout_RealPostgres_MockedHostup covers the domain-bundled-at-
-// checkout flow through the REAL Postgres store and the REAL Hostup client
+// TestDomainAtCheckout_RealPostgres_MockedNameCom covers the domain-bundled-at-
+// checkout flow through the REAL Postgres store and the REAL name.com client
 // (pointed at a mock API) — the two layers the unit tests fake, and exactly
 // where the shipped bug lived: SetDomainIntent validated the domain against the
 // registrar, then failed to persist because UpdateProject's bindings were off,
 // surfacing to the customer as "not registrable".
-func TestDomainAtCheckout_RealPostgres_MockedHostup(t *testing.T) {
+func TestDomainAtCheckout_RealPostgres_MockedNameCom(t *testing.T) {
 	ctx := context.Background()
 	pg, err := store.NewPostgres(ctx, pgtest.Start(t))
 	if err != nil {
@@ -107,13 +128,13 @@ func TestDomainAtCheckout_RealPostgres_MockedHostup(t *testing.T) {
 	}
 	defer pg.Close()
 
-	mock := newHostupMock()
+	mock := newNamecomMock()
 	defer mock.Close()
 
 	orch, _ := newTestOrchWithVerifier(pg, NoopVerifier{})
 	orch.SetNotifications(&recordingNotifier{}, "rasmus@example.com", "https://forge.example")
-	// Real Hostup client, real store, cap 300 SEK.
-	orch.SetDomains(hostup.New(mock.URL, "tok", "invoice"), &fakeBiller{}, 300)
+	// Real name.com client, real store, cap 300 SEK.
+	orch.SetDomains(namecom.New(mock.URL, "forge-test", "tok", 10), &fakeBiller{}, 300)
 
 	seedPGProject(t, pg, "u-checkout", "p-checkout")
 
@@ -131,12 +152,19 @@ func TestDomainAtCheckout_RealPostgres_MockedHostup(t *testing.T) {
 	}
 
 	// 2. Payment settles → the bundled domain is provisioned automatically:
-	//    registered via Hostup, project moves to 'registering', intent cleared.
+	//    registered via name.com and the intent cleared. name.com registers
+	//    SYNCHRONOUSLY, so the async reconcile may already have advanced the
+	//    status past 'registering' (→ verifying/active) by the time we poll —
+	//    any post-registration state proves the provision fired.
 	if err := orch.SubscriptionStarted("p-checkout", "cus_1", "sub_1"); err != nil {
 		t.Fatalf("SubscriptionStarted: %v", err)
 	}
 	got = waitForDomain(t, pg, "p-checkout", func(pr *project.Project) bool {
-		return pr.DomainStatus == project.DomainRegistering
+		switch pr.DomainStatus {
+		case project.DomainRegistering, project.DomainVerifying, project.DomainActive:
+			return true
+		}
+		return false
 	})
 	if got.DomainKind != project.DomainKindPurchased || got.DomainName != "mittbageri.se" {
 		t.Fatalf("after provision: kind=%q name=%q", got.DomainKind, got.DomainName)
@@ -145,7 +173,7 @@ func TestDomainAtCheckout_RealPostgres_MockedHostup(t *testing.T) {
 		t.Errorf("intent should be cleared after provisioning, got %q", got.DomainIntent)
 	}
 	if reg := mock.registeredNames(); len(reg) != 1 || reg[0] != "mittbageri.se" {
-		t.Fatalf("Hostup register calls = %v, want [mittbageri.se]", reg)
+		t.Fatalf("name.com register calls = %v, want [mittbageri.se]", reg)
 	}
 }
 
@@ -160,11 +188,11 @@ func TestSetDomainIntent_TooPricey_RealPostgres(t *testing.T) {
 	}
 	defer pg.Close()
 
-	mock := newHostupMock() // fixed price 99 SEK renewal 169
+	mock := newNamecomMock() // fixed price 9.9 USD → 99 SEK, renewal 169
 	defer mock.Close()
 
 	orch, _ := newTestOrchWithVerifier(pg, NoopVerifier{})
-	orch.SetDomains(hostup.New(mock.URL, "tok", "invoice"), &fakeBiller{}, 50) // cap below price
+	orch.SetDomains(namecom.New(mock.URL, "forge-test", "tok", 10), &fakeBiller{}, 50) // cap below price
 
 	seedPGProject(t, pg, "u-pricey", "p-pricey")
 

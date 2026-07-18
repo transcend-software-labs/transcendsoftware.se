@@ -13,10 +13,10 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/auth"
 	"github.com/transcend-software-labs/rasmus-ai/internal/billing"
 	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
-	"github.com/transcend-software-labs/rasmus-ai/internal/cloudflare"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
+	"github.com/transcend-software-labs/rasmus-ai/internal/namecom"
 	"github.com/transcend-software-labs/rasmus-ai/internal/opencode"
 	"github.com/transcend-software-labs/rasmus-ai/internal/orchestrator"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
@@ -52,7 +52,7 @@ func newBundleServer(t *testing.T) (*httptest.Server, store.Store) {
 	assets := storage.NewMemory()
 	orch := orchestrator.New(st, fake, fake, fake, b, machines, assets, broker, orchestrator.NoopVerifier{}, log)
 	bill := billing.New(stripe.URL, "sk_test_x")
-	orch.SetDomains(cloudflare.New("http://127.0.0.1:1", "tok", "acct"), bill, 100)
+	orch.SetDomains(namecom.New("http://127.0.0.1:1", "forge-test", "tok", 10), bill, 100)
 	cfg := config.Config{
 		AdminEmail: "admin@example.com", BaseURL: "https://forge.example",
 		StripeSecretKey: "sk_test_x", StripePriceID: "price_base",

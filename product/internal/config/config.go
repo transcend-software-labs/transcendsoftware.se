@@ -121,29 +121,19 @@ type Config struct {
 	StripePriceID       string // price_… of the recurring base plan (SEK/month)
 	StripeWebhookSecret string // whsec_… to verify webhook signatures
 
-	// Custom domains via Cloudflare (both required to enable — see
-	// CloudflareEnabled). Lets a paying customer attach their own domain (we
-	// show DNS records, verify, auto-issue the Fly cert) or buy one in-app.
-	CloudflareAPIToken  string  // scoped: Registrar write + Zone read + DNS edit
-	CloudflareAccountID string  // account the domains/zones live under
-	MaxDomainUSD        float64 // refuse a self-serve buy above this (default 100)
-
-	// Hostup (hostup.se) as the domain registrar. Kept as a fallback behind
-	// GleSYS. Keys: cloud.hostup.se/api-management, scoped for domains,
-	// dns-zones and orders.
-	HostupAPIToken      string
-	HostupAPIURL        string // API base (default https://cloud.hostup.se — verified: serves the RFC 7807 v2 API)
-	HostupPaymentMethod string // how registration orders settle (default "invoice")
-
-	// GleSYS (glesys.com) as the domain registrar — the current provider. When
-	// both creds are set it takes precedence over Hostup/Cloudflare for the whole
-	// domain feature (availability + registration + DNS). A purchased domain's
-	// actual 1-year cost is billed once to the customer's next Stripe invoice
-	// (clamped to MaxDomainSEK). GlesysProjectID is the project key ("CL12345",
-	// the Basic-auth username); GlesysAPIKey is that project's API key.
-	GlesysProjectID  string
-	GlesysAPIKey     string
-	GlesysRegistrant Registrant // legal registrant every domain is registered to
+	// name.com as the domain registrar (the single provider — GleSYS, Hostup
+	// and Cloudflare were scrapped 2026-07-18 after GleSYS blocked registration
+	// account-side). Auth is Basic username + API token; the sandbox
+	// (api.dev.name.com) uses the "-test" suffixed username with its own token
+	// and simulates registrations. NameComAPIURL defaults by environment:
+	// prod URL normally, the sandbox in dev mode; NAME_DOT_COM_API_URL pins it.
+	// A purchased domain's 1-year cost is billed once to the customer's next
+	// Stripe invoice (clamped to MaxDomainSEK). name.com prices are USD —
+	// converted to SEK at SekPerUSD so the whole pipeline stays in SEK.
+	NameComUsername string
+	NameComAPIKey   string
+	NameComAPIURL   string
+	SekPerUSD       float64 // USD→SEK conversion for domain prices (default 10.5)
 
 	MaxDomainSEK float64 // buy cap, in SEK: max we offer AND max we bill (default 300)
 
@@ -187,32 +177,6 @@ type Config struct {
 	// switch so we can A/B its build-time cost vs. quality. (The design
 	// principles in the template's AGENTS.md apply either way.)
 	Impeccable bool
-}
-
-// Registrant is the legal contact every GleSYS domain is registered to (Forge's
-// own company details). GleSYS requires full contact details per registration;
-// we register everything to Forge and bill the customer. Hardcoded here — for a
-// company the organisationsnummer + address are public business data, not
-// secrets — with GLESYS_REGISTRANT_* overrides so a correction needs no
-// redeploy. NationalID is the organisationsnummer (required for .se).
-type Registrant struct {
-	Firstname    string
-	Lastname     string
-	Organization string
-	NationalID   string // organisationsnummer, e.g. "559218-1050" — a STRING (hyphen, leading zeros; GleSYS 400s on a JSON number)
-	Address      string
-	City         string
-	ZipCode      string
-	Country      string // ISO code, e.g. "SE"
-	Email        string
-	PhoneNumber  string
-}
-
-// Complete reports whether the registrant has the minimum GleSYS needs to
-// register a domain (a missing organisationsnummer is the usual gap).
-func (r Registrant) Complete() bool {
-	return r.NationalID != "" && r.Organization != "" && r.Address != "" &&
-		r.City != "" && r.ZipCode != "" && r.Country != "" && r.Email != ""
 }
 
 // StorageEnabled reports whether a real S3-compatible backend is configured.
@@ -268,17 +232,9 @@ func Load() Config {
 		StripePriceID:       os.Getenv("STRIPE_PRICE_ID"),
 		StripeWebhookSecret: os.Getenv("STRIPE_WEBHOOK_SECRET"),
 
-		CloudflareAPIToken:  os.Getenv("CLOUDFLARE_API_TOKEN"),
-		CloudflareAccountID: os.Getenv("CLOUDFLARE_ACCOUNT_ID"),
-		MaxDomainUSD:        envFloatOr("MAX_DOMAIN_USD", 100),
-
-		HostupAPIToken:      envOr("HOSTUP_API_TOKEN", os.Getenv("HOSTUP_API_KEY")), // both names accepted
-		HostupAPIURL:        envOr("HOSTUP_API_URL", "https://cloud.hostup.se"),
-		HostupPaymentMethod: envOr("HOSTUP_PAYMENT_METHOD", "invoice"),
-
-		GlesysProjectID:  os.Getenv("GLESYS_PROJECT_ID"),
-		GlesysAPIKey:     os.Getenv("GLESYS_API_KEY"),
-		GlesysRegistrant: loadRegistrant(),
+		NameComUsername: os.Getenv("NAME_DOT_COM_USERNAME"),
+		NameComAPIKey:   os.Getenv("NAME_DOT_COM_API_KEY"),
+		SekPerUSD:       envFloatOr("SEK_PER_USD", 10.5),
 
 		MaxDomainSEK: envFloatOr("MAX_DOMAIN_SEK", 300),
 
@@ -368,6 +324,15 @@ func Load() Config {
 	// The post-payment code review defaults to the planner's model — same
 	// registry, so the /admin picker offers the identical set.
 	c.DefaultReviewProfile = envOr("DEFAULT_REVIEW_PROFILE", c.DefaultPlannerProfile)
+	// name.com base URL: production normally; the simulation sandbox when the
+	// app runs in dev mode (in-memory everything), so local runs never place
+	// real orders. NAME_DOT_COM_API_URL pins either explicitly. Set here (after
+	// the struct literal) because DevMode derives from other fields.
+	defaultNameComURL := "https://api.name.com"
+	if c.DevMode() {
+		defaultNameComURL = "https://api.dev.name.com"
+	}
+	c.NameComAPIURL = envOr("NAME_DOT_COM_API_URL", defaultNameComURL)
 	return c
 }
 
@@ -381,25 +346,14 @@ func (c Config) StripeEnabled() bool {
 	return c.StripeSecretKey != "" && c.StripePriceID != "" && c.StripeWebhookSecret != ""
 }
 
-// CloudflareEnabled reports whether the custom-domain feature is available
-// (attach your own domain, show DNS, auto-issue the cert). Needs the API token
-// and account id. Invisible in the UI when off.
-func (c Config) CloudflareEnabled() bool {
-	return c.CloudflareAPIToken != "" && c.CloudflareAccountID != ""
+// NameComEnabled reports whether name.com backs the custom-domain feature
+// (attach your own domain, DNS, buy in-app). Invisible in the UI when off.
+func (c Config) NameComEnabled() bool {
+	return c.NameComUsername != "" && c.NameComAPIKey != ""
 }
 
-// GlesysEnabled reports whether GleSYS backs the domain feature. When set it
-// takes precedence over Hostup/Cloudflare (see cmd/server/main.go).
-func (c Config) GlesysEnabled() bool { return c.GlesysProjectID != "" && c.GlesysAPIKey != "" }
-
-// HostupEnabled reports whether Hostup backs the domain feature (fallback
-// behind GleSYS).
-func (c Config) HostupEnabled() bool { return c.HostupAPIToken != "" }
-
-// DomainsEnabled reports whether any domain registrar is configured.
-func (c Config) DomainsEnabled() bool {
-	return c.GlesysEnabled() || c.HostupEnabled() || c.CloudflareEnabled()
-}
+// DomainsEnabled reports whether a domain registrar is configured.
+func (c Config) DomainsEnabled() bool { return c.NameComEnabled() }
 
 // DomainBuyEnabled reports whether customers can buy a domain in-app. Beyond
 // registrar access it needs Stripe live, so we can bill the registration cost
@@ -426,25 +380,6 @@ func listenAddr() string {
 	return ":8080"
 }
 
-// loadRegistrant builds Forge's GleSYS registrant from hardcoded company
-// defaults, each overridable via GLESYS_REGISTRANT_*. The organisationsnummer,
-// street address, zip, city and phone are owner-supplied — the empty
-// placeholders below MUST be filled (in code or via env) before a live
-// registration; main.go warns at startup if the registrant is incomplete.
-func loadRegistrant() Registrant {
-	return Registrant{
-		Firstname:    envOr("GLESYS_REGISTRANT_FIRSTNAME", "Rasmus"),
-		Lastname:     envOr("GLESYS_REGISTRANT_LASTNAME", "Kockum"),
-		Organization: envOr("GLESYS_REGISTRANT_ORG", "Transcend Software AB"),
-		NationalID:   envOr("GLESYS_REGISTRANT_NATIONAL_ID", "559218-1050"),
-		Address:      envOr("GLESYS_REGISTRANT_ADDRESS", "Salagatan 36A"),
-		City:         envOr("GLESYS_REGISTRANT_CITY", "Uppsala"),
-		ZipCode:      envOr("GLESYS_REGISTRANT_ZIP", "75326"),
-		Country:      envOr("GLESYS_REGISTRANT_COUNTRY", "SE"),
-		Email:        envOr("GLESYS_REGISTRANT_EMAIL", "rasmus@transcendsoftware.se"),
-		PhoneNumber:  envOr("GLESYS_REGISTRANT_PHONE", "+46732020890"),
-	}
-}
 
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {

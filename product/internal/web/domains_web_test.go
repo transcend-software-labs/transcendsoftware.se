@@ -13,10 +13,10 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/auth"
 	"github.com/transcend-software-labs/rasmus-ai/internal/billing"
 	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
-	"github.com/transcend-software-labs/rasmus-ai/internal/cloudflare"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
+	"github.com/transcend-software-labs/rasmus-ai/internal/namecom"
 	"github.com/transcend-software-labs/rasmus-ai/internal/opencode"
 	"github.com/transcend-software-labs/rasmus-ai/internal/orchestrator"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
@@ -27,7 +27,7 @@ import (
 )
 
 // newDomainServer builds a test server with the custom-domain feature wired to a
-// Cloudflare client (pointed at cfURL, unused for BYOD flows) and a Stripe
+// name.com client (pointed at cfURL, unused for BYOD flows) and a Stripe
 // biller. Buying is enabled by the non-nil biller, so the search UI is available.
 func newDomainServer(t *testing.T, cfURL string) (*httptest.Server, store.Store) {
 	t.Helper()
@@ -44,7 +44,7 @@ func newDomainServer(t *testing.T, cfURL string) (*httptest.Server, store.Store)
 	assets := storage.NewMemory()
 	orch := orchestrator.New(st, fake, fake, fake, b, machines, assets, broker, orchestrator.NoopVerifier{}, log)
 	bill := billing.New(stripe.URL, "sk_test_x")
-	orch.SetDomains(cloudflare.New(cfURL, "tok", "acct"), bill, 100)
+	orch.SetDomains(namecom.New(cfURL, "forge-test", "tok", 10), bill, 100)
 	cfg := config.Config{AdminEmail: "admin@example.com", BaseURL: "https://forge.example"}
 	sessions := auth.NewSessions(st, time.Hour)
 	srv, err := web.NewServer(cfg, st, sessions, orch, broker, assets, log)

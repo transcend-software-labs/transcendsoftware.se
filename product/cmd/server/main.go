@@ -22,13 +22,11 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/auth"
 	"github.com/transcend-software-labs/rasmus-ai/internal/billing"
 	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
-	"github.com/transcend-software-labs/rasmus-ai/internal/cloudflare"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
-	"github.com/transcend-software-labs/rasmus-ai/internal/glesys"
-	"github.com/transcend-software-labs/rasmus-ai/internal/hostup"
 	"github.com/transcend-software-labs/rasmus-ai/internal/imagegen"
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
+	"github.com/transcend-software-labs/rasmus-ai/internal/namecom"
 	"github.com/transcend-software-labs/rasmus-ai/internal/notify"
 	"github.com/transcend-software-labs/rasmus-ai/internal/oauth"
 	"github.com/transcend-software-labs/rasmus-ai/internal/opencode"
@@ -165,29 +163,15 @@ func main() {
 		bill = billing.New("https://api.stripe.com", cfg.StripeSecretKey)
 		srv.SetBilling(bill)
 	}
-	// Domain registrar: GleSYS takes precedence over Hostup and Cloudflare when
-	// configured — all three implement the same orchestrator interface so the
-	// rest is identical. bill may be nil (Stripe off) — then purchased domains
-	// are comped and the operator is alerted. Pass an untyped nil so the
-	// interface is truly nil.
+	// Domain registrar: name.com (the single provider). bill may be nil
+	// (Stripe off) — then purchased domains are comped and the operator is
+	// alerted. Pass an untyped nil so the interface is truly nil.
 	var domainReg orchestrator.DomainRegistrar
 	var domainCap float64
-	switch {
-	case cfg.GlesysEnabled():
-		log.Info("domains: glesys enabled", "buy", cfg.DomainBuyEnabled(), "registrant_ok", cfg.GlesysRegistrant.Complete())
-		if !cfg.GlesysRegistrant.Complete() {
-			log.Warn("domains: glesys registrant incomplete — registrations will fail until GLESYS_REGISTRANT_* (org number, address, zip, city, phone) is set")
-		}
-		domainReg = glesys.New(cfg.GlesysProjectID, cfg.GlesysAPIKey, glesys.Registrant(cfg.GlesysRegistrant))
+	if cfg.NameComEnabled() {
+		log.Info("domains: name.com enabled", "base", cfg.NameComAPIURL, "buy", cfg.DomainBuyEnabled())
+		domainReg = namecom.New(cfg.NameComAPIURL, cfg.NameComUsername, cfg.NameComAPIKey, cfg.SekPerUSD)
 		domainCap = cfg.MaxDomainSEK
-	case cfg.HostupEnabled():
-		log.Info("domains: hostup enabled", "buy", cfg.DomainBuyEnabled(), "base", cfg.HostupAPIURL)
-		domainReg = hostup.New(cfg.HostupAPIURL, cfg.HostupAPIToken, cfg.HostupPaymentMethod)
-		domainCap = cfg.MaxDomainSEK
-	case cfg.CloudflareEnabled():
-		log.Info("domains: cloudflare enabled", "buy", cfg.DomainBuyEnabled())
-		domainReg = cloudflare.New("https://api.cloudflare.com/client/v4", cfg.CloudflareAPIToken, cfg.CloudflareAccountID)
-		domainCap = cfg.MaxDomainUSD
 	}
 	if domainReg != nil {
 		if bill != nil {
