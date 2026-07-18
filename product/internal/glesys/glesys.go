@@ -296,6 +296,17 @@ func (c *Client) CheckDomains(ctx context.Context, names []string) ([]registrar.
 // on auto-renew so a customer site never lapses (re-billing renewals is a
 // follow-up). It returns the neutral workflow state from the registrar.
 func (c *Client) RegisterDomain(ctx context.Context, name string) (string, error) {
+	// Idempotency: if the registry already knows this domain in our account (a
+	// previous attempt succeeded, or a retry after a partial failure), do NOT
+	// order it again — return its current workflow state so the caller advances
+	// to DNS/cert instead of re-buying. A domain that is merely in the DNS
+	// system (added but never registered) has no registrar state ("None") and
+	// proceeds to registration; a details 404 means "not in the account at all"
+	// and also proceeds.
+	if ri, derr := c.details(ctx, name); derr == nil && ri.State != "" {
+		slog.Info("glesys register: domain already has registrar state; skipping order", "domain", name, "state", ri.State)
+		return mapState(name, ri.State), nil
+	}
 	// GleSYS requires a domain to be in the account before it can be registered
 	// at the registry: domain/register returns 404 ("not in the account")
 	// otherwise — which is exactly the failure we hit in prod. domain/add
@@ -366,12 +377,16 @@ func isAlreadyInAccount(err error) bool {
 
 // SetAutoRenew turns GleSYS auto-renew on or off for a domain. Off is used when
 // a customer detaches a purchased domain, so we stop paying to renew it.
+// The parameter is named "autorenew" — the live API rejected the official
+// SDK's "setautorenew" with 400 "The autorenew field is required" (seen in
+// prod 2026-07-17 on a detach; same SDK-vs-live drift as the rest of this
+// client). Both are sent for safety across doc/API drift.
 func (c *Client) SetAutoRenew(ctx context.Context, name string, on bool) error {
 	v := "no"
 	if on {
 		v = "yes"
 	}
-	return c.do(ctx, "domain/setautorenew", map[string]any{"domainname": name, "setautorenew": v}, nil)
+	return c.do(ctx, "domain/setautorenew", map[string]any{"domainname": name, "autorenew": v, "setautorenew": v}, nil)
 }
 
 // DomainExpiry returns the domain's current registry expiry date, for detecting
@@ -472,6 +487,83 @@ func (c *Client) ZoneID(ctx context.Context, name string) (string, error) {
 		return "", nil
 	}
 	return name, nil
+}
+
+// DomainInfo is one account domain from domain/list — its name plus the
+// registrar state when GleSYS reports one ("" = DNS-only, not registered
+// through this account). Read-only; used by cmd/domainctl for diagnosis.
+type DomainInfo struct {
+	Name   string
+	State  string // raw GleSYS registrar state ("OK", "REGISTER", …; "" = none)
+	Expire string // "YYYY-MM-DD" when known
+}
+
+// ListDomains returns every domain in the account (registered or DNS-only).
+func (c *Client) ListDomains(ctx context.Context) ([]DomainInfo, error) {
+	var out struct {
+		Response struct {
+			Domains []struct {
+				Name          string         `json:"domainname"`
+				RegistrarInfo registrarState `json:"registrarinfo"`
+			} `json:"domains"`
+		} `json:"response"`
+	}
+	if err := c.do(ctx, "domain/list", nil, &out); err != nil {
+		return nil, fmt.Errorf("glesys: list domains: %w", err)
+	}
+	ds := make([]DomainInfo, 0, len(out.Response.Domains))
+	for _, d := range out.Response.Domains {
+		ds = append(ds, DomainInfo{Name: d.Name, State: d.RegistrarInfo.State, Expire: d.RegistrarInfo.Expire})
+	}
+	return ds, nil
+}
+
+// DomainState returns the raw registrar state for one domain ("" when the
+// domain is DNS-only or unknown states) plus whether the domain exists in the
+// account at all. Read-only; used by cmd/domainctl.
+func (c *Client) DomainState(ctx context.Context, name string) (state string, inAccount bool, err error) {
+	ri, err := c.details(ctx, name)
+	if err != nil {
+		if isNotFound(err) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	return ri.State, true, nil
+}
+
+// DeleteDomainZone removes an UNREGISTERED domain (a DNS-only zone) from the
+// account — cleanup for the zombie zones a failed add→register leaves behind.
+// Refuses a domain that carries a registrar state: dropping a registered
+// domain is a support-level action, not an API cleanup.
+func (c *Client) DeleteDomainZone(ctx context.Context, name string) error {
+	ri, err := c.details(ctx, name)
+	if err != nil {
+		if isNotFound(err) {
+			return nil // not in the account — nothing to delete
+		}
+		return fmt.Errorf("glesys: details before delete %q: %w", name, err)
+	}
+	if ri.State != "" {
+		return fmt.Errorf("glesys: refusing to delete %q: it has registrar state %q (a registered domain, not a zone)", name, ri.State)
+	}
+	if err := c.do(ctx, "domain/delete", map[string]string{"domainname": name}, nil); err != nil {
+		return fmt.Errorf("glesys: delete zone %q: %w", name, err)
+	}
+	return nil
+}
+
+// Records returns a domain's DNS records (read-only; cmd/domainctl).
+func (c *Client) Records(ctx context.Context, name string) ([]registrar.Record, error) {
+	recs, err := c.listRecords(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]registrar.Record, 0, len(recs))
+	for _, r := range recs {
+		out = append(out, registrar.Record{Type: r.Type, Name: r.Host, Content: r.Data})
+	}
+	return out, nil
 }
 
 // dnsRecord is one existing DNS record — only the fields we compare (GleSYS

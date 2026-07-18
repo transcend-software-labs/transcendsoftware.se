@@ -238,7 +238,10 @@ func TestProvisionDomainIntent_RefundsOnFailure(t *testing.T) {
 	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
 	orch.SetNotifications(&recordingNotifier{}, "rasmus@example.com", "https://forge.example")
 	biller := &fakeBiller{}
-	cf := &fakeCF{offers: []registrar.Offer{{Name: "acme.se", Registrable: false}}} // taken since checkout
+	cf := &fakeCF{
+		offers:      []registrar.Offer{{Name: "acme.se", Registrable: false}}, // taken since checkout…
+		statusState: registrar.StatePending,                                   // …by someone ELSE (not in our account)
+	}
 	orch.SetDomains(cf, biller, 300)
 	seedDomainProject(t, st, nil)
 	ctx := context.Background()
@@ -411,12 +414,44 @@ func TestBuyDomain_RenewalCap(t *testing.T) {
 func TestBuyDomain_NotRegistrable(t *testing.T) {
 	st := store.NewMemory()
 	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
-	cf := &fakeCF{offers: []registrar.Offer{{Name: "acme.se", Registrable: false}}}
+	// Taken by someone else: not registrable AND not in our account.
+	cf := &fakeCF{
+		offers:      []registrar.Offer{{Name: "acme.se", Registrable: false}},
+		statusState: registrar.StatePending, // registrar: "not in your account"
+	}
 	orch.SetDomains(cf, &fakeBiller{}, 100)
 	seedDomainProject(t, st, nil)
 
 	if err := orch.BuyDomain(context.Background(), "p1", "acme.se"); err != ErrNotRegistrable {
 		t.Fatalf("expected not-registrable, got %v", err)
+	}
+}
+
+// TestBuyDomain_AlreadyOursProceeds: "not registrable" because WE hold it (an
+// earlier attempt or an out-of-band registration) must not dead-end — the buy
+// proceeds via the idempotent register and keeps the checkout-captured cost
+// instead of zeroing it from the price-less offer.
+func TestBuyDomain_AlreadyOursProceeds(t *testing.T) {
+	st := store.NewMemory()
+	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
+	cf := &fakeCF{
+		offers:      []registrar.Offer{{Name: "acme.se", Registrable: false}}, // taken — by us
+		statusState: registrar.StateSucceeded,                                 // registrar: live in OUR account
+		regState:    registrar.StatePending,                                   // avoid the async reconcile goroutine
+	}
+	orch.SetDomains(cf, &fakeBiller{}, 300)
+	seedDomainProject(t, st, func(p *project.Project) { p.DomainCostOre = 28000 })
+	ctx := context.Background()
+
+	if err := orch.BuyDomain(ctx, "p1", "acme.se"); err != nil {
+		t.Fatalf("already-ours buy should proceed, got %v", err)
+	}
+	got, _ := st.ProjectByID(ctx, "p1")
+	if got.DomainStatus != project.DomainRegistering || got.DomainName != "acme.se" {
+		t.Fatalf("expected registering acme.se, got %s %q", got.DomainStatus, got.DomainName)
+	}
+	if got.DomainCostOre != 28000 {
+		t.Errorf("captured cost must survive a price-less offer, got %d", got.DomainCostOre)
 	}
 }
 

@@ -304,10 +304,21 @@ func (o *Orchestrator) BuyDomain(ctx context.Context, projectID, domain string) 
 			offer = of
 		}
 	}
+	// "Not registrable" can mean WE already hold it: an earlier attempt that
+	// partially succeeded, or an out-of-band registration during recovery. If
+	// our account carries it with a live registrar state, proceed — nothing is
+	// bought (RegisterDomain is idempotent and returns the current state
+	// without re-ordering), so the price guards don't apply. Anything else
+	// (someone else's domain, not in our account) stays refused.
+	alreadyOurs := false
 	if !offer.Registrable {
-		return ErrNotRegistrable
+		st, serr := o.domains.RegistrationStatus(ctx, host)
+		if serr != nil || st != registrar.StateSucceeded {
+			return ErrNotRegistrable
+		}
+		alreadyOurs = true
 	}
-	if !offer.Buyable(o.maxDomainPrice) {
+	if !alreadyOurs && !offer.Buyable(o.maxDomainPrice) {
 		return ErrDomainTooPricey
 	}
 
@@ -321,8 +332,12 @@ func (o *Orchestrator) BuyDomain(ctx context.Context, projectID, domain string) 
 	p.DomainStatus = project.DomainRegistering
 	// Capture the price the customer is committing to now; it's billed once, on
 	// the next invoice, when the domain goes active (the domain is taken by then,
-	// so we can't re-fetch the registration price). Clamped to the cap.
-	p.DomainCostOre = domainCostOre(offer.Price, o.maxDomainPrice)
+	// so we can't re-fetch the registration price). Clamped to the cap. In the
+	// already-ours recovery the offer carries no price — keep the amount captured
+	// at checkout (it also anchors renewal billing) instead of zeroing it.
+	if offer.Price > 0 {
+		p.DomainCostOre = domainCostOre(offer.Price, o.maxDomainPrice)
+	}
 	p.DomainCreatedAt = time.Now().UTC()
 	p.DomainVerifiedAt = time.Time{}
 	if err := o.save(ctx, p); err != nil {

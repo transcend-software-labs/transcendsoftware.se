@@ -143,10 +143,11 @@ func TestRegisterDomain_UsesRegistrantAndAutoRenew(t *testing.T) {
 	if state != registrar.StatePending { // "REGISTER" → still registering
 		t.Errorf("state = %q, want pending", state)
 	}
-	// The domain must be ADDED to the account before it's registered, or GleSYS
-	// 404s the register call (the prod bug). Order matters: add, then register.
-	if len(calls) < 2 || calls[0] != "/domain/add" || calls[1] != "/domain/register" {
-		t.Fatalf("expected domain/add before domain/register, got call order %v", calls)
+	// The flow is: details (idempotency probe — a fresh domain 404s), then ADD
+	// to the account (or GleSYS 404s the register call — the prod bug), then
+	// register. Order matters.
+	if len(calls) < 3 || calls[0] != "/domain/details" || calls[1] != "/domain/add" || calls[2] != "/domain/register" {
+		t.Fatalf("expected details → add → register, got call order %v", calls)
 	}
 	if addParams["domainname"] != "mittbageri.se" || addParams["createrecords"] != "0" {
 		t.Errorf("add params: %+v (want domainname + createrecords=0)", addParams)
@@ -160,6 +161,66 @@ func TestRegisterDomain_UsesRegistrantAndAutoRenew(t *testing.T) {
 	}
 	if !autoRenew {
 		t.Error("auto-renew not set after registration")
+	}
+}
+
+// TestRegisterDomain_SkipsAlreadyRegistered: a domain that already carries a
+// registrar state in the account (an earlier attempt succeeded) must NOT be
+// ordered again — the current state is returned so the caller advances to
+// DNS/cert. Guards against double-buying on retries.
+func TestRegisterDomain_SkipsAlreadyRegistered(t *testing.T) {
+	var ordered []string
+	c := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/domain/details":
+			_, _ = io.WriteString(w, `{"response":{"domain":{"domainname":"x.se","registrarinfo":{"state":"OK","expire":"2027-07-18"}}}}`)
+		case "/domain/add", "/domain/register":
+			ordered = append(ordered, r.URL.Path)
+			_, _ = io.WriteString(w, `{"response":{}}`)
+		default:
+			_, _ = io.WriteString(w, `{"response":{}}`)
+		}
+	})
+	state, err := c.RegisterDomain(context.Background(), "x.se")
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if state != registrar.StateSucceeded {
+		t.Errorf("state = %q, want succeeded (already registered, \"OK\")", state)
+	}
+	if len(ordered) != 0 {
+		t.Fatalf("an already-registered domain must not be re-ordered, called %v", ordered)
+	}
+}
+
+// TestRegisterDomain_DNSOnlyStillRegisters: a domain that exists in the account
+// only as a DNS zone (domain/add ran; registrarinfo "None") must still be
+// registered — exactly the stuck state a failed earlier attempt leaves behind.
+func TestRegisterDomain_DNSOnlyStillRegisters(t *testing.T) {
+	registered := false
+	c := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/domain/details":
+			_, _ = io.WriteString(w, `{"response":{"domain":{"domainname":"x.se","registrarinfo":"None"}}}`)
+		case "/domain/add":
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"response":{"status":{"text":"Domain already exists"}}}`)
+		case "/domain/register":
+			registered = true
+			_, _ = io.WriteString(w, `{"response":{"domain":{"domainname":"x.se","registrarinfo":{"state":"REGISTER"}}}}`)
+		default:
+			_, _ = io.WriteString(w, `{"response":{}}`)
+		}
+	})
+	state, err := c.RegisterDomain(context.Background(), "x.se")
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if !registered {
+		t.Fatal("a DNS-only domain must still be ordered at the registry")
+	}
+	if state != registrar.StatePending {
+		t.Errorf("state = %q, want pending (REGISTER)", state)
 	}
 }
 
@@ -361,23 +422,21 @@ func TestDomainExpiry(t *testing.T) {
 }
 
 func TestSetAutoRenew(t *testing.T) {
-	var gotPath, gotValue string
+	var gotPath string
+	var body map[string]any
 	c := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		var b struct {
-			Domainname   string `json:"domainname"`
-			SetAutoRenew string `json:"setautorenew"`
-		}
 		raw, _ := io.ReadAll(r.Body)
-		_ = json.Unmarshal(raw, &b)
-		gotValue = b.SetAutoRenew
+		_ = json.Unmarshal(raw, &body)
 		_, _ = io.WriteString(w, `{"response":{"domain":{}}}`)
 	})
 	if err := c.SetAutoRenew(context.Background(), "x.se", false); err != nil {
 		t.Fatalf("set auto-renew: %v", err)
 	}
-	if gotPath != "/domain/setautorenew" || gotValue != "no" {
-		t.Errorf("path=%q value=%q, want /domain/setautorenew + no", gotPath, gotValue)
+	// The live API requires "autorenew" (it 400'd the SDK's "setautorenew" in
+	// prod); both are sent to survive doc/API drift.
+	if gotPath != "/domain/setautorenew" || body["autorenew"] != "no" || body["setautorenew"] != "no" {
+		t.Errorf("path=%q body=%v, want /domain/setautorenew with autorenew+setautorenew=no", gotPath, body)
 	}
 }
 
