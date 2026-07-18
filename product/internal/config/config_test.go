@@ -49,6 +49,67 @@ func TestModelProfiles(t *testing.T) {
 	}
 }
 
+func TestParseCustomModel(t *testing.T) {
+	cases := []struct {
+		spec     string
+		provider ModelProvider
+		model    string
+		effort   string
+		native   bool
+		base     string
+		ok       bool
+	}{
+		{"custom:zen/deepseek-v4-pro#high", ProviderZen, "deepseek-v4-pro", "high", true, "", true},
+		{"custom:zen-main/grok-code-fast", ProviderZen, "grok-code-fast", "", false, zenMainGateway, true},
+		{"custom:zen-shim/kimi-k2.7-code", ProviderZen, "kimi-k2.7-code", "", false, "", true},
+		{"custom:anthropic/claude-opus-4-8#max", ProviderAnthropic, "claude-opus-4-8", "max", false, "", true},
+		{"custom:moonshot/kimi-k3", ProviderMoonshot, "kimi-k3", "", false, "", true},
+		{"custom:zen/x#bogus", ProviderZen, "x", "", true, "", true}, // bad effort dropped, spec kept
+		{"custom:unknownfam/x", "", "", "", false, "", false},
+		{"custom:zen/", "", "", "", false, "", false},   // empty model
+		{"custom:/model", "", "", "", false, "", false}, // empty family
+		{"sonnet5", "", "", "", false, "", false},       // not a custom spec
+	}
+	for _, c := range cases {
+		p, ok := ParseCustomModel(c.spec)
+		if ok != c.ok {
+			t.Errorf("%q: ok=%v want %v", c.spec, ok, c.ok)
+			continue
+		}
+		if !ok {
+			continue
+		}
+		if p.Provider != c.provider || p.Model != c.model || p.Effort != c.effort || p.NativeGo != c.native || p.BaseURL != c.base {
+			t.Errorf("%q → %+v (want provider=%s model=%s effort=%s native=%v base=%s)",
+				c.spec, p, c.provider, c.model, c.effort, c.native, c.base)
+		}
+		if p.Key != c.spec {
+			t.Errorf("%q: Key = %q, want the spec verbatim (round-trips through the DB)", c.spec, p.Key)
+		}
+	}
+}
+
+func TestResolveCustomModel(t *testing.T) {
+	zen := Config{ZenAPIKey: "zk", ZenBaseURL: "https://go-gw"}
+	// A custom go-gateway model resolves with the zen key + go base.
+	r, ok := zen.ResolveModel("custom:zen/some-new-model#high")
+	if !ok || r.APIKey != "zk" || r.BaseURL != "https://go-gw" || r.Model != "some-new-model" || r.Effort != "high" || !r.NativeGo {
+		t.Errorf("custom zen resolve = %+v ok=%v", r, ok)
+	}
+	// A custom main-gateway (grok family) model overrides the base URL.
+	if g, ok := zen.ResolveModel("custom:zen-main/grok-9"); !ok || g.BaseURL != zenMainGateway {
+		t.Errorf("custom zen-main resolve = %+v ok=%v (want main gateway)", g, ok)
+	}
+	// A custom model whose family key isn't configured must not resolve (caller
+	// falls back to the default), so an unconfigured provider can't leak.
+	if _, ok := zen.ResolveModel("custom:anthropic/claude-x"); ok {
+		t.Error("custom anthropic model must not resolve without an anthropic key")
+	}
+	if _, ok := (Config{AnthropicAPIKey: "sk"}).ResolveModel("custom:anthropic/claude-x#max"); !ok {
+		t.Error("custom anthropic model should resolve with an anthropic key")
+	}
+}
+
 func TestModelProfileGateways(t *testing.T) {
 	byKey := map[string]ModelProfile{}
 	for _, p := range allProfiles() {

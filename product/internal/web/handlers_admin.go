@@ -331,6 +331,11 @@ type adminProjectView struct {
 	PlannerProfile string
 	ImplProfile    string
 	ReviewProfile  string
+	// Operator-typed custom specs (stripped of the custom: prefix) for
+	// prefilling the free-form model fields; "" when a preset is selected.
+	PlannerCustom string
+	ImplCustom    string
+	ReviewCustom  string
 
 	// DomainRetryFlash surfaces the outcome of the "Recover bundled domain"
 	// action ("started" | "failed" | ""), read from the redirect's query param.
@@ -382,6 +387,7 @@ func (s *Server) handleAdminProject(w http.ResponseWriter, r *http.Request, _ *u
 	v := s.view(r, p.Name+" — operator", adminProjectView{
 		Item: s.withScreenshots(r.Context(), p), Iterations: rows, OwnerEmail: owner,
 		Profiles: s.cfg.ModelProfiles(), PlannerProfile: p.PlannerProfile, ImplProfile: p.ImplProfile, ReviewProfile: p.ReviewProfile,
+		PlannerCustom: config.CustomModelSpec(p.PlannerProfile), ImplCustom: config.CustomModelSpec(p.ImplProfile), ReviewCustom: config.CustomModelSpec(p.ReviewProfile),
 		DomainRetryFlash: r.URL.Query().Get("domainretry")})
 	v.Lang = "en" // operator pages are English regardless of the customer-facing selector
 	s.render(w, http.StatusOK, "admin_project", v)
@@ -403,9 +409,9 @@ func (s *Server) handleAdminRetry(w http.ResponseWriter, r *http.Request, _ *use
 // keys to "".
 func (s *Server) handleAdminSetModels(w http.ResponseWriter, r *http.Request, _ *user.User) {
 	id := r.PathValue("id")
-	planner := s.validProfileKey(r.FormValue("planner_profile"))
-	impl := s.validProfileKey(r.FormValue("impl_profile"))
-	review := s.validProfileKey(r.FormValue("review_profile"))
+	planner := s.chosenModel(r, "planner")
+	impl := s.chosenModel(r, "impl")
+	review := s.chosenModel(r, "review")
 	if err := s.orch.SetProjectModels(r.Context(), id, planner, impl, review); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -422,14 +428,27 @@ func (s *Server) handleAdminRunReview(w http.ResponseWriter, r *http.Request, _ 
 	http.Redirect(w, r, "/admin/projects/"+id, http.StatusSeeOther)
 }
 
-// validProfileKey returns key if it names an enabled model profile, else "".
-// An empty result means "use the default", so an unknown or disabled selection
-// is safely ignored rather than pinned onto the project.
+// chosenModel picks a role's model from the form: a non-empty custom spec
+// (typed as "<family>/<model>[#effort]") wins over the preset dropdown, so any
+// opencode-reachable model can be selected without a catalog entry. Both are
+// validated; an invalid choice maps to "" (track the Forge default).
+func (s *Server) chosenModel(r *http.Request, role string) string {
+	if custom := strings.TrimSpace(r.FormValue(role + "_custom")); custom != "" {
+		return s.validProfileKey(config.CustomModelKey(custom))
+	}
+	return s.validProfileKey(r.FormValue(role + "_profile"))
+}
+
+// validProfileKey returns key if it resolves to a usable model — an enabled
+// catalog preset OR a custom spec whose provider is configured. An empty result
+// means "use the default", so an unknown, disabled, or malformed selection is
+// safely ignored rather than pinned onto the project.
 func (s *Server) validProfileKey(key string) string {
-	for _, pr := range s.cfg.ModelProfiles() {
-		if pr.Key == key {
-			return key
-		}
+	if key == "" {
+		return ""
+	}
+	if _, ok := s.cfg.ResolveModel(key); ok {
+		return key
 	}
 	return ""
 }

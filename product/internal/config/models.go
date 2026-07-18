@@ -20,6 +20,8 @@ package config
 // Gateway model slugs are env-overridable (MODEL_*) since the exact Zen catalog
 // id may differ from the label.
 
+import "strings"
+
 type ModelProvider string
 
 const (
@@ -100,14 +102,103 @@ func (c Config) profileEnabled(p ModelProfile) bool {
 }
 
 // ModelProfileByKey looks up a profile by key (regardless of whether it's
-// currently enabled).
+// currently enabled). A key with the "custom:" prefix is an operator-typed
+// ad-hoc model (see ParseCustomModel) rather than a catalog preset.
 func (c Config) ModelProfileByKey(key string) (ModelProfile, bool) {
+	if p, ok := ParseCustomModel(key); ok {
+		return p, true
+	}
 	for _, p := range allProfiles() {
 		if p.Key == key {
 			return p, true
 		}
 	}
 	return ModelProfile{}, false
+}
+
+// customPrefix marks an operator-typed model spec stored in a project's
+// planner/impl/review profile column instead of a catalog preset key.
+const customPrefix = "custom:"
+
+// ParseCustomModel parses an operator-typed model spec into an ad-hoc profile,
+// so any opencode-reachable model can be selected without a hardcoded catalog
+// entry. Format: "custom:<family>/<model>[#effort]" — e.g.
+// "custom:zen/grok-code-fast#high", "custom:anthropic/claude-opus-4-8#max",
+// "custom:moonshot/kimi-k3". Families map to Forge's configured provider keys
+// and the sandbox's opencode routing:
+//   - anthropic → native Anthropic (ANTHROPIC_API_KEY)
+//   - zen       → OpenCode Zen "go" gateway via opencode's NATIVE opencode-go
+//     provider (the full model list: deepseek/minimax/kimi/glm/…)
+//   - zen-shim  → the same go gateway via the generic openai-compatible shim
+//     (lite list; a fallback for models the native provider mishandles)
+//   - zen-main  → the MAIN Zen gateway (/zen/v1, e.g. the grok family)
+//   - moonshot  → Moonshot first-party (MOONSHOT_API_KEY)
+//
+// Cost is left at zero (unknown) — the /admin cost column just shows blank.
+// Returns ok=false for a malformed spec (unknown family, empty model); the
+// caller then falls back to the default profile.
+func ParseCustomModel(spec string) (ModelProfile, bool) {
+	if !strings.HasPrefix(spec, customPrefix) {
+		return ModelProfile{}, false
+	}
+	body := strings.TrimSpace(spec[len(customPrefix):])
+	effort := ""
+	if i := strings.LastIndex(body, "#"); i >= 0 {
+		effort = strings.TrimSpace(body[i+1:])
+		body = strings.TrimSpace(body[:i])
+	}
+	fam, model, ok := strings.Cut(body, "/")
+	fam, model = strings.TrimSpace(fam), strings.TrimSpace(model)
+	if !ok || fam == "" || model == "" {
+		return ModelProfile{}, false
+	}
+	if effort != "" && !validEffort(effort) {
+		effort = "" // ignore a bad effort rather than reject the whole spec
+	}
+	p := ModelProfile{Key: spec, Label: fam + "/" + model, Model: model, Effort: effort}
+	switch fam {
+	case "anthropic":
+		p.Provider = ProviderAnthropic
+	case "zen":
+		p.Provider, p.NativeGo = ProviderZen, true // full go list via the native provider
+	case "zen-shim":
+		p.Provider = ProviderZen // go gateway, generic openai-compatible shim
+	case "zen-main":
+		p.Provider, p.BaseURL = ProviderZen, zenMainGateway // grok family etc.
+	case "moonshot":
+		p.Provider = ProviderMoonshot
+	default:
+		return ModelProfile{}, false
+	}
+	return p, true
+}
+
+// CustomModelKey turns an operator-typed spec ("<family>/<model>[#effort]")
+// into the stored profile key by adding the custom: prefix (idempotent).
+func CustomModelKey(typed string) string {
+	typed = strings.TrimSpace(typed)
+	if typed == "" || strings.HasPrefix(typed, customPrefix) {
+		return typed
+	}
+	return customPrefix + typed
+}
+
+// CustomModelSpec returns the operator-typed spec for a stored custom key (for
+// prefilling the /admin field), or "" when key is a preset/empty.
+func CustomModelSpec(key string) string {
+	if strings.HasPrefix(key, customPrefix) {
+		return strings.TrimPrefix(key, customPrefix)
+	}
+	return ""
+}
+
+// validEffort reports whether s is a recognized reasoning-effort level.
+func validEffort(s string) bool {
+	switch s {
+	case "low", "medium", "high", "xhigh", "max":
+		return true
+	}
+	return false
 }
 
 // ResolvedModel is a profile plus the credentials/URL to actually use it.

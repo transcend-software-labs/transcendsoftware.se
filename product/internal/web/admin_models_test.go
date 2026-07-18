@@ -47,7 +47,11 @@ func TestAdminProjectModelPicker(t *testing.T) {
 		`/admin/projects/exp1/models`, // the save-only form action
 		`name="planner_profile"`,
 		`name="impl_profile"`,
-		`name="review_profile"`,    // the code-review picker (same profile set)
+		`name="review_profile"`, // the code-review picker (same profile set)
+		`name="planner_custom"`, // free-form custom-model fields (any opencode model)
+		`name="impl_custom"`,
+		`name="review_custom"`,
+		"Custom model format",      // the family reference
 		"— Forge default —",        // the track-the-global-default option
 		"Claude Sonnet 5",          // a profile label
 		"DeepSeek V4 Pro",          // a newly-added profile is in the dropdown

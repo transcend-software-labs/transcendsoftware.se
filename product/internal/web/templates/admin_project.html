@@ -175,7 +175,7 @@
 {{if .Data.Profiles}}
 <section class="panel">
   <h2>Models</h2>
-  <p class="muted small"><strong>Forge default</strong> tracks the global models (upgrades reach this project automatically); pick a specific model to pin an override for this project. Saved for the next build — a retry or a change — it does not rebuild now.</p>
+  <p class="muted small"><strong>Forge default</strong> tracks the global models (upgrades reach this project automatically); pick a preset to pin an override, or type a <strong>custom</strong> model to run anything opencode can reach. Custom wins over the preset. Saved for the next build — a retry or a change — it does not rebuild now.</p>
   <form method="post" action="/admin/projects/{{.Data.Item.ID}}/models" class="model-picker">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
     <label>Planner
@@ -183,21 +183,35 @@
         <option value=""{{if eq $.Data.PlannerProfile ""}} selected{{end}}>— Forge default —</option>
         {{range $.Data.Profiles}}<option value="{{.Key}}"{{if eq .Key $.Data.PlannerProfile}} selected{{end}}>{{.Label}}{{if .Effort}} · {{.Effort}}{{end}}</option>{{end}}
       </select>
+      <input type="text" name="planner_custom" class="model-custom" placeholder="or custom: zen/deepseek-v4-pro#high" value="{{$.Data.PlannerCustom}}">
     </label>
     <label>Implementation
       <select name="impl_profile">
         <option value=""{{if eq $.Data.ImplProfile ""}} selected{{end}}>— Forge default —</option>
         {{range $.Data.Profiles}}<option value="{{.Key}}"{{if eq .Key $.Data.ImplProfile}} selected{{end}}>{{.Label}}{{if .Effort}} · {{.Effort}}{{end}}</option>{{end}}
       </select>
+      <input type="text" name="impl_custom" class="model-custom" placeholder="or custom: zen/minimax-m3#high" value="{{$.Data.ImplCustom}}">
     </label>
     <label>Code review
       <select name="review_profile">
         <option value=""{{if eq $.Data.ReviewProfile ""}} selected{{end}}>— Forge default —</option>
         {{range $.Data.Profiles}}<option value="{{.Key}}"{{if eq .Key $.Data.ReviewProfile}} selected{{end}}>{{.Label}}{{if .Effort}} · {{.Effort}}{{end}}</option>{{end}}
       </select>
+      <input type="text" name="review_custom" class="model-custom" placeholder="or custom: anthropic/claude-opus-4-8#max" value="{{$.Data.ReviewCustom}}">
     </label>
     <button class="btn btn-sm" type="submit">Save models</button>
   </form>
+  <details class="findings">
+    <summary class="muted small">Custom model format</summary>
+    <p class="small"><code>&lt;family&gt;/&lt;model&gt;[#effort]</code> — effort is one of low/medium/high/xhigh/max. Families (each uses the matching configured key):</p>
+    <ul class="small">
+      <li><code>anthropic/&lt;model&gt;</code> — native Anthropic, e.g. <code>anthropic/claude-opus-4-8#max</code></li>
+      <li><code>zen/&lt;model&gt;</code> — OpenCode Zen “go” gateway, full model list via the native provider, e.g. <code>zen/deepseek-v4-pro#high</code></li>
+      <li><code>zen-main/&lt;model&gt;</code> — the main Zen gateway (grok family), e.g. <code>zen-main/grok-4.5#high</code></li>
+      <li><code>zen-shim/&lt;model&gt;</code> — Zen go gateway via the generic openai-compatible shim (fallback)</li>
+      <li><code>moonshot/&lt;model&gt;</code> — Moonshot first-party, e.g. <code>moonshot/kimi-k3</code></li>
+    </ul>
+  </details>
   {{if .Data.Item.CanRetry}}
   <p class="muted small">This build failed. Retry re-runs it with the saved models above.</p>
   <form method="post" action="/admin/projects/{{.Data.Item.ID}}/retry">
