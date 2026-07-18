@@ -251,9 +251,12 @@ func (o *Orchestrator) AttachDomain(ctx context.Context, projectID, hostname str
 	if err != nil {
 		return fmt.Errorf("attach domain: add certificate: %w", err)
 	}
-	if err := o.ensureApexIPv6(ctx, p, app, req.IsApex); err != nil {
+	if err := o.ensureApexIPv6(ctx, p, app, req); err != nil {
 		return err
 	}
+	// If an IPv6 was just allocated, the requirements snapshot above doesn't
+	// know it — refresh so the customer is shown EVERY record Fly wants.
+	req = o.refreshCertRequirements(ctx, app, host, req)
 
 	p.DomainName = host
 	p.DomainKind = project.DomainKindBYOD
@@ -660,9 +663,13 @@ func (o *Orchestrator) provisionPurchased(ctx context.Context, p *project.Projec
 	if err != nil {
 		return err
 	}
-	if err := o.ensureApexIPv6(ctx, p, app, req.IsApex); err != nil {
+	if err := o.ensureApexIPv6(ctx, p, app, req); err != nil {
 		return err
 	}
+	// If an IPv6 was just allocated, the requirements snapshot above doesn't
+	// know it — refresh so the DNS writes cover EVERY address Fly validates
+	// (a stale snapshot left one of two AAAA targets unwritten, seen live).
+	req = o.refreshCertRequirements(ctx, app, p.DomainName, req)
 	// Persist the zone id + allocated IPv6 before the DNS writes. Otherwise a
 	// failed DNS write returns before the final save, and the next retry reloads
 	// the project with an empty DomainIPv6 and allocates a fresh address every
@@ -762,11 +769,23 @@ func domainCostOre(price, cap float64) int {
 	return int(price*100 + 0.5) // round to the nearest öre
 }
 
-// ensureApexIPv6 allocates a dedicated IPv6 once for an apex domain (needed for
+// ensureApexIPv6 makes sure an apex domain has a dedicated IPv6 for its AAAA
+// record. Fly auto-allocates a dedicated v6 on the app's first deploy, so one
+// usually EXISTS already — visible as an AAAA target in the cert's DNS
+// requirements. Reuse it; allocating another leaves a second address the
+// written records never cover (seen live 2026-07-18: Fly then demanded TWO
+// AAAA records while provisioning wrote one, and the cert sat unvalidated).
+// Only when the requirements show no AAAA at all is a dedicated v6 allocated —
 // A/AAAA). Idempotent via the stored address; subdomains (CNAME) need nothing.
-func (o *Orchestrator) ensureApexIPv6(ctx context.Context, p *project.Project, app string, isApex bool) error {
-	if !isApex || p.DomainIPv6 != "" {
+func (o *Orchestrator) ensureApexIPv6(ctx context.Context, p *project.Project, app string, req fly.CertRequirements) error {
+	if !req.IsApex || p.DomainIPv6 != "" {
 		return nil
+	}
+	for _, r := range req.Records {
+		if strings.EqualFold(r.Type, "AAAA") {
+			p.DomainIPv6 = r.Value // the app already has a dedicated v6 — reuse it
+			return nil
+		}
 	}
 	addr, err := o.machines.AllocateIPv6(ctx, app)
 	if err != nil {
@@ -774,6 +793,19 @@ func (o *Orchestrator) ensureApexIPv6(ctx context.Context, p *project.Project, a
 	}
 	p.DomainIPv6 = addr
 	return nil
+}
+
+// refreshCertRequirements re-reads the cert's DNS requirements after any IP
+// change, so the record set covers EVERY current address — the requirements
+// snapshot from AddCertificate predates an ensureApexIPv6 allocation. Best
+// effort: on failure (or an empty answer, e.g. the test fake) the original
+// requirements stand.
+func (o *Orchestrator) refreshCertRequirements(ctx context.Context, app, hostname string, req fly.CertRequirements) fly.CertRequirements {
+	st, err := o.machines.CheckCertificate(ctx, app, hostname)
+	if err != nil || len(st.Requirements.Records) == 0 {
+		return req
+	}
+	return st.Requirements
 }
 
 // failDomain marks a domain failed and alerts the operator. It clears no fields,

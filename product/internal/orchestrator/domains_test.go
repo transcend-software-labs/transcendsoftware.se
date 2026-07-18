@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
+	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 	"github.com/transcend-software-labs/rasmus-ai/internal/registrar"
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
@@ -137,6 +138,42 @@ func seedDomainProject(t *testing.T, st store.Store, mutate func(*project.Projec
 	}
 }
 
+// TestEnsureApexIPv6 pins the reuse-vs-allocate decision: an app whose cert
+// requirements already show an AAAA keeps that address; only an app with no
+// IPv6 at all gets one allocated (once).
+func TestEnsureApexIPv6(t *testing.T) {
+	st := store.NewMemory()
+	orch, fake := newTestOrchWithVerifier(st, NoopVerifier{})
+	ctx := context.Background()
+
+	// No AAAA in the requirements → allocate a dedicated v6, once.
+	p := &project.Project{ID: "x"}
+	bare := fly.CertRequirements{IsApex: true, Records: []fly.CertRecord{{Type: "A", Name: "a.se", Value: "1.2.3.4"}}}
+	if err := orch.ensureApexIPv6(ctx, p, "app-x", bare); err != nil {
+		t.Fatal(err)
+	}
+	if p.DomainIPv6 == "" || len(fake.AllocatedIPv6()) != 1 {
+		t.Fatalf("no existing v6 → allocate: ip=%q allocs=%d", p.DomainIPv6, len(fake.AllocatedIPv6()))
+	}
+	if err := orch.ensureApexIPv6(ctx, p, "app-x", bare); err != nil || len(fake.AllocatedIPv6()) != 1 {
+		t.Fatalf("stored address must guard re-allocation (err=%v allocs=%d)", err, len(fake.AllocatedIPv6()))
+	}
+
+	// Existing AAAA → reuse, no allocation. Subdomain → nothing at all.
+	q := &project.Project{ID: "y"}
+	has := fly.CertRequirements{IsApex: true, Records: []fly.CertRecord{{Type: "AAAA", Name: "b.se", Value: "2a09::42"}}}
+	if err := orch.ensureApexIPv6(ctx, q, "app-y", has); err != nil || q.DomainIPv6 != "2a09::42" {
+		t.Fatalf("existing AAAA should be reused, got %q (%v)", q.DomainIPv6, err)
+	}
+	sub := &project.Project{ID: "z"}
+	if err := orch.ensureApexIPv6(ctx, sub, "app-z", fly.CertRequirements{IsApex: false}); err != nil || sub.DomainIPv6 != "" {
+		t.Fatalf("subdomain must not get an IPv6, got %q (%v)", sub.DomainIPv6, err)
+	}
+	if len(fake.AllocatedIPv6()) != 1 {
+		t.Fatalf("only the bare app should have allocated, got %d", len(fake.AllocatedIPv6()))
+	}
+}
+
 func TestAttachDomain_BYOD_LifecycleAndEmailsOnce(t *testing.T) {
 	st := store.NewMemory()
 	orch, fake := newTestOrchWithVerifier(st, NoopVerifier{})
@@ -157,8 +194,15 @@ func TestAttachDomain_BYOD_LifecycleAndEmailsOnce(t *testing.T) {
 	if len(got.DomainRecords) == 0 {
 		t.Fatal("expected DNS records to show the customer")
 	}
-	if got.DomainIPv6 == "" || len(fake.AllocatedIPv6()) == 0 {
-		t.Fatal("apex domain should allocate a dedicated IPv6")
+	// The fake's cert requirements already carry an AAAA (Fly auto-allocates a
+	// dedicated v6 on first deploy) — the apex must REUSE that address, never
+	// allocate a second one the DNS records wouldn't cover (live 2026-07-18:
+	// a second allocation left Fly demanding two AAAAs with one written).
+	if got.DomainIPv6 != "2a09:8280:1::99" {
+		t.Fatalf("apex should reuse the app's existing IPv6, got %q", got.DomainIPv6)
+	}
+	if len(fake.AllocatedIPv6()) != 0 {
+		t.Fatal("no new IPv6 must be allocated when the app already has one")
 	}
 
 	// DNS not visible yet → stays pending_dns.
