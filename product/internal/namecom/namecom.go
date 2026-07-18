@@ -356,7 +356,7 @@ func (c *Client) EnsureDNSRecord(ctx context.Context, zoneID string, rec registr
 	for _, e := range existing {
 		if strings.EqualFold(e.Type, rec.Type) &&
 			strings.EqualFold(relativize(e.Host, name), host) &&
-			trimQuotes(e.Answer) == trimQuotes(rec.Content) {
+			answersEqual(e.Answer, rec.Content) {
 			return nil // already present — idempotent
 		}
 	}
@@ -390,6 +390,17 @@ func relativize(name, domain string) string {
 
 // trimQuotes strips surrounding quotes some providers add to TXT data.
 func trimQuotes(s string) string { return strings.Trim(strings.TrimSpace(s), `"`) }
+
+// answersEqual compares record data by DNS semantics: quotes stripped, the
+// trailing dot dropped, case-insensitive. Caught live 2026-07-18: name.com
+// STORES FQDN answers without the trailing dot while Fly's dns_requirements
+// supply them WITH it — an exact-string compare missed the match, the
+// re-ensure tried to create, and name.com 400'd "conflicts with an existing
+// CNAME record", which would wedge the reconcile poller after its first pass.
+func answersEqual(a, b string) bool {
+	norm := func(s string) string { return strings.ToLower(strings.TrimSuffix(trimQuotes(s), ".")) }
+	return norm(a) == norm(b)
+}
 
 // --- Diagnosis helpers (cmd/domainctl) ---------------------------------------
 

@@ -226,6 +226,34 @@ func TestEnsureDNSRecord_RelativizesAndIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestEnsureDNSRecord_TrailingDotAnswerMatches reproduces the live 2026-07-18
+// wedge: name.com stores FQDN answers WITHOUT the trailing dot, Fly supplies
+// them WITH it. The re-ensure must recognize the stored record as identical —
+// an exact-string compare tried to re-create and name.com 400'd "conflicts
+// with an existing CNAME record on the same host".
+func TestEnsureDNSRecord_TrailingDotAnswerMatches(t *testing.T) {
+	created := false
+	c := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = io.WriteString(w, `{"records":[{"host":"_acme-challenge","type":"CNAME",`+
+				`"answer":"acme.se.onyqnp5.flydns.net"}],"to":1,"from":1,"totalCount":1}`)
+			return
+		}
+		created = true
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"message":"Parameter Value Error","details":"Record conflicts with an existing CNAME record on the same host"}`)
+	})
+	err := c.EnsureDNSRecord(context.Background(), "acme.se", registrar.Record{
+		Type: "CNAME", Name: "_acme-challenge.acme.se", Content: "ACME.se.onyqnp5.flydns.net.", // trailing dot + case noise
+	})
+	if err != nil {
+		t.Fatalf("trailing-dot answer should match the stored record: %v", err)
+	}
+	if created {
+		t.Fatal("identical record (modulo dot/case) must not be re-created")
+	}
+}
+
 func TestListRecords_FollowsPagination(t *testing.T) {
 	calls := 0
 	c := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {

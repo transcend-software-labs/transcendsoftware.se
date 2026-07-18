@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
@@ -31,6 +32,8 @@ func main() {
 	register := flag.Bool("register", false, "actually attempt registration (REAL MONEY in prod; requires -domain)")
 	ensureDNS := flag.String("ensure-dns", "", "write an apex A record with this IP to the domain's zone (requires -domain)")
 	autorenew := flag.String("autorenew", "", "set auto-renew on|off (requires -domain)")
+	var ensures ensureList
+	flag.Var(&ensures, "ensure", `DNS record to ensure as "TYPE HOST VALUE" (repeatable; HOST @ = apex, relative or FQDN) — the generic form of what provisioning writes`)
 	flag.Parse()
 
 	cfg := config.Load()
@@ -126,8 +129,15 @@ func main() {
 	}
 
 	if *ensureDNS != "" {
-		fmt.Printf("\n-- %s: ensure apex A %s --\n", *domain, *ensureDNS)
-		if err := c.EnsureDNSRecord(ctx, *domain, registrar.Record{Type: "A", Name: *domain, Content: *ensureDNS}); err != nil {
+		ensures = append(ensures, ensureSpec{Type: "A", Host: "@", Value: *ensureDNS})
+	}
+	for _, e := range ensures {
+		name := e.Host
+		if name == "@" {
+			name = *domain
+		}
+		fmt.Printf("\n-- %s: ensure %s %s → %s --\n", *domain, e.Type, e.Host, e.Value)
+		if err := c.EnsureDNSRecord(ctx, *domain, registrar.Record{Type: e.Type, Name: name, Content: e.Value}); err != nil {
 			fmt.Printf("   ensure FAILED: %v\n", err)
 			os.Exit(1)
 		}
@@ -143,6 +153,22 @@ func main() {
 		}
 		fmt.Println("   autorenew OK")
 	}
+}
+
+// ensureSpec is one -ensure record: TYPE HOST VALUE.
+type ensureSpec struct{ Type, Host, Value string }
+
+// ensureList collects repeated -ensure flags.
+type ensureList []ensureSpec
+
+func (l *ensureList) String() string { return fmt.Sprintf("%v", []ensureSpec(*l)) }
+func (l *ensureList) Set(s string) error {
+	f := strings.Fields(s)
+	if len(f) != 3 {
+		return fmt.Errorf(`want "TYPE HOST VALUE", got %q`, s)
+	}
+	*l = append(*l, ensureSpec{Type: strings.ToUpper(f[0]), Host: f[1], Value: f[2]})
+	return nil
 }
 
 func fatal(format string, args ...any) {
