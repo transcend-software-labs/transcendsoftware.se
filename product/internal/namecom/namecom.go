@@ -406,6 +406,15 @@ func (c *Client) Hello(ctx context.Context) (username, server string, err error)
 	return out.Username, out.ServerName, nil
 }
 
+// AutorenewEnabled reports the domain's current auto-renew flag (diagnosis).
+func (c *Client) AutorenewEnabled(ctx context.Context, name string) (bool, error) {
+	d, err := c.getDomain(ctx, name)
+	if err != nil {
+		return false, err
+	}
+	return d.AutorenewEnabled, nil
+}
+
 // DomainSummary is one account domain for the operator survey.
 type DomainSummary struct {
 	Name      string
@@ -413,7 +422,10 @@ type DomainSummary struct {
 	Autorenew bool
 }
 
-// ListDomains returns the account's domains (first 1000 — plenty).
+// ListDomains returns the account's domains (first 1000 — plenty). Quirk seen
+// live 2026-07-18: the list endpoint's autorenewEnabled can report a STALE
+// value after a toggle — the per-domain GET (AutorenewEnabled) is the
+// authoritative read, and it is what the product logic uses.
 func (c *Client) ListDomains(ctx context.Context) ([]DomainSummary, error) {
 	var out struct {
 		Domains []domainInfo `json:"domains"`

@@ -74,6 +74,12 @@ func main() {
 		fmt.Printf("   status ERROR: %v\n", err)
 	case st == registrar.StateSucceeded:
 		fmt.Println("   registered in this account")
+		if exp, aerr := c.DomainExpiry(ctx, *domain); aerr == nil && !exp.IsZero() {
+			fmt.Printf("   expires: %s\n", exp.Format("2006-01-02"))
+		}
+		if ar, aerr := c.AutorenewEnabled(ctx, *domain); aerr == nil {
+			fmt.Printf("   autorenew: %v\n", ar)
+		}
 	default:
 		fmt.Println("   not in the account")
 	}
