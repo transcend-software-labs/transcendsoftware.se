@@ -20,8 +20,8 @@ func TestAdminProjectModelPicker(t *testing.T) {
 		t.Fatalf("parse templates: %v", err)
 	}
 
-	// Both keys set → all profiles enabled.
-	cfg := config.Config{AnthropicAPIKey: "sk", ZenAPIKey: "zk", ZenBaseURL: "https://zen"}
+	// Both keys set → all profiles enabled; XAI key → the build-agent picker.
+	cfg := config.Config{AnthropicAPIKey: "sk", ZenAPIKey: "zk", ZenBaseURL: "https://zen", XAIAPIKey: "xai"}
 	implModel, _ := cfg.ResolveModel("sonnet5")
 	it := &project.Iteration{
 		Number: 1, Status: project.StatusPreviewReady,
@@ -35,6 +35,8 @@ func TestAdminProjectModelPicker(t *testing.T) {
 		PlannerProfile: "fable5",
 		ImplProfile:    "sonnet5",
 		ReviewProfile:  "fable5",
+		BuildAgent:     "grok",
+		GrokAvailable:  cfg.GrokBuildEnabled(),
 	}
 
 	var buf bytes.Buffer
@@ -51,7 +53,10 @@ func TestAdminProjectModelPicker(t *testing.T) {
 		`name="planner_custom"`, // free-form custom-model fields (any opencode model)
 		`name="impl_custom"`,
 		`name="review_custom"`,
-		"Custom model format",      // the family reference
+		"Custom model format",   // the family reference
+		`name="build_agent"`,    // agent picker (opencode | grok build)
+		`value="grok" selected`, // the project's grok choice preselected
+		"Grok Build (headless)",
 		"— Forge default —",        // the track-the-global-default option
 		"Claude Sonnet 5",          // a profile label
 		"DeepSeek V4 Pro",          // a newly-added profile is in the dropdown

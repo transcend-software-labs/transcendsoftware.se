@@ -137,6 +137,13 @@ type Config struct {
 
 	MaxDomainSEK float64 // buy cap, in SEK: max we offer AND max we bill (default 300)
 
+	// Grok Build (xAI's coding-agent CLI) as an alternative sandbox build agent,
+	// selectable per project from /admin. Headless runs need a real xAI API key
+	// (api.x.ai — the OpenCode Zen gateway key does NOT work here). Absent key →
+	// the option is hidden and every build uses opencode.
+	XAIAPIKey      string
+	GrokBuildModel string // pins -m for grok headless; empty = the CLI's own default model
+
 	// Execution plane (empty → fake driver/machines):
 	OpencodeURL     string // fixed opencode server base URL (overrides per-machine)
 	OpencodePort    int    // port opencode listens on inside each sandbox machine
@@ -237,6 +244,9 @@ func Load() Config {
 		SekPerUSD:       envFloatOr("SEK_PER_USD", 10.5),
 
 		MaxDomainSEK: envFloatOr("MAX_DOMAIN_SEK", 300),
+
+		XAIAPIKey:      os.Getenv("XAI_API_KEY"),
+		GrokBuildModel: os.Getenv("GROK_BUILD_MODEL"),
 
 		OpencodeURL:     os.Getenv("OPENCODE_URL"),
 		OpencodePort:    4096,
@@ -354,6 +364,10 @@ func (c Config) NameComEnabled() bool {
 
 // DomainsEnabled reports whether a domain registrar is configured.
 func (c Config) DomainsEnabled() bool { return c.NameComEnabled() }
+
+// GrokBuildEnabled reports whether the Grok Build agent can be offered as a
+// per-project build-agent choice.
+func (c Config) GrokBuildEnabled() bool { return c.XAIAPIKey != "" }
 
 // DomainBuyEnabled reports whether customers can buy a domain in-app. Beyond
 // registrar access it needs Stripe live, so we can bill the registration cost

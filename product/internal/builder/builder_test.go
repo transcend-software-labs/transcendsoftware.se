@@ -442,9 +442,10 @@ func TestFixRound_ReportsPolishSession(t *testing.T) {
 
 	var got string
 	res := opencode.Result{}
-	ok := b.runFixRound(context.Background(), &fly.Sandbox{MachineID: "m1", Addr: "http://sbx"},
-		[]Finding{{Name: "low-contrast"}}, "", time.Hour,
-		Hooks{OnSession: func(id string) { got = id }}, &res)
+	hooks := Hooks{OnSession: func(id string) { got = id }}
+	run := b.opencodeRunner(&fly.Sandbox{MachineID: "m1", Addr: "http://sbx"}, hooks)
+	ok := b.runFixRound(context.Background(), run,
+		[]Finding{{Name: "low-contrast"}}, "", time.Hour, hooks, &res)
 	if !ok {
 		t.Fatal("fix round should complete")
 	}

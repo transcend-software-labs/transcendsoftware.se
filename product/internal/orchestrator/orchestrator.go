@@ -924,6 +924,19 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string, i
 	// Resolve the models for this build (per-project override or the default).
 	implSpec, implLabel := o.implFor(p)
 	_, plannerLabel := o.plannerFor(p)
+	// The build agent: opencode (default) or Grok Build headless. Grok needs a
+	// real xAI key — fail the build fast and clearly rather than spawning a
+	// sandbox that can't authenticate.
+	agent := p.BuildAgent
+	if agent == builder.AgentGrok {
+		if o.modelCfg == nil || !o.modelCfg.GrokBuildEnabled() {
+			return errors.New("grok build agent selected but XAI_API_KEY is not configured")
+		}
+		implLabel = "grok-build"
+		if m := o.modelCfg.GrokBuildModel; m != "" {
+			implLabel += " · " + m
+		}
+	}
 	it := &project.Iteration{
 		ID:           id.New(),
 		ProjectID:    p.ID,
@@ -1017,6 +1030,7 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string, i
 		Plan:              p.Plan,
 		Prompt:            prompt,
 		Model:             implSpec,
+		Agent:             agent,
 		SnapshotGetURL:    snapshotGet,
 		SnapshotPutURL:    snapshotPut,
 		ScreenshotPutURLs: screenshotPuts,

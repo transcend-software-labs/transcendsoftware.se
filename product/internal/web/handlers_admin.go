@@ -337,6 +337,11 @@ type adminProjectView struct {
 	ImplCustom    string
 	ReviewCustom  string
 
+	// BuildAgent is the project's agent choice ("" = opencode, "grok");
+	// GrokAvailable gates the picker on XAI_API_KEY being configured.
+	BuildAgent    string
+	GrokAvailable bool
+
 	// DomainRetryFlash surfaces the outcome of the "Recover bundled domain"
 	// action ("started" | "failed" | ""), read from the redirect's query param.
 	DomainRetryFlash string
@@ -388,6 +393,7 @@ func (s *Server) handleAdminProject(w http.ResponseWriter, r *http.Request, _ *u
 		Item: s.withScreenshots(r.Context(), p), Iterations: rows, OwnerEmail: owner,
 		Profiles: s.cfg.ModelProfiles(), PlannerProfile: p.PlannerProfile, ImplProfile: p.ImplProfile, ReviewProfile: p.ReviewProfile,
 		PlannerCustom: config.CustomModelSpec(p.PlannerProfile), ImplCustom: config.CustomModelSpec(p.ImplProfile), ReviewCustom: config.CustomModelSpec(p.ReviewProfile),
+		BuildAgent: p.BuildAgent, GrokAvailable: s.cfg.GrokBuildEnabled(),
 		DomainRetryFlash: r.URL.Query().Get("domainretry")})
 	v.Lang = "en" // operator pages are English regardless of the customer-facing selector
 	s.render(w, http.StatusOK, "admin_project", v)
@@ -412,7 +418,11 @@ func (s *Server) handleAdminSetModels(w http.ResponseWriter, r *http.Request, _ 
 	planner := s.chosenModel(r, "planner")
 	impl := s.chosenModel(r, "impl")
 	review := s.chosenModel(r, "review")
-	if err := s.orch.SetProjectModels(r.Context(), id, planner, impl, review); err != nil {
+	agent := r.FormValue("build_agent")
+	if agent != "grok" || !s.cfg.GrokBuildEnabled() {
+		agent = "" // opencode — the default; grok only when a key is configured
+	}
+	if err := s.orch.SetProjectModels(r.Context(), id, planner, impl, review, agent); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

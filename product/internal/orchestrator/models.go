@@ -24,12 +24,13 @@ func (o *Orchestrator) SetModelProfiles(cfg config.Config) { o.modelCfg = &cfg }
 // Forge's global default" (so upgrading the global models still reaches every
 // non-overridden project); a set key is an explicit per-project override that
 // sticks. Synchronous: a quick store write.
-func (o *Orchestrator) SetProjectModels(ctx context.Context, projectID, plannerProfile, implProfile, reviewProfile string) error {
+func (o *Orchestrator) SetProjectModels(ctx context.Context, projectID, plannerProfile, implProfile, reviewProfile, buildAgent string) error {
 	p, err := o.store.ProjectByID(ctx, projectID)
 	if err != nil {
 		return err
 	}
 	p.PlannerProfile, p.ImplProfile, p.ReviewProfile = plannerProfile, implProfile, reviewProfile
+	p.BuildAgent = buildAgent
 	return o.save(ctx, p)
 }
 

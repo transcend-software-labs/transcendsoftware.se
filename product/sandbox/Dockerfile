@@ -64,6 +64,14 @@ RUN npm i -g opencode-ai@1.17.18
 # app-scoped token the orchestrator injects (the org token never enters here).
 RUN curl -L https://fly.io/install.sh | FLYCTL_INSTALL=/usr/local sh
 
+# Grok Build — xAI's coding-agent CLI, the alternative build agent (headless,
+# selected per project from /admin; see internal/builder/grok.go). The installer
+# lands the binary in /root/.grok/bin and symlinks /usr/local/bin/grok
+# (verified against this exact base image, v0.2.103). Needs XAI_API_KEY at
+# runtime, injected per build for grok builds only.
+RUN curl -fsSL https://x.ai/cli/install.sh | bash \
+ && command -v grok && grok --version
+
 # Verify the toolchain is installed and on PATH — fails the build early if not.
 RUN node --version && npm --version && pnpm --version && go version \
  && command -v opencode && command -v flyctl && command -v git \

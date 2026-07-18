@@ -70,6 +70,9 @@ func main() {
 		SitesEmailFrom: cfg.SitesEmailFrom,
 
 		Impeccable: cfg.Impeccable, // design-quality gate (A/B via IMPECCABLE_ENABLED)
+
+		GrokAPIKey: cfg.XAIAPIKey, // Grok Build headless as a per-project agent choice
+		GrokModel:  cfg.GrokBuildModel,
 	})
 	assets := newStorage(cfg, log)
 	broker := stream.NewBroker(500)
@@ -87,6 +90,9 @@ func main() {
 	orch.SetModels(cfg.LLMModel, cfg.PlannerLLMModel)
 	// Per-build model selection from /admin (config.ModelProfile registry).
 	orch.SetModelProfiles(cfg)
+	if cfg.GrokBuildEnabled() {
+		log.Info("builds: grok build agent available", "model", cfg.GrokBuildModel)
+	}
 	// Fallback client for the post-payment code review when no profile resolves.
 	orch.SetReviewer(reviewer)
 	orch.RecoverInterrupted(context.Background()) // reap builds left running by a prior run

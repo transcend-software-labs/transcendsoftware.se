@@ -85,7 +85,22 @@ type Request struct {
 	// experiment). Zero value → the builder's configured default (AnthropicKey /
 	// LLM*), i.e. current behavior.
 	Model ModelSpec
+
+	// Agent selects which coding agent executes the build: "" = opencode (the
+	// default, driven over its HTTP server), AgentGrok = xAI's Grok Build CLI
+	// run headless inside the same sandbox. Model is ignored for grok — it uses
+	// the builder's configured GrokModel.
+	Agent string
 }
+
+// AgentGrok selects the Grok Build CLI as the build agent.
+const AgentGrok = "grok"
+
+// agentRunner executes one agent pass over /workspace with an instruction.
+// Both the main build and the polish fix round go through it, so the whole
+// choreography (spawn, restore, deploy verify, snapshot, review, polish) is
+// agent-agnostic.
+type agentRunner func(ctx context.Context, instruction string) (opencode.Result, error)
 
 // ModelSpec is a per-build implementation-model override. Provider is
 // "anthropic" (native, opencode's anthropic provider) or "zen"/other
@@ -188,6 +203,12 @@ type Config struct {
 	// agent runs the impeccable detector on its UI and fixes findings before
 	// deploying). The tool is baked into the sandbox image.
 	Impeccable bool
+
+	// Grok Build (headless) as an alternative agent — see Request.Agent. The
+	// CLI is baked into the sandbox image; the key is injected per build, only
+	// for grok builds.
+	GrokAPIKey string
+	GrokModel  string // -m value (default grok-4.5 when empty)
 }
 
 // DriverFactory builds an opencode driver for a sandbox at the given address.
@@ -249,6 +270,14 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 			env["LLM_API_KEY"] = b.cfg.LLMKey
 			env["LLM_BASE_URL"] = b.cfg.LLMBaseURL
 			env["LLM_MODEL"] = b.cfg.LLMModel
+		}
+	}
+	if req.Agent == AgentGrok {
+		// The key rides the machine env so the Exec-launched CLI sees it; the
+		// opencode server idles untouched alongside.
+		env["XAI_API_KEY"] = b.cfg.GrokAPIKey
+		if b.cfg.GrokModel != "" {
+			env["GROK_MODEL"] = b.cfg.GrokModel
 		}
 	}
 	if len(req.AssetManifest) > 0 {
@@ -358,13 +387,23 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 		instruction += "\n\n" + impeccableStep
 	}
 
-	driver := b.newDriver(sb.Addr)
-	res, err := driver.Run(ctx, opencode.Spec{
-		Workdir:      "/workspace",
-		SystemPrompt: b.cfg.SystemPrompt,
-		Instruction:  instruction,
-	}, hooks.OnLog, hooks.OnSession)
-	return b.finalize(ctx, sb, req, res, err, hooks)
+	run := b.opencodeRunner(sb, hooks)
+	if req.Agent == AgentGrok {
+		run = b.grokRunner(sb, hooks)
+	}
+	res, err := run(ctx, instruction)
+	return b.finalize(ctx, sb, req, res, err, hooks, run)
+}
+
+// opencodeRunner runs an agent pass through the opencode HTTP server.
+func (b *Sandbox) opencodeRunner(sb *fly.Sandbox, hooks Hooks) agentRunner {
+	return func(ctx context.Context, instruction string) (opencode.Result, error) {
+		return b.newDriver(sb.Addr).Run(ctx, opencode.Spec{
+			Workdir:      "/workspace",
+			SystemPrompt: b.cfg.SystemPrompt,
+			Instruction:  instruction,
+		}, hooks.OnLog, hooks.OnSession)
+	}
 }
 
 // Attach re-connects to a build already running in an existing sandbox (after an
@@ -384,13 +423,13 @@ func (b *Sandbox) Attach(ctx context.Context, req AttachRequest, hooks Hooks) (R
 		ProjectID:         req.ProjectID,
 		SnapshotPutURL:    req.SnapshotPutURL,
 		ScreenshotPutURLs: req.ScreenshotPutURLs,
-	}, res, err, hooks)
+	}, res, err, hooks, b.opencodeRunner(sb, hooks))
 }
 
 // finalize runs the shared tail after the agent run ends — for both a fresh
 // Build and a re-Attach. It does not tear the sandbox down; the caller's defer
 // does.
-func (b *Sandbox) finalize(ctx context.Context, sb *fly.Sandbox, req Request, res opencode.Result, runErr error, hooks Hooks) (Result, error) {
+func (b *Sandbox) finalize(ctx context.Context, sb *fly.Sandbox, req Request, res opencode.Result, runErr error, hooks Hooks, run agentRunner) (Result, error) {
 	if runErr != nil {
 		// Preserve whatever the agent built so a Retry resumes from here instead
 		// of rebuilding from scratch — a timeout (the common cause) usually means
@@ -444,7 +483,7 @@ func (b *Sandbox) finalize(ctx context.Context, sb *fly.Sandbox, req Request, re
 		if left := timeLeft(ctx); left >= minFixRoundTime {
 			emit(hooks.OnLog, fmt.Sprintf("Polishing: %d audit finding(s)%s — one fix pass, then redeploy…",
 				len(findings), map[bool]string{true: " + visual critique", false: ""}[critiqueSaysPolish(critique)]))
-			if b.runFixRound(ctx, sb, findings, critique, left, hooks, &res) {
+			if b.runFixRound(ctx, run, findings, critique, left, hooks, &res) {
 				shots, critique, findings = b.review(ctx, sb, preview, req, hooks)
 				// The workspace changed — re-snapshot so the next iteration
 				// continues from the polished site.
@@ -711,7 +750,7 @@ func timeLeft(ctx context.Context) time.Duration {
 // sandbox (workspace intact), bounded well inside the remaining build time.
 // Returns true when it completed (so the caller re-reviews). The agent's log
 // and token count fold into res.
-func (b *Sandbox) runFixRound(ctx context.Context, sb *fly.Sandbox, findings []Finding, critique string, left time.Duration, hooks Hooks, res *opencode.Result) bool {
+func (b *Sandbox) runFixRound(ctx context.Context, run agentRunner, findings []Finding, critique string, left time.Duration, hooks Hooks, res *opencode.Result) bool {
 	budget := left - fixRoundBuffer
 	if budget > maxFixRound {
 		budget = maxFixRound
@@ -719,16 +758,13 @@ func (b *Sandbox) runFixRound(ctx context.Context, sb *fly.Sandbox, findings []F
 	fctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 
-	// OnSession matters here too: the polish pass is a NEW opencode session, and
-	// whatever session id is persisted is what a restarted orchestrator
-	// re-attaches to. Without it, a mid-polish restart re-attaches to the
-	// finished main session — the log relay goes silent and the watchdog
-	// "finalises" under the still-working polish agent.
-	fres, err := b.newDriver(sb.Addr).Run(fctx, opencode.Spec{
-		Workdir:      "/workspace",
-		SystemPrompt: b.cfg.SystemPrompt,
-		Instruction:  fixRoundInstruction(findings, critique),
-	}, hooks.OnLog, hooks.OnSession)
+	// The polish pass runs through the same agent as the build. For opencode it
+	// is a NEW session, and the runner reports it via OnSession — whatever
+	// session id is persisted is what a restarted orchestrator re-attaches to.
+	// Without that, a mid-polish restart re-attaches to the finished main
+	// session — the log relay goes silent and the watchdog "finalises" under
+	// the still-working polish agent.
+	fres, err := run(fctx, fixRoundInstruction(findings, critique))
 	res.Log += "\n" + fres.Log
 	res.Tokens += fres.Tokens
 	res.TokensInput += fres.TokensInput

@@ -242,8 +242,8 @@ func (p *Postgres) CreateProject(ctx context.Context, pr *project.Project) error
 		    screenshots, findings, critique, iterations_used, created_at, updated_at, plan_spec, locale, content_answers, content_rosters, pending_images, image_gen_count, paid, paid_at, paid_via, content_pending, stripe_customer_id, stripe_sub_id,
 		    domain_name, domain_status, domain_kind, domain_zone_id, domain_ipv6, domain_records, domain_created_at, domain_verified_at,
 		    changes_this_period, change_period_start, delivered_at,
-		    domain_intent, domain_intent_buy, domain_cost_ore, preview_host, domain_paid_through, planner_profile, impl_profile, domain_prepaid, review_profile, code_review, code_review_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47,$48,$49,$50,$51,$52,$53,$54)`,
+		    domain_intent, domain_intent_buy, domain_cost_ore, preview_host, domain_paid_through, planner_profile, impl_profile, domain_prepaid, review_profile, code_review, code_review_at, build_agent)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47,$48,$49,$50,$51,$52,$53,$54,$55)`,
 		pr.ID, pr.UserID, pr.Name, pr.Brief, pr.Status, marshalQuestions(pr.Questions),
 		marshalJSON(pr.DesignOptions), pr.DesignBrief,
 		pr.Answers, pr.Plan, pr.Verdict, pr.RejectReason, pr.PreviewURL, pr.SnapshotKey, marshalJSON(pr.Screenshots), marshalJSON(pr.Findings), pr.Critique, pr.IterationsUsed, pr.CreatedAt, pr.UpdatedAt,
@@ -251,14 +251,14 @@ func (p *Postgres) CreateProject(ctx context.Context, pr *project.Project) error
 		pr.Paid, nullableTime(pr.PaidAt), pr.PaidVia, pr.ContentPending, pr.StripeCustomerID, pr.StripeSubID,
 		pr.DomainName, string(pr.DomainStatus), pr.DomainKind, pr.DomainZoneID, pr.DomainIPv6, marshalJSON(pr.DomainRecords), nullableTime(pr.DomainCreatedAt), nullableTime(pr.DomainVerifiedAt),
 		pr.ChangesThisPeriod, nullableTime(pr.ChangePeriodStart), nullableTime(pr.DeliveredAt),
-		pr.DomainIntent, pr.DomainIntentBuy, pr.DomainCostOre, pr.PreviewHost, nullableTime(pr.DomainPaidThrough), pr.PlannerProfile, pr.ImplProfile, pr.DomainPrepaid, pr.ReviewProfile, pr.CodeReview, nullableTime(pr.CodeReviewAt))
+		pr.DomainIntent, pr.DomainIntentBuy, pr.DomainCostOre, pr.PreviewHost, nullableTime(pr.DomainPaidThrough), pr.PlannerProfile, pr.ImplProfile, pr.DomainPrepaid, pr.ReviewProfile, pr.CodeReview, nullableTime(pr.CodeReviewAt), pr.BuildAgent)
 	return err
 }
 
 func (p *Postgres) UpdateProject(ctx context.Context, pr *project.Project) error {
 	tag, err := p.pool.Exec(ctx,
 		`UPDATE projects SET
-		   name=$2, brief=$3, status=$4, questions=$5, design_options=$6, design_brief=$7, answers=$8, plan=$9, verdict=$10, reject_reason=$11, preview_url=$12, snapshot_key=$13, screenshots=$14, findings=$15, critique=$16, iterations_used=$17, updated_at=$18, plan_spec=$19, locale=$20, content_answers=$21, content_rosters=$22, pending_images=$23, image_gen_count=$24, paid=$25, paid_at=$26, paid_via=$27, content_pending=$28, stripe_customer_id=$29, stripe_sub_id=$30, domain_name=$31, domain_status=$32, domain_kind=$33, domain_zone_id=$34, domain_ipv6=$35, domain_records=$36, domain_created_at=$37, domain_verified_at=$38, changes_this_period=$39, change_period_start=$40, delivered_at=$41, domain_intent=$42, domain_intent_buy=$43, domain_cost_ore=$44, preview_host=$45, domain_paid_through=$46, planner_profile=$47, impl_profile=$48, domain_prepaid=$49, review_profile=$50, code_review=$51, code_review_at=$52
+		   name=$2, brief=$3, status=$4, questions=$5, design_options=$6, design_brief=$7, answers=$8, plan=$9, verdict=$10, reject_reason=$11, preview_url=$12, snapshot_key=$13, screenshots=$14, findings=$15, critique=$16, iterations_used=$17, updated_at=$18, plan_spec=$19, locale=$20, content_answers=$21, content_rosters=$22, pending_images=$23, image_gen_count=$24, paid=$25, paid_at=$26, paid_via=$27, content_pending=$28, stripe_customer_id=$29, stripe_sub_id=$30, domain_name=$31, domain_status=$32, domain_kind=$33, domain_zone_id=$34, domain_ipv6=$35, domain_records=$36, domain_created_at=$37, domain_verified_at=$38, changes_this_period=$39, change_period_start=$40, delivered_at=$41, domain_intent=$42, domain_intent_buy=$43, domain_cost_ore=$44, preview_host=$45, domain_paid_through=$46, planner_profile=$47, impl_profile=$48, domain_prepaid=$49, review_profile=$50, code_review=$51, code_review_at=$52, build_agent=$53
 		 WHERE id=$1`,
 		pr.ID, pr.Name, pr.Brief, pr.Status, marshalQuestions(pr.Questions),
 		marshalJSON(pr.DesignOptions), pr.DesignBrief, pr.Answers,
@@ -268,7 +268,7 @@ func (p *Postgres) UpdateProject(ctx context.Context, pr *project.Project) error
 		pr.Paid, nullableTime(pr.PaidAt), pr.PaidVia, pr.ContentPending, pr.StripeCustomerID, pr.StripeSubID,
 		pr.DomainName, string(pr.DomainStatus), pr.DomainKind, pr.DomainZoneID, pr.DomainIPv6, marshalJSON(pr.DomainRecords), nullableTime(pr.DomainCreatedAt), nullableTime(pr.DomainVerifiedAt),
 		pr.ChangesThisPeriod, nullableTime(pr.ChangePeriodStart), nullableTime(pr.DeliveredAt),
-		pr.DomainIntent, pr.DomainIntentBuy, pr.DomainCostOre, pr.PreviewHost, nullableTime(pr.DomainPaidThrough), pr.PlannerProfile, pr.ImplProfile, pr.DomainPrepaid, pr.ReviewProfile, pr.CodeReview, nullableTime(pr.CodeReviewAt))
+		pr.DomainIntent, pr.DomainIntentBuy, pr.DomainCostOre, pr.PreviewHost, nullableTime(pr.DomainPaidThrough), pr.PlannerProfile, pr.ImplProfile, pr.DomainPrepaid, pr.ReviewProfile, pr.CodeReview, nullableTime(pr.CodeReviewAt), pr.BuildAgent)
 	if err != nil {
 		return err
 	}
@@ -411,7 +411,7 @@ const projectColumns = `SELECT id, user_id, name, brief, status, questions, desi
 	screenshots, findings, critique, iterations_used, created_at, updated_at, plan_spec, locale, content_answers, content_rosters, pending_images, image_gen_count, paid, paid_at, paid_via, content_pending, stripe_customer_id, stripe_sub_id,
 	domain_name, domain_status, domain_kind, domain_zone_id, domain_ipv6, domain_records, domain_created_at, domain_verified_at,
 	changes_this_period, change_period_start, delivered_at,
-	domain_intent, domain_intent_buy, domain_cost_ore, preview_host, domain_paid_through, planner_profile, impl_profile, domain_prepaid, review_profile, code_review, code_review_at
+	domain_intent, domain_intent_buy, domain_cost_ore, preview_host, domain_paid_through, planner_profile, impl_profile, domain_prepaid, review_profile, code_review, code_review_at, build_agent
 	FROM projects`
 
 // rowScanner is satisfied by both pgx.Row and pgx.Rows.
@@ -428,7 +428,7 @@ func scanProject(row rowScanner) (*project.Project, error) {
 		&pr.Answers, &pr.Plan, &pr.Verdict, &pr.RejectReason, &pr.PreviewURL, &pr.SnapshotKey, &screenshotsJSON, &findingsJSON, &pr.Critique, &pr.IterationsUsed, &pr.CreatedAt, &pr.UpdatedAt, &specJSON, &pr.Locale, &contentJSON, &rostersJSON, &pendingJSON, &pr.ImageGenCount, &pr.Paid, &paidAt, &pr.PaidVia, &pr.ContentPending, &pr.StripeCustomerID, &pr.StripeSubID,
 		&pr.DomainName, &pr.DomainStatus, &pr.DomainKind, &pr.DomainZoneID, &pr.DomainIPv6, &domainRecordsJSON, &domainCreatedAt, &domainVerifiedAt,
 		&pr.ChangesThisPeriod, &changePeriodStart, &deliveredAt,
-		&pr.DomainIntent, &pr.DomainIntentBuy, &pr.DomainCostOre, &pr.PreviewHost, &domainPaidThrough, &pr.PlannerProfile, &pr.ImplProfile, &pr.DomainPrepaid, &pr.ReviewProfile, &pr.CodeReview, &codeReviewAt)
+		&pr.DomainIntent, &pr.DomainIntentBuy, &pr.DomainCostOre, &pr.PreviewHost, &domainPaidThrough, &pr.PlannerProfile, &pr.ImplProfile, &pr.DomainPrepaid, &pr.ReviewProfile, &pr.CodeReview, &codeReviewAt, &pr.BuildAgent)
 	if err != nil {
 		return nil, err
 	}

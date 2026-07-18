@@ -1,11 +1,15 @@
 package orchestrator
 
 import (
+	"context"
+	"strings"
 	"testing"
 
+	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
+	"github.com/transcend-software-labs/rasmus-ai/internal/store"
 )
 
 // TestResolveProfile covers the per-project model resolution: empty = track the
@@ -61,5 +65,23 @@ func TestIntakeFor_TracksPlannerProfile(t *testing.T) {
 	bare := &Orchestrator{intake: def}
 	if got := bare.intakeFor(&project.Project{PlannerProfile: "fable5"}); got != llm.Intake(def) {
 		t.Error("without a profile registry the default intake client must be used")
+	}
+}
+
+// TestRunBuild_GrokWithoutKeyFailsFast: choosing the grok agent without
+// XAI_API_KEY configured must fail the build immediately with a clear cause,
+// not spawn a sandbox that can't authenticate.
+func TestRunBuild_GrokWithoutKeyFailsFast(t *testing.T) {
+	st := store.NewMemory()
+	o := newTestOrch(st) // no model config at all → grok unavailable
+	id := seedProject(t, st, "an apple farm site")
+	p, _ := st.ProjectByID(context.Background(), id)
+	p.BuildAgent = builder.AgentGrok
+	if err := st.UpdateProject(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	err := o.runBuild(context.Background(), id, "", false)
+	if err == nil || !strings.Contains(err.Error(), "XAI_API_KEY") {
+		t.Fatalf("grok without a key must fail fast, got %v", err)
 	}
 }

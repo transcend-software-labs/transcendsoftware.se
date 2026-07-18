@@ -191,6 +191,14 @@
       </select>
       <input type="text" name="impl_custom" class="model-custom" placeholder="or custom: zen/minimax-m3#high" value="{{$.Data.ImplCustom}}">
     </label>
+    {{if $.Data.GrokAvailable}}
+    <label>Build agent
+      <select name="build_agent">
+        <option value=""{{if eq $.Data.BuildAgent ""}} selected{{end}}>Opencode (default)</option>
+        <option value="grok"{{if eq $.Data.BuildAgent "grok"}} selected{{end}}>Grok Build (headless)</option>
+      </select>
+    </label>
+    {{end}}
     <label>Code review
       <select name="review_profile">
         <option value=""{{if eq $.Data.ReviewProfile ""}} selected{{end}}>— Forge default —</option>

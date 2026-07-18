@@ -244,6 +244,7 @@ type Project struct {
 	PlannerProfile   string                     // model-profile key for the plan step ("" → default); operator override for experiments
 	ImplProfile      string                     // model-profile key for the build agent ("" → default)
 	ReviewProfile    string                     // model-profile key for the post-payment code review ("" → default)
+	BuildAgent       string                     // which coding agent runs sandbox builds: "" = opencode, "grok" = Grok Build headless
 	SnapshotKey      string                     // object-storage key of the workspace snapshot from the last successful build
 	Screenshots      []Screenshot               // one per page of the deployed site (for /admin review)
 	Findings         []Finding                  // impeccable design-audit findings from the last build (for /admin review)
