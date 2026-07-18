@@ -3,10 +3,10 @@ package orchestrator
 // Custom-domain lifecycle. A paying customer can attach their own domain (BYOD:
 // we show the DNS records, they set them, we verify and Fly issues the cert) or
 // buy one in-app (the registrar registers it, we auto-configure DNS + cert).
-// The orchestrator owns the whole flow — registrar + Fly certs + Stripe add-on
-// — behind the DomainRegistrar/domainBiller interfaces, so the provider
-// (internal/cloudflare or internal/hostup) is chosen at wiring time and the
-// rest stays identical.
+// The orchestrator owns the whole flow — registrar + Fly certs + Stripe
+// billing — behind the DomainRegistrar/domainBiller interfaces, so the
+// provider (internal/namecom) is chosen at wiring time and the rest stays
+// identical.
 
 import (
 	"context"
@@ -22,7 +22,7 @@ import (
 )
 
 // DomainRegistrar is the registrar surface the orchestrator drives (satisfied
-// by *cloudflare.Client and *hostup.Client; faked in tests).
+// by *namecom.Client; faked in tests).
 type DomainRegistrar interface {
 	SearchDomains(ctx context.Context, query string, limit int) ([]registrar.Offer, error)
 	CheckDomains(ctx context.Context, names []string) ([]registrar.Offer, error)
@@ -41,11 +41,9 @@ type DomainRegistrar interface {
 // domainBiller is the Stripe surface a purchased domain needs (satisfied by
 // *billing.Client). Nil when Stripe isn't configured — then a domain is comped.
 // A purchased domain's actual 1-year cost is added as a one-off item to the
-// customer's next invoice (AddInvoiceItem); RemoveSubscriptionItem only detaches
-// the legacy flat monthly add-on from domains bought under the old model.
+// customer's next invoice (AddInvoiceItem).
 type domainBiller interface {
 	AddInvoiceItem(ctx context.Context, customerID string, amountMinor int, currency, description string) (string, error)
-	RemoveSubscriptionItem(ctx context.Context, itemID string) error
 	// RefundSubscriptionCharge refunds a domain bought upfront in checkout that we
 	// then couldn't register (partial refund off the subscription's first payment).
 	RefundSubscriptionCharge(ctx context.Context, subscriptionID string, amountMinor int) (string, error)
@@ -69,9 +67,8 @@ var (
 
 // SetDomains wires the custom-domain feature: the registrar client, the Stripe
 // biller for a purchased domain's one-off cost (nil to comp), and the
-// self-serve price cap in the registrar's own currency (SEK for GleSYS/Hostup,
-// USD for Cloudflare) — which also clamps the amount billed. Leaving reg nil
-// keeps domains off.
+// self-serve price cap in SEK — which also clamps the amount billed. Leaving
+// reg nil keeps domains off.
 func (o *Orchestrator) SetDomains(reg DomainRegistrar, bill domainBiller, maxPrice float64) {
 	o.domains = reg
 	o.biller = bill
@@ -274,7 +271,7 @@ func (o *Orchestrator) AttachDomain(ctx context.Context, projectID, hostname str
 }
 
 // BuyDomain starts the self-serve purchase flow: re-check price + registrability
-// server-side (guarding the cap), register through Cloudflare, and mark the
+// server-side (guarding the cap), register through the registrar, and mark the
 // project registering. Provisioning (DNS + cert) then runs via reconcile. The
 // customer already saw and acknowledged the price.
 func (o *Orchestrator) BuyDomain(ctx context.Context, projectID, domain string) error {
@@ -445,17 +442,11 @@ func (o *Orchestrator) DetachDomain(ctx context.Context, projectID string) error
 			}
 		}
 	}
-	if p.DomainSubItemID != "" && o.biller != nil {
-		if err := o.biller.RemoveSubscriptionItem(ctx, p.DomainSubItemID); err != nil {
-			o.log.Error("detach domain: remove sub item", "project", p.ID, "err", err)
-		}
-	}
 	p.DomainName = ""
 	p.DomainStatus = project.DomainNone
 	p.DomainKind = ""
 	p.DomainZoneID = ""
 	p.DomainIPv6 = ""
-	p.DomainSubItemID = ""
 	p.DomainRecords = nil
 	p.DomainCreatedAt = time.Time{}
 	p.DomainVerifiedAt = time.Time{}
@@ -541,7 +532,7 @@ func (o *Orchestrator) rebillDomainRenewals(ctx context.Context) {
 // rebillDomainRenewal bills one project for a domain renewal if GleSYS's expiry
 // has advanced past what the customer has paid through. The first observation of
 // an untracked domain (zero DomainPaidThrough) just anchors the clock without
-// billing, so legacy domains aren't charged retroactively.
+// billing, so an untracked domain is never charged retroactively.
 func (o *Orchestrator) rebillDomainRenewal(ctx context.Context, p *project.Project) error {
 	exp, err := o.domains.DomainExpiry(ctx, p.DomainName)
 	if err != nil {

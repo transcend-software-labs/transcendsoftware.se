@@ -171,4 +171,3 @@ func TestNameComEnabledAndDomainGates(t *testing.T) {
 		t.Error("buy should be on with a registrar + Stripe")
 	}
 }
-

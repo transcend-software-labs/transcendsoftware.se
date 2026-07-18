@@ -158,7 +158,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /projects/{id}/subscribe", s.requireUser(s.handleSubscribe))
 	mux.HandleFunc("POST /projects/{id}/billing", s.requireUser(s.handleBillingPortal))
 
-	// Custom domains (invisible until Cloudflare is wired; guarded per-handler).
+	// Custom domains (invisible until a registrar is wired; guarded per-handler).
 	mux.HandleFunc("GET /projects/{id}/domain/search", s.requireUser(s.handleDomainSearch))
 	mux.HandleFunc("POST /projects/{id}/domain/attach", s.requireUser(s.handleDomainAttach))
 	mux.HandleFunc("POST /projects/{id}/domain/verify", s.requireUser(s.handleDomainVerify))

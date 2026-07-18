@@ -380,7 +380,6 @@ func listenAddr() string {
 	return ":8080"
 }
 
-
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v

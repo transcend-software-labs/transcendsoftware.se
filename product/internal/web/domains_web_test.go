@@ -120,18 +120,28 @@ func TestDomainAttach_ShowsRecords(t *testing.T) {
 	}
 }
 
-func TestDomainSearch_RequiresFullDomain(t *testing.T) {
-	srv, st := newDomainServer(t, "http://127.0.0.1:1")
+func TestDomainSearch_KeywordSuggests(t *testing.T) {
+	// name.com's search takes bare keywords and suggests across endings — the
+	// old require-a-TLD restriction (a GleSYS slowness workaround) is gone.
+	reg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/core/v1/domains:search" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = io.WriteString(w, `{"results":[
+			{"domainName":"mybakery.se","sld":"mybakery","tld":"se","purchasable":true,"purchaseType":"registration","purchasePrice":9.9,"renewalPrice":9.9}
+		]}`)
+	}))
+	defer reg.Close()
+
+	srv, st := newDomainServer(t, reg.URL)
 	defer srv.Close()
 	c := signedInClient(t, srv.URL)
 	seedPaidProject(t, st, "domtld", true)
 
-	// A bare keyword (no TLD) must not trigger a registrar search — the panel
-	// prompts for the full domain instead (the registrar at 127.0.0.1:1 is
-	// unreachable, so a search attempt would error rather than hint).
 	body := getBody(t, c, srv.URL+"/projects/domtld/domain/search?q=mybakery")
-	if !strings.Contains(body, "including the ending") {
-		t.Fatalf("bare keyword should prompt for the full domain, got: %s", body)
+	if !strings.Contains(body, "mybakery.se") {
+		t.Fatalf("keyword search should render suggestions, got: %s", body)
 	}
 }
 

@@ -54,14 +54,14 @@ type DomainStatus string
 
 const (
 	DomainNone        DomainStatus = ""            // no domain attached
-	DomainRegistering DomainStatus = "registering" // Cloudflare is registering a purchased domain (async)
+	DomainRegistering DomainStatus = "registering" // the registrar is registering a purchased domain
 	DomainPendingDNS  DomainStatus = "pending_dns" // BYOD: awaiting the customer's DNS records
 	DomainVerifying   DomainStatus = "verifying"   // DNS seen; Fly is issuing the certificate
 	DomainActive      DomainStatus = "active"      // certificate issued, domain serving
 	DomainFailed      DomainStatus = "failed"      // registration/verification gave up (operator alerted)
 )
 
-// Domain kinds: a customer's own domain vs one bought in-app via Cloudflare.
+// Domain kinds: a customer's own domain vs one bought in-app.
 const (
 	DomainKindBYOD      = "byod"
 	DomainKindPurchased = "purchased"
@@ -69,7 +69,7 @@ const (
 
 // DomainRecord is one DNS record shown in the domain panel — the customer sets
 // it (BYOD) or we set it automatically (purchased). Note is a short per-record
-// hint. Every record we create in Cloudflare is proxied:false.
+// hint.
 type DomainRecord struct {
 	Type  string `json:"type"`  // A | AAAA | CNAME | TXT
 	Name  string `json:"name"`  // host, e.g. "@", "www", "_acme-challenge"
@@ -244,7 +244,6 @@ type Project struct {
 	PlannerProfile   string                     // model-profile key for the plan step ("" → default); operator override for experiments
 	ImplProfile      string                     // model-profile key for the build agent ("" → default)
 	ReviewProfile    string                     // model-profile key for the post-payment code review ("" → default)
-	RepoURL          string                     // vestigial: GitHub mirroring was removed; kept to avoid a DB migration (always "")
 	SnapshotKey      string                     // object-storage key of the workspace snapshot from the last successful build
 	Screenshots      []Screenshot               // one per page of the deployed site (for /admin review)
 	Findings         []Finding                  // impeccable design-audit findings from the last build (for /admin review)
@@ -259,7 +258,7 @@ type Project struct {
 	IterationsUsed   int                        // number of build passes consumed (1..MaxIterations)
 	Paid             bool                       // payment settled — unlocks delivery (see MarkPaid)
 	PaidAt           time.Time                  // when payment was recorded (zero = unpaid)
-	PaidVia          string                     // how it was settled: "manual", "stripe", "legacy"; provenance for accounting
+	PaidVia          string                     // how it was settled: "manual" or "stripe"; provenance for accounting
 	StripeCustomerID string                     // Stripe customer, set when Checkout completes (for the billing portal)
 	StripeSubID      string                     // Stripe subscription; the webhook matches lifecycle events back to the project through it
 	ContentPending   bool                       // content was added/changed since the last build — offer a rebuild to apply it
@@ -277,10 +276,9 @@ type Project struct {
 	DomainName        string         // the attached/purchased hostname, e.g. "acme.se"
 	DomainStatus      DomainStatus   // lifecycle of the domain
 	DomainKind        string         // "byod" | "purchased"
-	DomainZoneID      string         // Cloudflare zone id (purchased domains)
+	DomainZoneID      string         // registrar DNS-zone key (the domain name at name.com)
 	DomainIPv6        string         // dedicated apex IPv6 on the Fly app (allocate-once guard)
-	DomainSubItemID   string         // Stripe subscription-item id (legacy flat monthly add-on; empty for GleSYS-era buys)
-	DomainCostOre     int            // GleSYS 1-year registration cost captured at buy time, in öre; billed once to the next invoice on activation
+	DomainCostOre     int            // 1-year registration cost captured at buy time, in öre (SEK); billed once to the next invoice on activation
 	DomainPrepaid     bool           // domain bought in the subscription checkout (one-time line item) → skip the activation invoice item; renewals still bill
 	DomainRecords     []DomainRecord // DNS records to show the customer (cached from the cert requirements)
 	DomainCreatedAt   time.Time      // when the domain flow started (stuck-timeout clock)

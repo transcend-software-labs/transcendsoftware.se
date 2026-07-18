@@ -85,7 +85,6 @@ func (f *fakeCF) SetAutoRenew(_ context.Context, name string, on bool) error {
 // domain's registration cost, and legacy sub-item removals on detach.
 type fakeBiller struct {
 	invoiced  []invoiceItem // one-off invoice items added
-	removed   []string      // legacy sub-item ids removed
 	refunds   []refundCall  // upfront-domain refunds issued
 	refundErr error         // when set, RefundSubscriptionCharge fails
 }
@@ -104,10 +103,6 @@ type invoiceItem struct {
 func (b *fakeBiller) AddInvoiceItem(_ context.Context, customerID string, amountMinor int, currency, _ string) (string, error) {
 	b.invoiced = append(b.invoiced, invoiceItem{customer: customerID, amount: amountMinor, currency: currency})
 	return "ii_dom", nil
-}
-func (b *fakeBiller) RemoveSubscriptionItem(_ context.Context, itemID string) error {
-	b.removed = append(b.removed, itemID)
-	return nil
 }
 func (b *fakeBiller) RefundSubscriptionCharge(_ context.Context, subscriptionID string, amountMinor int) (string, error) {
 	if b.refundErr != nil {
@@ -524,16 +519,15 @@ func TestReconcileDomain_StuckTimesOut(t *testing.T) {
 	}
 }
 
-func TestDetachDomain_RemovesSubItemAndClears(t *testing.T) {
+func TestDetachDomain_ClearsAndStopsRenewal(t *testing.T) {
 	st := store.NewMemory()
 	orch, fake := newTestOrchWithVerifier(st, NoopVerifier{})
-	biller := &fakeBiller{}
-	orch.SetDomains(&fakeCF{}, biller, 100)
+	cf := &fakeCF{}
+	orch.SetDomains(cf, &fakeBiller{}, 100)
 	seedDomainProject(t, st, func(p *project.Project) {
 		p.DomainName = "acme.se"
 		p.DomainKind = project.DomainKindPurchased
 		p.DomainStatus = project.DomainActive
-		p.DomainSubItemID = "si_dom"
 		p.DomainVerifiedAt = time.Now().UTC()
 	})
 	ctx := context.Background()
@@ -542,11 +536,11 @@ func TestDetachDomain_RemovesSubItemAndClears(t *testing.T) {
 		t.Fatalf("detach: %v", err)
 	}
 	got, _ := st.ProjectByID(ctx, "p1")
-	if got.HasDomain() || got.DomainName != "" || got.DomainSubItemID != "" {
+	if got.HasDomain() || got.DomainName != "" {
 		t.Fatalf("detach should clear all domain fields, got %+v", got)
 	}
-	if len(biller.removed) != 1 || biller.removed[0] != "si_dom" {
-		t.Errorf("expected the add-on removed, got %v", biller.removed)
+	if len(cf.autoRenewOff) != 1 || cf.autoRenewOff[0] != "acme.se" {
+		t.Errorf("detach must turn off registrar auto-renew, got %v", cf.autoRenewOff)
 	}
 	if fake.HasCert(builder.DeployAppName("p1"), "acme.se") {
 		t.Error("cert should have been deleted")

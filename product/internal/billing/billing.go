@@ -166,35 +166,6 @@ func (c *Client) Price(ctx context.Context, id string) (Price, error) {
 	return p, nil
 }
 
-// AddSubscriptionItem appends a recurring line to an existing subscription (the
-// flat monthly domain add-on) and returns the new item id. It prorates, so the
-// customer is charged only the remaining fraction of the current period from the
-// day the domain goes live.
-func (c *Client) AddSubscriptionItem(ctx context.Context, subID, priceID string) (string, error) {
-	form := url.Values{}
-	form.Set("subscription", subID)
-	form.Set("price", priceID)
-	form.Set("quantity", "1")
-	form.Set("proration_behavior", "create_prorations")
-	var out struct {
-		ID string `json:"id"`
-	}
-	if err := c.post(ctx, "/v1/subscription_items", form, &out); err != nil {
-		return "", err
-	}
-	if out.ID == "" {
-		return "", fmt.Errorf("billing: subscription item returned no id")
-	}
-	return out.ID, nil
-}
-
-// RemoveSubscriptionItem deletes a subscription line (detaching a domain drops
-// its monthly add-on). A 404 — the item is already gone — surfaces as an error;
-// callers that treat detach as idempotent may ignore it.
-func (c *Client) RemoveSubscriptionItem(ctx context.Context, itemID string) error {
-	return c.del(ctx, "/v1/subscription_items/"+itemID)
-}
-
 // AddInvoiceItem creates a pending invoice item on the customer for a flat,
 // one-off amount (an extra change beyond the monthly allowance). With no invoice
 // specified, Stripe attaches it to the customer's next scheduled invoice — so
@@ -317,15 +288,6 @@ func (c *Client) getVersioned(ctx context.Context, path, apiVersion string, out 
 		req.Header.Set("Stripe-Version", apiVersion)
 	}
 	return c.do(req, out)
-}
-
-func (c *Client) del(ctx context.Context, path string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+path, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("authorization", "Bearer "+c.key)
-	return c.do(req, nil)
 }
 
 func (c *Client) do(req *http.Request, out any) error {

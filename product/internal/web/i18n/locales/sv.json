@@ -36,7 +36,6 @@
   "domain.failed_note": "Vi kunde inte slutföra domänen. Rasmus har fått besked och löser det.",
   "domain.h2": "Din domän",
   "domain.intro": "Koppla en egen domän till din sida — använd en du redan äger, eller köp en ny här.",
-  "domain.need_tld": "Skriv hela domänen inklusive ändelsen, t.ex. dittbageri.se",
   "domain.none": "Inga lediga domäner för den sökningen. Prova ett annat namn.",
   "domain.or_buy": "Eller köp en ny domän",
   "domain.pending_note": "Lägg till dessa DNS-poster för %s hos din domänleverantör och verifiera sedan:",

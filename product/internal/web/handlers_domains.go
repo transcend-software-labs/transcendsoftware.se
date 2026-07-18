@@ -87,11 +87,9 @@ func (s *Server) handleDomainSearch(w http.ResponseWriter, r *http.Request, u *u
 		s.renderFragment(w, r, "domain_results", data)
 		return
 	}
-	// Require a full domain incl. the TLD before searching: GleSYS fans out
-	// slowly across every ending for a bare keyword, and the customer chooses the
-	// ending they want (.se, .com, …).
-	if len(q) < 3 || !strings.Contains(strings.TrimSuffix(q, "."), ".") {
-		data["NeedTLD"] = true
+	// A bare keyword or a full domain both work — name.com's search suggests
+	// across endings for keywords and answers a specific name directly.
+	if len(q) < 3 {
 		s.renderFragment(w, r, "domain_results", data)
 		return
 	}

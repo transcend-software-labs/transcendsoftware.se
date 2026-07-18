@@ -60,7 +60,6 @@
 <section class="panel">
   <h2>Domain</h2>
   <p><span class="mono">{{.DomainName}}</span> · {{.DomainStatus}} · {{.DomainKind}}{{if .DomainZoneID}} · zone {{.DomainZoneID}}{{end}}{{if .DomainIPv6}} · {{.DomainIPv6}}{{end}}</p>
-  {{if .DomainSubItemID}}<p class="muted small">Stripe add-on item: {{.DomainSubItemID}}</p>{{end}}
   {{if .DomainRecords}}
   <div class="table-scroll">
   <table class="table">

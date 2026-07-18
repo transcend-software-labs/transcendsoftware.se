@@ -93,7 +93,7 @@ type Machines interface {
 }
 
 // CertRecord is one DNS record a custom domain needs — ready both to show the
-// customer (BYOD) and to push to Cloudflare (purchased).
+// customer (BYOD) and to push to the registrar (purchased).
 type CertRecord struct {
 	Type  string // A | AAAA | CNAME | TXT
 	Name  string // record host (FQDN), e.g. "acme.se", "_acme-challenge.acme.se"

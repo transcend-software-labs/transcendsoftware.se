@@ -464,7 +464,6 @@
 {{/* Domain search results fragment (htmx swap). Rendered View-less: uses .Lang,
      .CSRF, .Data{PID,Results,Error,None}. */}}
 {{define "domain_results"}}{{if .Data.Error}}<p class="reason">{{.Data.Error}}</p>{{end}}
-{{if .Data.NeedTLD}}<p class="muted small">{{tr .Lang "domain.need_tld"}}</p>{{end}}
 {{if .Data.None}}<p class="muted small">{{tr .Lang "domain.none"}}</p>{{end}}
 {{if .Data.Results}}
 {{if .Data.Select}}{{/* pre-checkout chooser: pick one, registered after payment */}}
