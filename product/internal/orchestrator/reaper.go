@@ -20,6 +20,18 @@ import (
 const (
 	sandboxMaxAge      = 150 * time.Minute
 	sandboxOrphanGrace = 15 * time.Minute
+	// preBuildStuckAfter bounds how long a project may sit in a transient
+	// pre-build state before the sweep fails it. Those states are driven only by
+	// a live goroutine and back no iteration row, so build recovery can't see
+	// them — a deploy/crash mid-planning otherwise strands the customer on a
+	// permanent spinner (and the quota lock blocks a fresh start). Well above the
+	// LLM step timeouts; hasActive spares anything this process is still driving.
+	preBuildStuckAfter = 10 * time.Minute
+	// domainIntentGrace bounds how long a paid checkout's domain intent may sit
+	// unprovisioned before the sweep re-drives it. provisionDomainIntent is
+	// idempotent; the grace just lets the normally-instant provisioning goroutine
+	// clear it first so we don't race it.
+	domainIntentGrace = 10 * time.Minute
 )
 
 // Reap removes infrastructure that should no longer exist:
@@ -78,6 +90,23 @@ func (o *Orchestrator) Reap(ctx context.Context, previewTTL time.Duration) {
 			o.log.Info("reap: expiring idle preview", "project", p.ID)
 			o.destroyPreviewApp(ctx, p, project.StatusExpired,
 				"Preview expired after "+formatDays(previewTTL)+" — start a new project to rebuild it.")
+		case isStuckPreBuild(p) && !o.hasActive(p.ID) && time.Since(p.UpdatedAt) > preBuildStuckAfter:
+			// A pre-build goroutine died (deploy/crash) with no iteration row for
+			// build recovery to find. Fail it so the customer gets a Retry button
+			// (RetryBuild redoes plan→gate→build) and the quota lock frees.
+			o.log.Warn("reap: failing stranded pre-build project", "project", p.ID, "status", p.Status)
+			p.Status = project.StatusFailed
+			p.RejectReason = "Setup was interrupted before your build started — nothing was lost. Press Retry to run it again."
+			if err := o.save(ctx, p); err != nil {
+				o.log.Error("reap: fail stranded pre-build", "project", p.ID, "err", err)
+			}
+		case p.Paid && p.DomainIntent != "" && !p.HasDomain() && !o.hasActive(p.ID) &&
+			time.Since(p.UpdatedAt) > domainIntentGrace:
+			// A paid checkout's domain was never provisioned — the goroutine died
+			// between charging and registering. Re-drive it (idempotent); the
+			// customer paid and must get their domain or a refund.
+			o.log.Warn("reap: re-driving stranded domain intent", "project", p.ID)
+			go o.provisionDomainIntent(p.ID)
 		}
 	}
 
@@ -187,6 +216,19 @@ func (o *Orchestrator) destroyPreviewApp(ctx context.Context, p *project.Project
 // hadBuild reports whether a build was ever attempted (an app may exist).
 func hadBuild(p *project.Project) bool {
 	return p.PreviewURL != "" || p.Verdict == project.VerdictAllow
+}
+
+// isStuckPreBuild reports whether a project is in a transient state that only a
+// live goroutine drives and no iteration row backs — so if that goroutine is
+// gone, nothing recovers it. NeedsInput and AwaitingApproval are deliberately
+// excluded: those are resting states waiting on the customer, not in-flight work.
+func isStuckPreBuild(p *project.Project) bool {
+	switch p.Status {
+	case project.StatusCreated, project.StatusClarifying,
+		project.StatusPlanning, project.StatusScreening:
+		return true
+	}
+	return false
 }
 
 func formatDays(d time.Duration) string {

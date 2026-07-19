@@ -376,6 +376,19 @@ func (p *Project) RecordChange(now time.Time, perMonth int) (overage bool) {
 	return overage
 }
 
+// RefundChange reverses the most recent RecordChange in the current period,
+// returning whether the refunded change had been billed as overage. Used when a
+// paid change build fails: the customer must not lose an allowance slot (nor eat
+// an overage charge) for a change that never shipped. Floors at zero, so it is
+// safe to call defensively.
+func (p *Project) RefundChange(perMonth int) (wasOverage bool) {
+	if p.ChangesThisPeriod == 0 {
+		return false
+	}
+	p.ChangesThisPeriod--
+	return p.ChangesThisPeriod >= perMonth
+}
+
 // CanApprovePlan reports whether the customer is at the plan-approval gate: the
 // plan is ready and the build hasn't started, waiting on their go-ahead.
 func (p *Project) CanApprovePlan() bool {

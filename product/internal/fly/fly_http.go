@@ -460,6 +460,7 @@ func (h *HTTP) SweepSandboxes(ctx context.Context, grace, max time.Duration, kee
 		kept[id] = true
 	}
 	reaped := 0
+	var lastErr error
 	for _, m := range machines {
 		age := time.Since(m.CreatedAt)
 		if age <= grace || (kept[m.ID] && age <= max) {
@@ -467,11 +468,15 @@ func (h *HTTP) SweepSandboxes(ctx context.Context, grace, max time.Duration, kee
 		}
 		if err := h.do(ctx, http.MethodDelete,
 			fmt.Sprintf("/apps/%s/machines/%s?force=true", h.sandboxApp, m.ID), nil, nil); err != nil {
-			return reaped, err
+			// One machine that won't delete (bad state, transient 5xx, rate limit)
+			// must not abort the sweep and leave every later leaked machine alive
+			// burning money. Record it and move on; the next tick retries.
+			lastErr = fmt.Errorf("destroy sandbox %s: %w", m.ID, err)
+			continue
 		}
 		reaped++
 	}
-	return reaped, nil
+	return reaped, lastErr
 }
 
 // Exec runs a command inside a sandbox machine via the Machines exec API.

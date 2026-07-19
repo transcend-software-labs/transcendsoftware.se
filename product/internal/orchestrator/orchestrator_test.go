@@ -871,3 +871,41 @@ func TestCustomerActions_FlipStatusSynchronously(t *testing.T) {
 		t.Fatal("RetryBuild must clear the failure reason synchronously")
 	}
 }
+
+// A paid change is metered up front; if the build then fails and ships nothing,
+// the customer must get the allowance slot back and the operator must be told —
+// otherwise the change silently vanishes and a retry meters again.
+func TestMarkFailed_RefundsFailedPaidChange(t *testing.T) {
+	st := store.NewMemory()
+	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
+	rec := &recordingNotifier{}
+	orch.SetNotifications(rec, "rasmus@example.com", "https://app.example")
+	orch.SetChangePolicy(&fakeChangeBiller{}, 3, 4900)
+	ctx := context.Background()
+	if err := st.CreateUser(ctx, &user.User{ID: "u1", Email: "c@example.com", CreatedAt: time.Now().UTC()}); err != nil {
+		t.Fatalf("user: %v", err)
+	}
+	p := &project.Project{
+		ID: "p1", UserID: "u1", Name: "Farm", Status: project.StatusBuilding,
+		Paid: true, PaidVia: "stripe", StripeCustomerID: "cus_1",
+		PreviewURL: "https://forge-p1.fly.dev", IterationsUsed: 1,
+		ChangesThisPeriod: 1, ChangePeriodStart: time.Now().UTC(),
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}
+	if err := st.CreateProject(ctx, p); err != nil {
+		t.Fatalf("project: %v", err)
+	}
+
+	orch.markFailed(ctx, "p1", errors.New("agent crashed"))
+
+	got, _ := st.ProjectByID(ctx, "p1")
+	if got.Status != project.StatusPreviewReady {
+		t.Errorf("a failed paid change must fall back to the live preview, got %q", got.Status)
+	}
+	if got.ChangesThisPeriod != 0 {
+		t.Errorf("the change slot must be refunded, got ChangesThisPeriod=%d", got.ChangesThisPeriod)
+	}
+	if !sentTo(rec, "rasmus@example.com", "paid change failed") {
+		t.Errorf("operator must be alerted a paid change failed; sent %+v", rec.all())
+	}
+}

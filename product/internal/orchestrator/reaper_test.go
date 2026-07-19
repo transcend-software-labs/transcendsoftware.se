@@ -217,3 +217,33 @@ func TestReap_SweepsOrphanedSandboxes(t *testing.T) {
 		}
 	}
 }
+
+// A deploy or crash mid-planning kills the driving goroutine, leaving no
+// iteration row for build recovery to find. The reaper must fail such a stranded
+// project so the customer gets a Retry button (and the quota lock frees) instead
+// of a permanent spinner — but only once it's genuinely stale, and never a
+// resting state that's legitimately waiting on the customer.
+func TestReap_FailsStrandedPreBuild(t *testing.T) {
+	st := store.NewMemory()
+	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	seedWithStatus(t, st, "stranded", project.StatusPlanning, "", now.Add(-30*time.Minute))
+	seedWithStatus(t, st, "recent", project.StatusPlanning, "", now.Add(-time.Minute))
+	seedWithStatus(t, st, "waiting", project.StatusNeedsInput, "", now.Add(-30*time.Minute))
+
+	orch.Reap(ctx, 0)
+
+	if p, _ := st.ProjectByID(ctx, "stranded"); p.Status != project.StatusFailed {
+		t.Errorf("stale pre-build project should be failed, got %q", p.Status)
+	} else if !p.CanRetry() {
+		t.Error("failed pre-build project must be retryable")
+	}
+	if p, _ := st.ProjectByID(ctx, "recent"); p.Status != project.StatusPlanning {
+		t.Errorf("a recently-active pre-build project must be left alone, got %q", p.Status)
+	}
+	if p, _ := st.ProjectByID(ctx, "waiting"); p.Status != project.StatusNeedsInput {
+		t.Errorf("needs_input rests on the customer and must not be failed, got %q", p.Status)
+	}
+}

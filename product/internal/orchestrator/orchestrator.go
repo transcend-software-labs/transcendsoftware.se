@@ -1096,8 +1096,9 @@ func (o *Orchestrator) finishBuild(ctx context.Context, p *project.Project, it *
 		// past its deadline (a timeout is the usual reason a build fails here).
 		if res.SnapshotSaved {
 			pctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-			p.SnapshotKey = snapshotKey
-			if serr := o.save(pctx, p); serr != nil {
+			if _, serr := o.mutateProject(pctx, p.ID, func(fresh *project.Project) {
+				fresh.SnapshotKey = snapshotKey
+			}); serr != nil {
 				o.log.Error("persist resume snapshot key", "project", p.ID, "err", serr)
 			} else {
 				o.log.Info("saved resume snapshot", "project", p.ID, "key", snapshotKey)
@@ -1120,46 +1121,54 @@ func (o *Orchestrator) finishBuild(ctx context.Context, p *project.Project, it *
 		return err
 	}
 
-	if it.Number > 0 { // internal polish passes (number 0) consume no credit
-		p.IterationsUsed = it.Number
-	}
-	p.PreviewURL = previewURL
-	if res.SnapshotSaved {
-		p.SnapshotKey = snapshotKey
-	}
-	if len(res.Screenshots) > 0 {
-		shots := make([]project.Screenshot, 0, len(res.Screenshots))
-		for _, s := range res.Screenshots {
-			if s.Slot >= 0 && s.Slot < len(screenshotKeys) {
-				shots = append(shots, project.Screenshot{Path: s.Path, Key: screenshotKeys[s.Slot]})
-			}
+	// Apply the build outcome to a FRESH row, not the copy we loaded when the
+	// build began (up to ~2h ago). UpdateProject writes every column, so saving
+	// the stale copy would revert anything another writer touched meanwhile — a
+	// domain going active (and its billing/verified flags), a Stripe webhook, a
+	// mid-build content upload. Only the fields a build owns are set here.
+	saved, err := o.mutateProject(ctx, p.ID, func(fresh *project.Project) {
+		if it.Number > 0 { // internal polish passes (number 0) consume no credit
+			fresh.IterationsUsed = it.Number
 		}
-		p.Screenshots = shots
-	}
-	// Findings is non-nil exactly when the design audit ran (empty = clean); a nil
-	// result means the audit failed, so leave any prior findings untouched.
-	if res.Findings != nil {
-		fs := make([]project.Finding, len(res.Findings))
-		for i, f := range res.Findings {
-			fs[i] = project.Finding{
-				Antipattern: f.Antipattern, Name: f.Name, Description: f.Description,
-				Severity: f.Severity, File: f.File, Line: f.Line, Snippet: f.Snippet,
-			}
+		fresh.PreviewURL = previewURL
+		if res.SnapshotSaved {
+			fresh.SnapshotKey = snapshotKey
 		}
-		p.Findings = fs
-	}
-	// The visual review is the final design verdict: the build agent ran
-	// design-review.js during the build, and builder.Build's bounded polish pass
-	// (audit → fix → redeploy → re-review) already ran and settled BEFORE it
-	// returned res — so res.Critique/PreviewURL describe the site in its final
-	// state. Store the verdict for the operator.
-	if c := strings.TrimSpace(res.Critique); c != "" {
-		p.Critique = c
-	}
-	p.Status = project.StatusPreviewReady
-	if err := o.save(ctx, p); err != nil {
+		if len(res.Screenshots) > 0 {
+			shots := make([]project.Screenshot, 0, len(res.Screenshots))
+			for _, s := range res.Screenshots {
+				if s.Slot >= 0 && s.Slot < len(screenshotKeys) {
+					shots = append(shots, project.Screenshot{Path: s.Path, Key: screenshotKeys[s.Slot]})
+				}
+			}
+			fresh.Screenshots = shots
+		}
+		// Findings is non-nil exactly when the design audit ran (empty = clean); a
+		// nil result means the audit failed, so leave any prior findings untouched.
+		if res.Findings != nil {
+			fs := make([]project.Finding, len(res.Findings))
+			for i, f := range res.Findings {
+				fs[i] = project.Finding{
+					Antipattern: f.Antipattern, Name: f.Name, Description: f.Description,
+					Severity: f.Severity, File: f.File, Line: f.Line, Snippet: f.Snippet,
+				}
+			}
+			fresh.Findings = fs
+		}
+		// The visual review is the final design verdict: the build agent ran
+		// design-review.js during the build, and builder.Build's bounded polish
+		// pass (audit → fix → redeploy → re-review) already ran and settled BEFORE
+		// it returned res — so res.Critique/PreviewURL describe the site in its
+		// final state. Store the verdict for the operator.
+		if c := strings.TrimSpace(res.Critique); c != "" {
+			fresh.Critique = c
+		}
+		fresh.Status = project.StatusPreviewReady
+	})
+	if err != nil {
 		return err
 	}
+	p = saved // everything below reads the freshly-saved state
 	// A project can be marked paid before its first successful build (a comp,
 	// or a checkout that settles early) — in that case the post-payment code
 	// review found no snapshot and skipped. Now there is one; run it.
@@ -1206,17 +1215,52 @@ func (o *Orchestrator) save(ctx context.Context, p *project.Project) error {
 	return o.store.UpdateProject(ctx, p)
 }
 
+// mutateProject reloads a project, applies fn to the current row, and saves it,
+// returning the saved copy. UpdateProject writes every column, so any write that
+// happens long after the project was first loaded — a build (up to ~2h), a
+// poller — must go through here: saving a stale in-memory copy would silently
+// revert whatever another writer changed in the meantime (a domain going active,
+// a Stripe webhook, a mid-build content upload).
+func (o *Orchestrator) mutateProject(ctx context.Context, id string, fn func(*project.Project)) (*project.Project, error) {
+	p, err := o.store.ProjectByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	fn(p)
+	if err := o.save(ctx, p); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
 func (o *Orchestrator) markFailed(ctx context.Context, projectID string, cause error) {
 	p, err := o.store.ProjectByID(ctx, projectID)
 	if err != nil {
 		return
 	}
 	// A failed reiteration must not brick the project: the previous preview is
-	// still live and the change credit was not consumed (IterationsUsed only
-	// advances on success). Return to preview_ready; the failed attempt stays
-	// visible in the iteration history.
+	// still live. Return to preview_ready; the failed attempt stays visible in the
+	// iteration history.
 	if p.IterationsUsed >= 1 && p.PreviewURL != "" {
 		p.Status = project.StatusPreviewReady
+		// A paid change is metered (and any overage billed) up front, in Reiterate,
+		// before the build runs. The build just failed and shipped nothing, so give
+		// the allowance slot back — otherwise the customer silently loses a change
+		// (or pays overage) for work they never received, and a retry would meter
+		// again. Alert the operator either way: unlike a delivered change, a failed
+		// one otherwise tells no one.
+		if p.Paid {
+			wasOverage := p.RefundChange(o.changesPerMonth)
+			_ = o.save(ctx, p)
+			note := "The change allowance slot was refunded."
+			if wasOverage {
+				note = "That change had been billed as overage — VOID the pending overage invoice item in Stripe."
+			}
+			o.notifyOperator(ctx, "Forge: a paid change failed",
+				fmt.Sprintf("A change build failed for %q — the previous preview stands.\n%s\n\n%s",
+					p.Name, note, o.projectLink(p.ID)))
+			return
+		}
 		_ = o.save(ctx, p)
 		return
 	}
