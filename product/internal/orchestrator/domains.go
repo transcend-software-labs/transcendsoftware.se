@@ -171,17 +171,28 @@ func (o *Orchestrator) provisionDomainIntent(projectID string) {
 	}
 	host, buy := p.DomainIntent, p.DomainIntentBuy
 	if host == "" {
+		return // no intent, or a previous run already provisioned it and cleared it
+	}
+	// Idempotency + crash recovery: a domain is already in flight or attached for
+	// this project, so a previous run (or a concurrent webhook retry) already
+	// acted. Don't re-register or re-charge — just drop the now-stale intent.
+	if p.HasDomain() {
+		o.clearDomainIntent(ctx, projectID)
 		return
 	}
 	prepaidOre, subID := p.DomainCostOre, p.StripeSubID // charged upfront at checkout
-	p.DomainIntent, p.DomainIntentBuy = "", false
 	// A bought domain was charged on the checkout's first invoice → mark it so
-	// activation doesn't invoice it a second time. Persisted before we register,
-	// so the activation poller can never bill ahead of the flag. BYOD is free.
-	p.DomainPrepaid = buy
-	if err := o.save(ctx, p); err != nil {
-		o.log.Error("provision domain intent: clear", "project", projectID, "err", err)
-		return
+	// activation doesn't invoice it a second time. Persisted BEFORE we register,
+	// so the activation poller can never bill ahead of the flag. The intent is
+	// deliberately LEFT SET until we succeed: if the process dies mid-provision,
+	// the reaper re-drives this exact call (BuyDomain is idempotent and guards on
+	// DomainStatus), so a paid-for domain is never silently dropped. BYOD is free.
+	if buy && !p.DomainPrepaid {
+		p.DomainPrepaid = true
+		if err := o.save(ctx, p); err != nil {
+			o.log.Error("provision domain intent: mark prepaid", "project", projectID, "err", err)
+			return
+		}
 	}
 	var derr error
 	if buy {
@@ -190,6 +201,15 @@ func (o *Orchestrator) provisionDomainIntent(projectID string) {
 		derr = o.AttachDomain(ctx, projectID, host)
 	}
 	if derr == nil {
+		// BuyDomain/AttachDomain cleared the intent in the same write that created
+		// the domain row, so the reaper's stranded-intent sweep already stops.
+		return
+	}
+	// A concurrent or earlier run may have won the race and registered the domain
+	// while this attempt errored (classically ErrDomainExists). Reload: if the
+	// domain is now ours, this isn't a failure — clear the intent, don't refund.
+	if fresh, ferr := o.store.ProjectByID(ctx, projectID); ferr == nil && fresh.HasDomain() {
+		o.clearDomainIntent(ctx, projectID)
 		return
 	}
 	o.log.Error("provision domain intent", "project", projectID, "host", host, "buy", buy, "err", derr)
@@ -215,13 +235,35 @@ func (o *Orchestrator) provisionDomainIntent(projectID string) {
 			note = fmt.Sprintf("The %d öre domain charge was auto-refunded. ", prepaidOre) + note
 		}
 	}
-	if fresh, ferr := o.store.ProjectByID(ctx, projectID); ferr == nil && fresh.DomainPrepaid {
+	// Stranded and refunded: clear both the prepaid marker (a later manual buy
+	// then bills normally) and the intent (so the reaper's stranded-intent sweep
+	// stops re-driving a purchase we've already given up on and refunded).
+	if fresh, ferr := o.store.ProjectByID(ctx, projectID); ferr == nil {
 		fresh.DomainPrepaid = false
+		fresh.DomainIntent, fresh.DomainIntentBuy = "", false
 		_ = o.save(ctx, fresh)
 	}
 	o.notifyOperator(ctx, "Forge: bundled domain provisioning failed",
 		fmt.Sprintf("%q chose the domain %s at checkout, but provisioning it failed: %v\n%s\n\n%s",
 			p.Name, host, derr, note, o.projectLink(projectID)))
+}
+
+// clearDomainIntent drops a project's captured checkout domain intent once
+// provisioning has settled (succeeded, already-ours, or refunded), so the
+// reaper's stranded-intent sweep stops re-driving it. Best-effort, idempotent.
+func (o *Orchestrator) clearDomainIntent(ctx context.Context, projectID string) {
+	fresh, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		o.log.Error("clear domain intent: load", "project", projectID, "err", err)
+		return
+	}
+	if fresh.DomainIntent == "" && !fresh.DomainIntentBuy {
+		return
+	}
+	fresh.DomainIntent, fresh.DomainIntentBuy = "", false
+	if err := o.save(ctx, fresh); err != nil {
+		o.log.Error("clear domain intent: save", "project", projectID, "err", err)
+	}
 }
 
 // AttachDomain starts the BYOD flow: request a Fly certificate for the
@@ -265,6 +307,7 @@ func (o *Orchestrator) AttachDomain(ctx context.Context, projectID, hostname str
 	p.DomainRecords = recordsFor(req.Records)
 	p.DomainCreatedAt = time.Now().UTC()
 	p.DomainVerifiedAt = time.Time{}
+	p.DomainIntent, p.DomainIntentBuy = "", false // see BuyDomain: cleared with the domain row
 	if err := o.save(ctx, p); err != nil {
 		return err
 	}
@@ -347,6 +390,12 @@ func (o *Orchestrator) BuyDomain(ctx context.Context, projectID, domain string) 
 	}
 	p.DomainCreatedAt = time.Now().UTC()
 	p.DomainVerifiedAt = time.Time{}
+	// Clear any checkout intent in the SAME write that creates the domain row.
+	// From here the domain poller owns recovery (PendingDomainProjects sees
+	// 'registering'), so the intent is no longer needed — and clearing it in a
+	// separate later save would race the reconcile goroutine spawned below, which
+	// would resurrect it. No-op for the self-serve buy path (no intent).
+	p.DomainIntent, p.DomainIntentBuy = "", false
 	if err := o.save(ctx, p); err != nil {
 		return err
 	}
@@ -458,6 +507,14 @@ func (o *Orchestrator) DetachDomain(ctx context.Context, projectID string) error
 	p.DomainRecords = nil
 	p.DomainCreatedAt = time.Time{}
 	p.DomainVerifiedAt = time.Time{}
+	// Clear the "already charged at checkout" markers too. Leaving DomainPrepaid
+	// set would let the customer detach and then buy a fresh domain that
+	// activateDomain skips invoicing — a free domain on repeat. Intent fields go
+	// with it: a detached domain has no pending checkout intent.
+	p.DomainPrepaid = false
+	p.DomainCostOre = 0
+	p.DomainIntent = ""
+	p.DomainIntentBuy = false
 	return o.save(ctx, p)
 }
 

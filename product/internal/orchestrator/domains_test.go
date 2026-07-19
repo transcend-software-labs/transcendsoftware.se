@@ -556,6 +556,36 @@ func TestDetachDomain_ClearsAndStopsRenewal(t *testing.T) {
 	}
 }
 
+// A bought domain is charged once at checkout (DomainPrepaid), and activateDomain
+// skips invoicing while that flag is set. If detach left it set, the customer
+// could detach and buy a fresh domain that we register but never bill — a free
+// domain on repeat. Detach must clear the prepaid markers.
+func TestDetachDomain_ClearsPrepaidSoNextBuyIsBilled(t *testing.T) {
+	st := store.NewMemory()
+	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
+	orch.SetDomains(&fakeCF{}, &fakeBiller{}, 100)
+	seedDomainProject(t, st, func(p *project.Project) {
+		p.DomainName = "acme.se"
+		p.DomainKind = project.DomainKindPurchased
+		p.DomainStatus = project.DomainActive
+		p.DomainVerifiedAt = time.Now().UTC()
+		p.DomainPrepaid = true
+		p.DomainCostOre = 9900
+	})
+	ctx := context.Background()
+
+	if err := orch.DetachDomain(ctx, "p1"); err != nil {
+		t.Fatalf("detach: %v", err)
+	}
+	got, _ := st.ProjectByID(ctx, "p1")
+	if got.DomainPrepaid {
+		t.Error("detach must clear DomainPrepaid, else the next bought domain is free")
+	}
+	if got.DomainCostOre != 0 {
+		t.Errorf("detach must clear DomainCostOre, got %d", got.DomainCostOre)
+	}
+}
+
 func TestAttachDomain_Guards(t *testing.T) {
 	st := store.NewMemory()
 	orch, _ := newTestOrchWithVerifier(st, NoopVerifier{})
@@ -620,11 +650,14 @@ func TestSubscriptionStarted_ProvisionsBundledBuy(t *testing.T) {
 	if err := orch.SubscriptionStarted("p1", "cus_1", "sub_1"); err != nil {
 		t.Fatalf("subscription started: %v", err)
 	}
+	// Intent is now cleared as the final step of a successful provision (kept set
+	// until then so a crash mid-provision is recoverable), so it's the signal that
+	// provisioning fully completed — wait on it.
 	got := waitForDomain(t, st, "p1", func(p *project.Project) bool {
-		return p.DomainKind == project.DomainKindPurchased && p.DomainName == "acme.se"
+		return p.DomainKind == project.DomainKindPurchased && p.DomainName == "acme.se" && p.DomainIntent == ""
 	})
-	if got.DomainIntent != "" {
-		t.Errorf("intent should be cleared after provisioning, got %q", got.DomainIntent)
+	if got.DomainIntentBuy {
+		t.Errorf("intent-buy flag should be cleared after provisioning")
 	}
 }
 

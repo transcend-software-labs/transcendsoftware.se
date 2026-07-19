@@ -162,7 +162,13 @@ func TestDomainAtCheckout_RealPostgres_MockedNameCom(t *testing.T) {
 	if err := orch.SubscriptionStarted("p-checkout", "cus_1", "sub_1"); err != nil {
 		t.Fatalf("SubscriptionStarted: %v", err)
 	}
+	// The intent is cleared as the final step of a successful provision (kept set
+	// until then for crash recovery), so wait on intent-cleared AND an advanced
+	// status — together they prove the provision fully completed.
 	got = waitForDomain(t, pg, "p-checkout", func(pr *project.Project) bool {
+		if pr.DomainIntent != "" {
+			return false
+		}
 		switch pr.DomainStatus {
 		case project.DomainRegistering, project.DomainVerifying, project.DomainActive:
 			return true
@@ -171,9 +177,6 @@ func TestDomainAtCheckout_RealPostgres_MockedNameCom(t *testing.T) {
 	})
 	if got.DomainKind != project.DomainKindPurchased || got.DomainName != "mittbageri.se" {
 		t.Fatalf("after provision: kind=%q name=%q", got.DomainKind, got.DomainName)
-	}
-	if got.DomainIntent != "" {
-		t.Errorf("intent should be cleared after provisioning, got %q", got.DomainIntent)
 	}
 	if reg := mock.registeredNames(); len(reg) != 1 || reg[0] != "mittbageri.se" {
 		t.Fatalf("name.com register calls = %v, want [mittbageri.se]", reg)
