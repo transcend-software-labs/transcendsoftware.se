@@ -176,7 +176,7 @@ func main() {
 	var domainCap float64
 	if cfg.NameComEnabled() {
 		log.Info("domains: name.com enabled", "base", cfg.NameComAPIURL, "buy", cfg.DomainBuyEnabled())
-		domainReg = namecom.New(cfg.NameComAPIURL, cfg.NameComUsername, cfg.NameComAPIKey, cfg.SekPerUSD)
+		domainReg = namecom.New(cfg.NameComAPIURL, cfg.NameComUsername, cfg.NameComAPIKey, cfg.SekPerUSD, cfg.DomainMarkupPct)
 		domainCap = cfg.MaxDomainSEK
 	}
 	if domainReg != nil {

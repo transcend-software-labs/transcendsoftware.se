@@ -101,20 +101,29 @@ func (s *Server) handleDomainSearch(w http.ResponseWriter, r *http.Request, u *u
 		return
 	}
 	// Show only domains the customer can actually buy — skip taken, over-cap
-	// (registration OR renewal) ones rather than listing them as unavailable. The
-	// one-year price is shown per result: it's what's billed once to the next
-	// invoice. Same Buyable check as the buy guard.
+	// (registration OR renewal) ones rather than listing them as unavailable.
+	// Pricing is disclosed in full: registrars discount the first year, so a
+	// result whose renewal differs shows BOTH ("99 kr first year, then 149
+	// kr/yr") — the first-year price is billed on the next invoice, the renewal
+	// price every year after. Same Buyable check as the buy guard.
 	cap := s.orch.MaxDomainPrice()
 	type result struct {
 		Name  string
 		Price string
 	}
-	perYear := i18n.T(lang, "domain.per_year") // e.g. "/år" — the price is the 1-year cost
+	perYear := i18n.T(lang, "domain.per_year") // e.g. "/år"
 	var results []result
 	for _, o := range offers {
-		if o.Buyable(cap) {
-			results = append(results, result{Name: o.Name, Price: formatSEK(o.Price) + perYear})
+		if !o.Buyable(cap) {
+			continue
 		}
+		price := formatSEK(o.Price) + perYear
+		// A ≥1 kr difference is a real intro discount worth disclosing;
+		// sub-kronor rounding noise keeps the simple form.
+		if o.Renewal-o.Price >= 1 {
+			price = fmt.Sprintf(i18n.T(lang, "domain.first_year_then"), formatSEK(o.Price), formatSEK(o.Renewal))
+		}
+		results = append(results, result{Name: o.Name, Price: price})
 	}
 	data["Results"] = results
 	data["None"] = len(results) == 0

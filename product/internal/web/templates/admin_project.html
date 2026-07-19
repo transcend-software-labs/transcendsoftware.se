@@ -60,6 +60,7 @@
 <section class="panel">
   <h2>Domain</h2>
   <p><span class="mono">{{.DomainName}}</span> · {{.DomainStatus}} · {{.DomainKind}}{{if .DomainZoneID}} · zone {{.DomainZoneID}}{{end}}{{if .DomainIPv6}} · {{.DomainIPv6}}{{end}}</p>
+  {{if .DomainCostOre}}<p class="muted small">Billed: {{.DomainCostOre}} öre first year{{if .DomainRenewalOre}} · {{.DomainRenewalOre}} öre/yr renewal{{end}} (incl. markup)</p>{{end}}
   {{if .DomainRecords}}
   <div class="table-scroll">
   <table class="table">

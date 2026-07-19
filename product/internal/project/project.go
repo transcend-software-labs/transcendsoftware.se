@@ -279,7 +279,8 @@ type Project struct {
 	DomainKind        string         // "byod" | "purchased"
 	DomainZoneID      string         // registrar DNS-zone key (the domain name at name.com)
 	DomainIPv6        string         // dedicated apex IPv6 on the Fly app (allocate-once guard)
-	DomainCostOre     int            // 1-year registration cost captured at buy time, in öre (SEK); billed once to the next invoice on activation
+	DomainCostOre     int            // first-year price captured at buy time, in öre (SEK, incl. markup); billed once on activation
+	DomainRenewalOre  int            // yearly renewal price captured at buy time, in öre (SEK, incl. markup); billed on each renewal
 	DomainPrepaid     bool           // domain bought in the subscription checkout (one-time line item) → skip the activation invoice item; renewals still bill
 	DomainRecords     []DomainRecord // DNS records to show the customer (cached from the cert requirements)
 	DomainCreatedAt   time.Time      // when the domain flow started (stuck-timeout clock)

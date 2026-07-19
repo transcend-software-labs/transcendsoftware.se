@@ -52,7 +52,7 @@ func newBundleServer(t *testing.T) (*httptest.Server, store.Store) {
 	assets := storage.NewMemory()
 	orch := orchestrator.New(st, fake, fake, fake, b, machines, assets, broker, orchestrator.NoopVerifier{}, log)
 	bill := billing.New(stripe.URL, "sk_test_x")
-	orch.SetDomains(namecom.New("http://127.0.0.1:1", "forge-test", "tok", 10), bill, 100)
+	orch.SetDomains(namecom.New("http://127.0.0.1:1", "forge-test", "tok", 10, 0), bill, 100)
 	cfg := config.Config{
 		AdminEmail: "admin@example.com", BaseURL: "https://forge.example",
 		StripeSecretKey: "sk_test_x", StripePriceID: "price_base",

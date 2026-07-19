@@ -44,7 +44,7 @@ func newDomainServer(t *testing.T, cfURL string) (*httptest.Server, store.Store)
 	assets := storage.NewMemory()
 	orch := orchestrator.New(st, fake, fake, fake, b, machines, assets, broker, orchestrator.NoopVerifier{}, log)
 	bill := billing.New(stripe.URL, "sk_test_x")
-	orch.SetDomains(namecom.New(cfURL, "forge-test", "tok", 10), bill, 100)
+	orch.SetDomains(namecom.New(cfURL, "forge-test", "tok", 10, 0), bill, 100)
 	cfg := config.Config{AdminEmail: "admin@example.com", BaseURL: "https://forge.example"}
 	sessions := auth.NewSessions(st, time.Hour)
 	srv, err := web.NewServer(cfg, st, sessions, orch, broker, assets, log)
@@ -129,7 +129,7 @@ func TestDomainSearch_KeywordSuggests(t *testing.T) {
 			return
 		}
 		_, _ = io.WriteString(w, `{"results":[
-			{"domainName":"mybakery.se","sld":"mybakery","tld":"se","purchasable":true,"purchaseType":"registration","purchasePrice":9.9,"renewalPrice":9.9}
+			{"domainName":"mybakery.se","sld":"mybakery","tld":"se","purchasable":true,"purchaseType":"registration","purchasePrice":5.9,"renewalPrice":9.9}
 		]}`)
 	}))
 	defer reg.Close()
@@ -142,6 +142,11 @@ func TestDomainSearch_KeywordSuggests(t *testing.T) {
 	body := getBody(t, c, srv.URL+"/projects/domtld/domain/search?q=mybakery")
 	if !strings.Contains(body, "mybakery.se") {
 		t.Fatalf("keyword search should render suggestions, got: %s", body)
+	}
+	// The intro discount is disclosed: first-year price AND the renewal price
+	// (5.9/9.9 USD × 10 SEK, markup 0 in this server → "59 kr … 99 kr").
+	if !strings.Contains(body, "59 kr first year, then 99 kr/yr") {
+		t.Fatalf("results should disclose the renewal price, got: %s", body)
 	}
 }
 

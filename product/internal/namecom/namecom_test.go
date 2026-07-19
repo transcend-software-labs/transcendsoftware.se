@@ -14,9 +14,14 @@ import (
 
 func newMockClient(t *testing.T, h http.HandlerFunc) *Client {
 	t.Helper()
+	return newMockClientMarkup(t, h, 0) // markup 0 → assertions in pure SEK conversion
+}
+
+func newMockClientMarkup(t *testing.T, h http.HandlerFunc, markupPct float64) *Client {
+	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return New(srv.URL, "forge-test", "tok", 10) // 10 SEK/USD for round numbers
+	return New(srv.URL, "forge-test", "tok", 10, markupPct) // 10 SEK/USD for round numbers
 }
 
 func TestCheckDomains_MapsOffersAndConvertsCurrency(t *testing.T) {
@@ -59,6 +64,25 @@ func TestCheckDomains_MapsOffersAndConvertsCurrency(t *testing.T) {
 	}
 	if offers[3].Registrable {
 		t.Error("an aftermarket acquisition must not be registrable")
+	}
+}
+
+// TestCheckDomains_MarkupApplies: Forge sells at cost + markup — both the
+// first-year and the renewal price carry it, so the captured öre, the cap
+// check and the customer display all charge the marked-up amount.
+func TestCheckDomains_MarkupApplies(t *testing.T) {
+	c := newMockClientMarkup(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"results":[
+			{"domainName":"acme.se","sld":"acme","tld":"se","purchasable":true,"purchaseType":"registration","purchasePrice":10,"renewalPrice":15}
+		]}`)
+	}, 10)
+	offers, err := c.CheckDomains(context.Background(), []string{"acme.se"})
+	if err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	// 10 USD × 10 SEK/USD × 1.10 = 110 SEK; 15 → 165 SEK.
+	if o := offers[0]; o.Price != 110 || o.Renewal != 165 {
+		t.Fatalf("markup not applied: price=%v renewal=%v (want 110/165)", o.Price, o.Renewal)
 	}
 }
 

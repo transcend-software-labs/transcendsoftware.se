@@ -41,7 +41,7 @@ func main() {
 		fatal("NAME_DOT_COM_USERNAME and NAME_DOT_COM_API_KEY must be set")
 	}
 	fmt.Printf("== domainctl: name.com @ %s, user %s ==\n", cfg.NameComAPIURL, cfg.NameComUsername)
-	c := namecom.New(cfg.NameComAPIURL, cfg.NameComUsername, cfg.NameComAPIKey, cfg.SekPerUSD)
+	c := namecom.New(cfg.NameComAPIURL, cfg.NameComUsername, cfg.NameComAPIKey, cfg.SekPerUSD, cfg.DomainMarkupPct)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 

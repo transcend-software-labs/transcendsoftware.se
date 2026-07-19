@@ -120,7 +120,7 @@ func (o *Orchestrator) SetDomainIntent(ctx context.Context, projectID, hostname 
 	if !ok {
 		return ErrBadHostname
 	}
-	cost := 0
+	cost, renewal := 0, 0
 	if buy {
 		if !o.DomainBuyEnabled() {
 			return ErrBuyDisabled
@@ -141,10 +141,14 @@ func (o *Orchestrator) SetDomainIntent(ctx context.Context, projectID, hostname 
 		if !offer.Buyable(o.maxDomainPrice) {
 			return ErrDomainTooPricey
 		}
-		// Lock the price in now so checkout can charge it upfront in one payment.
+		// Lock BOTH prices in now: the (often discounted) first year is charged
+		// upfront in checkout; the renewal price is what every later yearly
+		// renewal bills — registrars discount year one, and billing the intro
+		// price forever would sell renewals below our own cost.
 		cost = domainCostOre(offer.Price, o.maxDomainPrice)
+		renewal = domainCostOre(offer.Renewal, o.maxDomainPrice)
 	}
-	p.DomainIntent, p.DomainIntentBuy, p.DomainCostOre = host, buy, cost
+	p.DomainIntent, p.DomainIntentBuy, p.DomainCostOre, p.DomainRenewalOre = host, buy, cost, renewal
 	return o.save(ctx, p)
 }
 
@@ -330,13 +334,16 @@ func (o *Orchestrator) BuyDomain(ctx context.Context, projectID, domain string) 
 	p.DomainName = host
 	p.DomainKind = project.DomainKindPurchased
 	p.DomainStatus = project.DomainRegistering
-	// Capture the price the customer is committing to now; it's billed once, on
-	// the next invoice, when the domain goes active (the domain is taken by then,
-	// so we can't re-fetch the registration price). Clamped to the cap. In the
-	// already-ours recovery the offer carries no price — keep the amount captured
-	// at checkout (it also anchors renewal billing) instead of zeroing it.
+	// Capture the prices the customer is committing to now; the first year is
+	// billed once when the domain goes active, the renewal price on each yearly
+	// renewal (the domain is taken by then, so neither can be re-fetched).
+	// Clamped to the cap. In the already-ours recovery the offer carries no
+	// price — keep the amounts captured at checkout instead of zeroing them.
 	if offer.Price > 0 {
 		p.DomainCostOre = domainCostOre(offer.Price, o.maxDomainPrice)
+	}
+	if offer.Renewal > 0 {
+		p.DomainRenewalOre = domainCostOre(offer.Renewal, o.maxDomainPrice)
 	}
 	p.DomainCreatedAt = time.Now().UTC()
 	p.DomainVerifiedAt = time.Time{}
@@ -447,6 +454,7 @@ func (o *Orchestrator) DetachDomain(ctx context.Context, projectID string) error
 	p.DomainKind = ""
 	p.DomainZoneID = ""
 	p.DomainIPv6 = ""
+	p.DomainRenewalOre = 0
 	p.DomainRecords = nil
 	p.DomainCreatedAt = time.Time{}
 	p.DomainVerifiedAt = time.Time{}
@@ -551,7 +559,14 @@ func (o *Orchestrator) rebillDomainRenewal(ctx context.Context, p *project.Proje
 		return nil
 	}
 
-	amount := domainCostOre(float64(p.DomainCostOre)/100, o.maxDomainPrice) // re-clamp to the current cap
+	// Renewals bill the captured RENEWAL price — the first-year price is often
+	// an intro discount. Rows from before renewal capture fall back to the
+	// first-year amount (grandfathered). Re-clamped to the current cap.
+	renewOre := p.DomainRenewalOre
+	if renewOre == 0 {
+		renewOre = p.DomainCostOre
+	}
+	amount := domainCostOre(float64(renewOre)/100, o.maxDomainPrice)
 	if o.biller != nil && p.StripeCustomerID != "" && amount > 0 {
 		desc := fmt.Sprintf("Domänförnyelse: %s (1 år)", p.DomainName)
 		if _, err := o.biller.AddInvoiceItem(ctx, p.StripeCustomerID, amount, "sek", desc); err != nil {

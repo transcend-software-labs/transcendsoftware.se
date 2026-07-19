@@ -382,8 +382,10 @@ func TestBuyDomain_Lifecycle_BillsRegistrationCost(t *testing.T) {
 	if len(cf.registered) != 1 {
 		t.Fatalf("expected a registration call, got %v", cf.registered)
 	}
-	if got, _ := st.ProjectByID(ctx, "p1"); got.DomainStatus != project.DomainRegistering || got.DomainCostOre != 12900 {
-		t.Fatalf("after buy: status=%s cost=%d (want registering / 12900 öre)", got.DomainStatus, got.DomainCostOre)
+	if got, _ := st.ProjectByID(ctx, "p1"); got.DomainStatus != project.DomainRegistering ||
+		got.DomainCostOre != 12900 || got.DomainRenewalOre != 12900 {
+		t.Fatalf("after buy: status=%s cost=%d renewal=%d (want registering / 12900 / 12900 öre)",
+			got.DomainStatus, got.DomainCostOre, got.DomainRenewalOre)
 	}
 
 	// Registration reported succeeded → provision DNS + cert → verifying.
@@ -479,7 +481,7 @@ func TestBuyDomain_AlreadyOursProceeds(t *testing.T) {
 		regState:    registrar.StatePending,                                   // avoid the async reconcile goroutine
 	}
 	orch.SetDomains(cf, &fakeBiller{}, 300)
-	seedDomainProject(t, st, func(p *project.Project) { p.DomainCostOre = 28000 })
+	seedDomainProject(t, st, func(p *project.Project) { p.DomainCostOre = 28000; p.DomainRenewalOre = 31000 })
 	ctx := context.Background()
 
 	if err := orch.BuyDomain(ctx, "p1", "acme.se"); err != nil {
@@ -489,8 +491,8 @@ func TestBuyDomain_AlreadyOursProceeds(t *testing.T) {
 	if got.DomainStatus != project.DomainRegistering || got.DomainName != "acme.se" {
 		t.Fatalf("expected registering acme.se, got %s %q", got.DomainStatus, got.DomainName)
 	}
-	if got.DomainCostOre != 28000 {
-		t.Errorf("captured cost must survive a price-less offer, got %d", got.DomainCostOre)
+	if got.DomainCostOre != 28000 || got.DomainRenewalOre != 31000 {
+		t.Errorf("captured prices must survive a price-less offer, got cost=%d renewal=%d", got.DomainCostOre, got.DomainRenewalOre)
 	}
 }
 

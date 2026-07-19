@@ -59,6 +59,26 @@ func TestRebillDomainRenewal_BillsOnExpiryAdvance(t *testing.T) {
 	}
 }
 
+// TestRebillDomainRenewal_UsesRenewalPrice: renewals bill the captured RENEWAL
+// price, not the (discounted) first-year price — selling renewals at the intro
+// price would be below our own cost. The BillsOnExpiryAdvance test above keeps
+// RenewalOre zero and proves the pre-capture fallback to DomainCostOre.
+func TestRebillDomainRenewal_UsesRenewalPrice(t *testing.T) {
+	now := time.Now().UTC()
+	orch, biller, _, _, _ := activePurchasedDomain(t, now.AddDate(2, 0, 0), now.AddDate(1, 0, 0))
+	p, _ := orch.store.ProjectByID(context.Background(), "p1")
+	p.DomainRenewalOre = 16900 // regular price; DomainCostOre stays 12900 (intro)
+	if err := orch.store.UpdateProject(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+
+	orch.rebillDomainRenewals(context.Background())
+
+	if len(biller.invoiced) != 1 || biller.invoiced[0].amount != 16900 {
+		t.Fatalf("renewal must bill the renewal price (16900), got %v", biller.invoiced)
+	}
+}
+
 func TestRebillDomainRenewal_NoRenewalNoBill(t *testing.T) {
 	now := time.Now().UTC()
 	// Expiry equals what they've paid through — nothing renewed.

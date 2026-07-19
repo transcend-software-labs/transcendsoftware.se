@@ -17,8 +17,10 @@
 //   - DNS records are keyed by the domain name ("zone id" = the name, like
 //     GleSYS); record hosts are zone-relative ("" or "@" for the apex).
 //   - Prices are USD. They are converted to SEK here, at the configured rate,
-//     so everything downstream (the buy cap, DomainCostOre in öre, the Stripe
-//     invoice line in SEK) keeps its existing semantics untouched.
+//     AND marked up by the configured percentage — the Offer carries Forge's
+//     SELLING prices, so everything downstream (the buy cap, the captured
+//     cost/renewal öre, the Stripe lines) charges the customer the marked-up
+//     amount while name.com charges us cost.
 //   - Contacts are optional on registration — the account's default contacts
 //     apply, so no per-registrant config plumbing is needed.
 package namecom
@@ -51,14 +53,20 @@ type Client struct {
 	username  string
 	token     string
 	sekPerUSD float64 // USD→SEK conversion for offers/prices (name.com bills USD)
+	markupPct float64 // Forge's margin on top of cost, in percent (10 = +10%)
 }
 
 // New returns a client. baseURL is ProdBaseURL or DevBaseURL (or an httptest
 // server in tests); sekPerUSD converts name.com's USD prices into the SEK the
-// rest of the pipeline works in.
-func New(baseURL, username, token string, sekPerUSD float64) *Client {
+// rest of the pipeline works in; markupPct is Forge's margin on top of cost
+// (10 = sell for 110% of what name.com charges us), applied to both the
+// first-year and the renewal price.
+func New(baseURL, username, token string, sekPerUSD, markupPct float64) *Client {
 	if sekPerUSD <= 0 {
 		sekPerUSD = 10.5
+	}
+	if markupPct < 0 {
+		markupPct = 0
 	}
 	return &Client{
 		http:      &http.Client{Timeout: 30 * time.Second},
@@ -66,6 +74,7 @@ func New(baseURL, username, token string, sekPerUSD float64) *Client {
 		username:  username,
 		token:     token,
 		sekPerUSD: sekPerUSD,
+		markupPct: markupPct,
 	}
 }
 
@@ -157,8 +166,9 @@ func (c *Client) offer(r searchResult) registrar.Offer {
 		Registrable: r.Purchasable && registration && !r.Premium,
 	}
 	if o.Registrable {
-		o.Price = r.PurchasePrice * c.sekPerUSD
-		o.Renewal = r.RenewalPrice * c.sekPerUSD
+		sell := c.sekPerUSD * (1 + c.markupPct/100)
+		o.Price = r.PurchasePrice * sell
+		o.Renewal = r.RenewalPrice * sell
 		if o.Renewal == 0 {
 			o.Renewal = o.Price
 		}
