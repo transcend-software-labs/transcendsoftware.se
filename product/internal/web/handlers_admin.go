@@ -17,6 +17,7 @@ import (
 
 // adminView is the data for the operator dashboard.
 type adminView struct {
+	Access    []accessReviewItem // first projects waiting for customer approval
 	Escalated []*project.Project
 	Accepted  []reviewItem  // accepted by the customer, awaiting delivery review
 	Waiting   []waitingItem // customer's turn (answering questions / approving the plan)
@@ -25,6 +26,11 @@ type adminView struct {
 	Previews  []reviewItem // live preview apps (cost money; can be destroyed)
 	Stats     buildStats
 	Recent    []recentBuild // recent builds with cost/timing
+}
+
+type accessReviewItem struct {
+	*project.Project
+	OwnerEmail string
 }
 
 // waitingItem is a project sitting on the customer (needs input / plan approval).
@@ -254,6 +260,7 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 		return
 	}
 	names := make(map[string]string, len(all))
+	var access []accessReviewItem
 	var previews, accepted []reviewItem
 	var waiting, failed []waitingItem
 	for _, p := range all {
@@ -265,6 +272,8 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 			return ""
 		}
 		switch p.Status {
+		case project.StatusPendingAccessApproval:
+			access = append(access, accessReviewItem{Project: p, OwnerEmail: owner()})
 		case project.StatusPreviewReady:
 			previews = append(previews, s.withScreenshots(ctx, p))
 		case project.StatusAccepted:
@@ -309,7 +318,7 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 	}
 
 	v := s.view(r, "Operator review", adminView{
-		Escalated: escalated, Accepted: accepted, Waiting: waiting, Failed: failed, Active: active, Previews: previews,
+		Access: access, Escalated: escalated, Accepted: accepted, Waiting: waiting, Failed: failed, Active: active, Previews: previews,
 		Stats: computeStats(recent, rate), Recent: builds,
 	})
 	v.Lang = "en" // operator pages are English regardless of the customer-facing selector
@@ -556,6 +565,26 @@ func adminBackTo(r *http.Request) string {
 		return "/admin/projects/" + r.PathValue("id")
 	}
 	return "/admin"
+}
+
+// handleAdminApproveAccess approves this customer permanently and starts their
+// pending first project at intake.
+func (s *Server) handleAdminApproveAccess(w http.ResponseWriter, r *http.Request, _ *user.User) {
+	if err := s.orch.ApproveAccess(r.PathValue("id")); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, adminBackTo(r), http.StatusSeeOther)
+}
+
+// handleAdminRejectAccess declines this brief without approving the account.
+func (s *Server) handleAdminRejectAccess(w http.ResponseWriter, r *http.Request, _ *user.User) {
+	reason := strings.TrimSpace(r.FormValue("reason"))
+	if err := s.orch.RejectAccess(r.PathValue("id"), reason); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, adminBackTo(r), http.StatusSeeOther)
 }
 
 // handleAdminApprove clears an escalated project to build.

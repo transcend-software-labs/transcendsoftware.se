@@ -1,0 +1,19 @@
+{{define "withdraw"}}{{template "head" .}}
+<section class="page-head"><div><a class="muted small" href="/">← Transcend Forge</a><h1>{{.T "withdraw.title"}}</h1></div></section>
+<section class="panel card form-narrow">
+  {{with .Data}}{{if .Reference}}
+    <p class="notice">{{$.T "withdraw.received"}}</p>
+    <p>{{$.T "withdraw.reference"}} <strong class="mono">{{.Reference}}</strong></p>
+    {{if .Error}}<p class="notice notice-error">{{.Error}}</p>{{end}}
+  {{else}}
+    <p>{{$.T "withdraw.intro"}}</p>
+    {{if .Error}}<p class="notice notice-error">{{.Error}}</p>{{end}}
+    <form method="post" action="/withdraw" class="stack">
+      <label>{{$.T "withdraw.email"}}<input type="email" name="email" required autocomplete="email" spellcheck="false"></label>
+      <label>{{$.T "withdraw.project"}}<input type="text" name="project_id" maxlength="100" autocomplete="off" spellcheck="false"><span class="hint">{{$.T "withdraw.project_hint"}}</span></label>
+      <label class="ack-later"><input type="checkbox" name="confirm" value="yes" required> {{$.T "withdraw.confirm"}}</label>
+      <button class="btn" type="submit">{{$.T "withdraw.button"}}</button>
+    </form>
+  {{end}}{{end}}
+</section>
+{{template "foot" .}}{{end}}

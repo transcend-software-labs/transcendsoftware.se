@@ -81,6 +81,8 @@ type Orchestrator struct {
 	changeBiller    changeBiller
 	changesPerMonth int
 	overageOre      int
+	maxBuilds       int // global concurrent build reservations
+	maxBuildsPerDay int // global rolling-24h build reservations
 
 	// previewSelfProbe is our own listener's base URL for verifying branded
 	// hosts without hairpinning through the public edge (see SetPreviewSelfProbe).
@@ -127,6 +129,12 @@ func New(s store.Store, in llm.Intake, p llm.Planner, g llm.SafetyGate, b builde
 // review — used when the model-profile registry can't resolve a review model
 // (dev mode, or a bare deployment without profile credentials).
 func (o *Orchestrator) SetReviewer(r llm.Reviewer) { o.reviewer = r }
+
+// SetBuildLimits wires the durable wallet guards enforced when an iteration is
+// reserved. Web checks remain a fast UX hint; this is the authoritative gate.
+func (o *Orchestrator) SetBuildLimits(maxConcurrent, maxDaily int) {
+	o.maxBuilds, o.maxBuildsPerDay = maxConcurrent, maxDaily
+}
 
 // SetNotifications wires transactional email. operatorEmail receives escalation
 // and failure notices; customers are emailed when a preview is ready. baseURL
@@ -310,7 +318,7 @@ func (o *Orchestrator) reattachInterrupted(ctx context.Context, it *project.Iter
 	o.log.Info("re-attaching to interrupted build",
 		"project", it.ProjectID, "machine", it.MachineID, "session", it.SessionID,
 		"remaining", remaining.Round(time.Second))
-	o.async(it.ProjectID, func(actx context.Context) error {
+	o.asyncWithPaidChangeRefund(it.ProjectID, it.Number > 0 && it.Prompt != "", func(actx context.Context) error {
 		return o.resumeBuild(actx, it, remaining)
 	})
 	return true
@@ -328,15 +336,9 @@ func (o *Orchestrator) reapInterrupted(ctx context.Context, it *project.Iteratio
 	}
 	it.Status = project.StatusFailed
 	_ = o.store.UpdateIteration(ctx, it)
-	if p, err := o.store.ProjectByID(ctx, it.ProjectID); err == nil && p.Status == project.StatusBuilding {
-		if p.IterationsUsed >= 1 && p.PreviewURL != "" {
-			p.Status = project.StatusPreviewReady
-		} else {
-			p.Status = project.StatusFailed
-			p.RejectReason = "The build was interrupted by a server restart. Nothing was lost — press Retry to run it again."
-		}
-		_ = o.save(ctx, p)
-	}
+	o.markFailed(ctx, it.ProjectID,
+		errors.New("the build was interrupted by a server restart; press Retry to run it again"),
+		it.Number > 0 && it.Prompt != "")
 }
 
 // resumeBuild finishes a re-attached build: reconnect the customer's live log,
@@ -408,6 +410,14 @@ func reachable(addr string) bool {
 }
 
 func (o *Orchestrator) async(projectID string, fn func(context.Context) error) {
+	o.asyncWithPaidChangeRefund(projectID, false, fn)
+}
+
+// asyncWithPaidChangeRefund marks whether this pipeline is a customer change
+// whose allowance was reserved synchronously. Other paid pipelines (operator
+// polish, first build after early payment, code recovery) must never decrement
+// the customer's counter when they fail.
+func (o *Orchestrator) asyncWithPaidChangeRefund(projectID string, refundPaidChange bool, fn func(context.Context) error) {
 	o.activeMu.Lock()
 	o.active[projectID] = true
 	o.activeMu.Unlock()
@@ -421,7 +431,7 @@ func (o *Orchestrator) async(projectID string, fn func(context.Context) error) {
 		defer cancel()
 		if err := fn(ctx); err != nil {
 			o.log.Error("pipeline step failed", "project", projectID, "err", err)
-			o.markFailed(ctx, projectID, err)
+			o.markFailed(ctx, projectID, err, refundPaidChange)
 		}
 	}()
 }
@@ -443,6 +453,9 @@ func (o *Orchestrator) StartIntake(projectID string) {
 		if err != nil {
 			return err
 		}
+		if p.Status != project.StatusCreated {
+			return nil // idempotent, and never bypass the first-project approval gate
+		}
 		if err := o.setStatus(ctx, p, project.StatusClarifying); err != nil {
 			return err
 		}
@@ -458,6 +471,80 @@ func (o *Orchestrator) StartIntake(projectID string) {
 		p.Status = project.StatusNeedsInput
 		return o.save(ctx, p)
 	})
+}
+
+// RequestAccessApproval alerts the operator that a new customer's first brief
+// is waiting. The project has already been persisted in a resting state; email
+// failure is deliberately best-effort and cannot lose the queue item.
+func (o *Orchestrator) RequestAccessApproval(ctx context.Context, projectID string) {
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil || p.Status != project.StatusPendingAccessApproval {
+		return
+	}
+	u, err := o.store.UserByID(ctx, p.UserID)
+	if err != nil {
+		o.log.Error("access approval: lookup user", "project", projectID, "err", err)
+		return
+	}
+	o.notifyOperator(ctx, "Forge: approve a new customer",
+		"A new customer is waiting for approval. No AI work has started.\n\n"+
+			"Customer: "+u.Email+"\nProject: "+p.Name+"\n\nBrief:\n"+p.Brief+"\n\n"+
+			"Review it: "+o.baseURLOr("/admin/projects/"+p.ID))
+}
+
+// ApproveAccess permanently approves the customer and releases their pending
+// first project into intake. Future projects skip this operator checkpoint but
+// still pass through the normal safety gate.
+func (o *Orchestrator) ApproveAccess(projectID string) error {
+	ctx := context.Background()
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if p.Status != project.StatusPendingAccessApproval {
+		return nil
+	}
+	now := time.Now().UTC()
+	if err := o.store.MarkUserApproved(ctx, p.UserID, now); err != nil {
+		return err
+	}
+	p.Status = project.StatusCreated
+	p.RejectReason = ""
+	p.UpdatedAt = now
+	if err := o.save(ctx, p); err != nil {
+		return err
+	}
+	e := custEmail(p.Locale, "access_approved")
+	o.notifyCustomer(ctx, p.UserID, e.Subject,
+		fmt.Sprintf(e.Body, p.Name)+"\n\n"+o.projectLink(p.ID))
+	o.StartIntake(p.ID)
+	return nil
+}
+
+// RejectAccess declines this first brief without approving the account. The
+// customer may submit a different brief later, which returns to this queue.
+func (o *Orchestrator) RejectAccess(projectID, reason string) error {
+	ctx := context.Background()
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if p.Status != project.StatusPendingAccessApproval {
+		return nil
+	}
+	if reason == "" {
+		reason = "This request isn’t a fit for Transcend Forge right now."
+	}
+	p.Status = project.StatusRejected
+	p.Verdict = project.VerdictReject
+	p.RejectReason = reason
+	if err := o.save(ctx, p); err != nil {
+		return err
+	}
+	e := custEmail(p.Locale, "access_rejected")
+	o.notifyCustomer(ctx, p.UserID, e.Subject,
+		fmt.Sprintf(e.Body, p.Name)+"\n\n"+o.projectLink(p.ID))
+	return nil
 }
 
 // SubmitAnswers records the customer's answers and chosen design direction,
@@ -498,32 +585,34 @@ func (o *Orchestrator) SubmitAnswers(projectID, answers, design string) {
 //   - Unpaid: the free "try before you buy" preview refinements, capped at
 //     MaxIterations (CanReiterate).
 //   - Paid: the Forge Pro monthly change model (CanRequestChange) — metered
-//     against the monthly allowance, overage billed, never refused. A change to
+//     against the monthly allowance, successful overage billed, never refused. A change to
 //     an already-delivered site is allowed and goes live on the customer's next
 //     accept (AcceptPreview fast path).
 func (o *Orchestrator) Reiterate(projectID, prompt string) {
 	ctx := context.Background()
-	p, err := o.store.ProjectByID(ctx, projectID)
+	eligible, metered := false, false
+	_, err := o.mutateProject(ctx, projectID, func(p *project.Project) {
+		eligible, metered = false, false
+		if p.Paid {
+			if !p.CanRequestChange() {
+				return
+			}
+			p.RecordChange(time.Now().UTC(), o.changesPerMonth)
+			metered = true
+		} else if !p.CanReiterate() {
+			return
+		}
+		p.Status = project.StatusBuilding
+		eligible = true
+	})
 	if err != nil {
-		o.log.Error("reiterate: load", "err", err)
+		o.log.Error("reiterate: prepare change", "project", projectID, "err", err)
 		return
 	}
-	if p.Paid {
-		if !p.CanRequestChange() {
-			return
-		}
-		if err := o.meterChange(ctx, p); err != nil {
-			o.log.Error("reiterate: meter change", "project", projectID, "err", err)
-			return
-		}
-	} else if !p.CanReiterate() {
+	if !eligible {
 		return
 	}
-	if err := o.setStatus(ctx, p, project.StatusBuilding); err != nil {
-		o.log.Error("reiterate: set building", "err", err)
-		return
-	}
-	o.async(projectID, func(ctx context.Context) error {
+	o.asyncWithPaidChangeRefund(projectID, metered, func(ctx context.Context) error {
 		return o.runBuild(ctx, projectID, prompt, false)
 	})
 }
@@ -826,7 +915,10 @@ func (o *Orchestrator) runPlanGateBuild(ctx context.Context, projectID string) e
 	spec, prose := llm.ExtractSpec(planRes.Plan)
 	p.Plan = prose
 	p.Spec = spec
-	if planRes.Name != "" {
+	// The planner suggests a name only when the customer left the optional name
+	// blank. A customer-supplied name is part of their input and must remain the
+	// stable label used by the dashboard and transactional email.
+	if planRes.Name != "" && (p.Name == "" || p.Name == "New project") {
 		p.Name = planRes.Name
 	}
 	p.Status = project.StatusScreening
@@ -947,16 +1039,25 @@ func (o *Orchestrator) runBuild(ctx context.Context, projectID, prompt string, i
 		PlannerModel: plannerLabel,
 		CreatedAt:    time.Now().UTC(),
 	}
-	if err := o.store.CreateIteration(ctx, it); err != nil {
+	if err := o.store.ReserveIteration(ctx, it, o.maxBuilds, o.maxBuildsPerDay); err != nil {
 		return err
 	}
 	// This build consumes whatever content exists now (assetContext is read
 	// below), so clear the "new content to apply" flag; anything added after this
 	// point sets it again and re-offers a rebuild.
-	p.ContentPending = false
-	if err := o.setStatus(ctx, p, project.StatusBuilding); err != nil {
+	saved, err := o.mutateProject(ctx, p.ID, func(fresh *project.Project) {
+		fresh.ContentPending = false
+	})
+	if err != nil {
+		// The durable iteration is also the capacity reservation. Release it when
+		// the project row cannot be prepared, otherwise one transient conflict can
+		// occupy a build slot until the stale-build reaper runs.
+		it.Status = project.StatusFailed
+		it.HeartbeatAt = time.Now().UTC()
+		_ = o.store.UpdateIteration(ctx, it)
 		return err
 	}
+	p = saved
 
 	// Live progress: reset history, accumulate, publish, and periodically persist
 	// the log + heartbeat so an in-flight build survives a restart.
@@ -1169,6 +1270,13 @@ func (o *Orchestrator) finishBuild(ctx context.Context, p *project.Project, it *
 		return err
 	}
 	p = saved // everything below reads the freshly-saved state
+	// Bill a paid customer change only after the new preview is durably ready.
+	// Number 0 is operator/internal work and an empty prompt is the initial build.
+	// Reiterate serializes customer changes through the building status, so the
+	// current counter identifies this pass without a second billing marker.
+	if p.Paid && o.changesPerMonth > 0 && it.Number > 0 && it.Prompt != "" && p.ChangesThisPeriod > o.changesPerMonth {
+		o.billOverage(ctx, p)
+	}
 	// A project can be marked paid before its first successful build (a comp,
 	// or a checkout that settles early) — in that case the post-payment code
 	// review found no snapshot and skipped. Now there is one; run it.
@@ -1222,53 +1330,72 @@ func (o *Orchestrator) save(ctx context.Context, p *project.Project) error {
 // revert whatever another writer changed in the meantime (a domain going active,
 // a Stripe webhook, a mid-build content upload).
 func (o *Orchestrator) mutateProject(ctx context.Context, id string, fn func(*project.Project)) (*project.Project, error) {
-	p, err := o.store.ProjectByID(ctx, id)
-	if err != nil {
-		return nil, err
+	for attempt := 0; attempt < 4; attempt++ {
+		p, err := o.store.ProjectByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		fn(p)
+		if err := o.save(ctx, p); err != nil {
+			if errors.Is(err, store.ErrConflict) {
+				continue
+			}
+			return nil, err
+		}
+		return p, nil
 	}
-	fn(p)
-	if err := o.save(ctx, p); err != nil {
-		return nil, err
-	}
-	return p, nil
+	return nil, store.ErrConflict
 }
 
-func (o *Orchestrator) markFailed(ctx context.Context, projectID string, cause error) {
-	p, err := o.store.ProjectByID(ctx, projectID)
+func (o *Orchestrator) markFailed(ctx context.Context, projectID string, cause error, refundPaidChange bool) {
+	acted, hadPreview, paidChange := false, false, false
+	p, err := o.mutateProject(ctx, projectID, func(cur *project.Project) {
+		acted, hadPreview, paidChange = false, false, false
+		// A late failure from an obsolete pipeline must not move a project that
+		// has already been recovered, delivered, or otherwise advanced.
+		if cur.Status != project.StatusBuilding {
+			return
+		}
+		acted = true
+		hadPreview = cur.IterationsUsed >= 1 && cur.PreviewURL != ""
+		if hadPreview {
+			cur.Status = project.StatusPreviewReady
+			if cur.Paid && refundPaidChange {
+				cur.RefundChange(o.changesPerMonth)
+				paidChange = true
+			}
+			return
+		}
+		cur.Status = project.StatusFailed
+		if cur.RejectReason == "" {
+			cur.RejectReason = cause.Error()
+		}
+	})
 	if err != nil {
+		o.log.Error("mark failed", "project", projectID, "err", err)
+		return
+	}
+	if !acted {
 		return
 	}
 	// A failed reiteration must not brick the project: the previous preview is
 	// still live. Return to preview_ready; the failed attempt stays visible in the
 	// iteration history.
-	if p.IterationsUsed >= 1 && p.PreviewURL != "" {
-		p.Status = project.StatusPreviewReady
-		// A paid change is metered (and any overage billed) up front, in Reiterate,
-		// before the build runs. The build just failed and shipped nothing, so give
+	if hadPreview {
+		// A paid change is metered up front in Reiterate (overage is billed only
+		// after success). The build failed and shipped nothing, so give
 		// the allowance slot back — otherwise the customer silently loses a change
 		// (or pays overage) for work they never received, and a retry would meter
 		// again. Alert the operator either way: unlike a delivered change, a failed
 		// one otherwise tells no one.
-		if p.Paid {
-			wasOverage := p.RefundChange(o.changesPerMonth)
-			_ = o.save(ctx, p)
-			note := "The change allowance slot was refunded."
-			if wasOverage {
-				note = "That change had been billed as overage — VOID the pending overage invoice item in Stripe."
-			}
+		if paidChange {
 			o.notifyOperator(ctx, "Forge: a paid change failed",
-				fmt.Sprintf("A change build failed for %q — the previous preview stands.\n%s\n\n%s",
-					p.Name, note, o.projectLink(p.ID)))
+				fmt.Sprintf("A change build failed for %q — the previous preview stands and the change allowance slot was refunded. No overage was billed.\n\n%s",
+					p.Name, o.projectLink(p.ID)))
 			return
 		}
-		_ = o.save(ctx, p)
 		return
 	}
-	p.Status = project.StatusFailed
-	if p.RejectReason == "" {
-		p.RejectReason = cause.Error()
-	}
-	_ = o.save(ctx, p)
 	o.notifyOperator(ctx, "Forge: a build failed",
 		"Build failed for \""+p.Name+"\": "+p.RejectReason+"\n\n"+o.projectLink(p.ID))
 }

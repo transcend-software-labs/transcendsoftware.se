@@ -171,13 +171,13 @@ The Postgres store + migrations and the S3/Tigris store already exist and are
 tested; this is provisioning + wiring, not new code. Blocks everything else
 (scaling past 1 machine, snapshots in 3.1, durable logs).
 
-### 3.4 Cost & abuse leaks — P1 before anyone but Rasmus can use it
+### 3.4 Cost & abuse leaks — resolved before launch
 - **Preview apps never die:** every build creates a Fly app whose nginx machine
   runs 24/7 forever. Three `forge-*` apps are alive right now; the äppelmust
   demo still serves 200. The generated `fly.toml` (via `BuildSystemPrompt`)
   doesn't request auto-stop.
-- **No quotas anywhere:** any signup can start unlimited builds → unlimited
-  machine spend + LLM spend.
+- **Quotas:** per-user project limits plus atomic global concurrent and
+  rolling-24h build reservations now cap machine and LLM spend.
 - **Org-wide deploy token in the sandbox:** a prompt-injected agent could
   deploy over (or scale/destroy) *any* app in the org. Per-app minting is
   blocked on a decision (§5.3) — the current API token can't mint sub-tokens.
@@ -314,12 +314,12 @@ Milestones:
       personal guarantee is now enforced by the state machine. Site stays on
       `forge-*`; custom domains still a manual service. Verified E2E over HTTP +
       browser (M)
-- [ ] Payments at the accept-or-build step — trigger decision §5.4;
-      implementation stays deferred until Rasmus says go (M)
-- [ ] Pricing + ToS + privacy pages (GDPR/EU angle is the brand; mostly
-      Rasmus's words) (S–M)
+- [x] Stripe subscription Checkout/portal/webhooks at delivery, including
+      payment-status gating and delayed-payment completion handling (M)
+- [x] Live pricing, localized terms/privacy pages, explicit early-performance
+      acknowledgement and a durable online withdrawal function (S–M)
 - [ ] Production build model — decision §5.5; env-only switch (S)
-- [ ] Email verification at signup (before taking money) (S)
+- [x] Email verification at signup before builds or payment (S)
 - [x] Retry-once on transient LLM/API failures in intake/plan/gate: the
       OpenAI-compatible (Kimi) client retries network blips, 429s, 5xx and
       empty 200s once; permanent 4xx are not retried. Tested (S). _(Anthropic

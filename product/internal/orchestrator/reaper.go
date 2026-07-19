@@ -151,10 +151,11 @@ func (o *Orchestrator) DestroyPreview(ctx context.Context, projectID string) err
 
 // PurgeProject fully removes a project: destroys its preview/customer Fly app
 // (forge-<id> — never a core app, since the name is derived from the project
-// id), frees any leftover sandbox machine, and deletes the project row plus its
-// iterations and assets. Operator cleanup from /admin. Best-effort on the Fly
-// side: a destroy error is logged but the row is still deleted (a leaked app is
-// reaped later), so cleanup never wedges on one bad app.
+// id), frees any leftover sandbox machine, deletes every object under the
+// project's storage prefix, and finally deletes the database row plus its
+// iterations and asset metadata. Fly teardown is best-effort because leaked
+// apps are recoverable; object deletion is mandatory so an apparently deleted
+// project never leaves customer data behind.
 func (o *Orchestrator) PurgeProject(ctx context.Context, projectID string) error {
 	p, err := o.store.ProjectByID(ctx, projectID)
 	if err != nil {
@@ -169,6 +170,9 @@ func (o *Orchestrator) PurgeProject(ctx context.Context, projectID string) error
 				_ = o.machines.DestroySandbox(ctx, &fly.Sandbox{MachineID: it.MachineID})
 			}
 		}
+	}
+	if err := o.storage.DeletePrefix(ctx, "projects/"+projectID+"/"); err != nil {
+		return fmt.Errorf("purge project objects: %w", err)
 	}
 	o.activity.Clear(projectID)
 	return o.store.DeleteProject(ctx, projectID)

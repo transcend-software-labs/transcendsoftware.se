@@ -37,6 +37,10 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request, u *user
 		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 		return
 	}
+	if r.FormValue("consumer_consent") != "yes" {
+		http.Redirect(w, r, "/projects/"+p.ID+"?sub=consent", http.StatusSeeOther)
+		return
+	}
 	// Capture the (optional) bundled-domain choice before the Stripe redirect. A
 	// bad/unbuyable choice bounces the customer back to pick again rather than
 	// taking payment for something we can't deliver.
@@ -145,6 +149,16 @@ func (s *Server) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	switch ev.Type {
 	case "checkout.session.completed":
+		// Delayed payment methods can complete Checkout while the Session is still
+		// unpaid. Do not provision until Stripe confirms settlement through the
+		// matching async success event.
+		if ev.Object.PaymentStatus != "paid" && ev.Object.PaymentStatus != "no_payment_required" {
+			s.log.Info("stripe webhook: checkout awaiting payment", "session", ev.Object.ID,
+				"payment_status", ev.Object.PaymentStatus)
+			break
+		}
+		fallthrough
+	case "checkout.session.async_payment_succeeded":
 		pid := ev.ProjectID()
 		if pid == "" {
 			s.log.Warn("stripe webhook: checkout without project id", "session", ev.Object.ID)
@@ -155,6 +169,9 @@ func (s *Server) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal error", http.StatusInternalServerError) // Stripe retries
 			return
 		}
+	case "checkout.session.async_payment_failed":
+		s.log.Warn("stripe webhook: checkout payment failed", "project", ev.ProjectID(),
+			"session", ev.Object.ID, "customer", ev.Object.Customer)
 	case "customer.subscription.deleted":
 		if pid := ev.ProjectID(); pid != "" {
 			if err := s.orch.SubscriptionEnded(pid, ev.Object.ID); err != nil {
@@ -169,9 +186,4 @@ func (s *Server) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 		s.log.Debug("stripe webhook: ignored event", "type", ev.Type)
 	}
 	w.WriteHeader(http.StatusOK)
-}
-
-// handleTerms renders the (draft) terms of service. Public, works logged-out.
-func (s *Server) handleTerms(w http.ResponseWriter, r *http.Request) {
-	s.render(w, http.StatusOK, "terms", s.view(r, s.t(r, "terms.title"), nil))
 }

@@ -29,21 +29,22 @@ func generatableSlot(p *project.Project, slot string) (project.ContentItem, bool
 
 // genCandidates stores n generated PNGs under a slot's gen prefix and records
 // them as the slot's pending candidates awaiting the customer's pick.
-func (s *Server) genCandidates(ctx context.Context, p *project.Project, slot, prompt string, pngs [][]byte) error {
+func (s *Server) genCandidates(ctx context.Context, p *project.Project, slot, prompt string, pngs [][]byte) (*project.Project, error) {
 	keys := make([]string, 0, len(pngs))
 	for _, png := range pngs {
 		key := fmt.Sprintf("projects/%s/gen/%s/%s.png", p.ID, slot, id.New())
 		if err := s.storage.Put(ctx, key, "image/png", bytes.NewReader(png), int64(len(png))); err != nil {
-			return err
+			return nil, err
 		}
 		keys = append(keys, key)
 	}
-	if p.PendingImages == nil {
-		p.PendingImages = map[string]project.ImageCandidates{}
-	}
-	p.PendingImages[slot] = project.ImageCandidates{Prompt: prompt, Keys: keys}
-	p.ImageGenCount++ // each generate/improve is one paid API call; count it toward the cap
-	return s.store.UpdateProject(ctx, p)
+	return s.mutateProject(ctx, p.ID, func(fresh *project.Project) {
+		if fresh.PendingImages == nil {
+			fresh.PendingImages = map[string]project.ImageCandidates{}
+		}
+		fresh.PendingImages[slot] = project.ImageCandidates{Prompt: prompt, Keys: keys}
+		fresh.ImageGenCount++ // each generate/improve is one paid API call; count it toward the cap
+	})
 }
 
 // imageGenExhausted reports whether the project has hit its generation cap.
@@ -140,7 +141,8 @@ func (s *Server) handleGenerateImage(w http.ResponseWriter, r *http.Request, u *
 		http.Redirect(w, r, "/projects/"+p.ID+"?genfail=1", http.StatusSeeOther)
 		return
 	}
-	if err := s.genCandidates(r.Context(), p, slot, prompt, pngs); err != nil {
+	p, err = s.genCandidates(r.Context(), p, slot, prompt, pngs)
+	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -179,9 +181,21 @@ func (s *Server) handlePickImage(w http.ResponseWriter, r *http.Request, u *user
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	delete(p.PendingImages, slot)
-	markContentPending(p) // a picked image changes what the build should use
-	if err := s.store.UpdateProject(r.Context(), p); err != nil {
+	p, err := s.mutateProject(r.Context(), p.ID, func(fresh *project.Project) {
+		// Do not clear a newer candidate set created in another tab while this
+		// pick was in flight. The chosen asset is still valid and marks content
+		// pending; only the set containing that key is consumed.
+		if current, ok := fresh.PendingImages[slot]; ok {
+			for _, candidateKey := range current.Keys {
+				if candidateKey == key {
+					delete(fresh.PendingImages, slot)
+					break
+				}
+			}
+		}
+		markContentPending(fresh)
+	})
+	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -258,7 +272,8 @@ func (s *Server) handleImproveImage(w http.ResponseWriter, r *http.Request, u *u
 		improveErr("prj.gen.failed")
 		return
 	}
-	if err := s.genCandidates(r.Context(), p, slot, instruction, pngs); err != nil {
+	p, err = s.genCandidates(r.Context(), p, slot, instruction, pngs)
+	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

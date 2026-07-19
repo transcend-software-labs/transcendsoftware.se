@@ -21,7 +21,7 @@ type landingView struct {
 	PriceStr        string
 	IncludedChanges int
 	OverageStr      string
-	Domains         bool
+	DomainBuy       bool
 }
 
 func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
@@ -34,7 +34,7 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 		PriceStr:        priceStr,
 		IncludedChanges: s.orch.ChangesPerMonth(),
 		OverageStr:      formatPrice(int64(s.orch.OverageOre()), "sek"),
-		Domains:         s.orch.DomainsEnabled(),
+		DomainBuy:       s.orch.DomainBuyEnabled(),
 	}
 	v := s.view(r, s.t(r, "title.landing"), lv)
 	v.JSONLD = s.landingJSONLD(r, priceAmt, priceCur) // Service graph, with an Offer when the price is known
@@ -70,8 +70,12 @@ func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	email := strings.TrimSpace(r.FormValue("email"))
+	email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
 	password := r.FormValue("password")
+	if !s.allowAuth(r, "login", email, 12, 6, 15*time.Minute) {
+		s.render(w, http.StatusTooManyRequests, "login", s.authView(r, s.t(r, "login.h1"), s.t(r, "flash.try_later")))
+		return
+	}
 
 	u, err := s.store.UserByEmail(r.Context(), email)
 	if err != nil || !auth.CheckPassword(u.PasswordHash, password) {
@@ -94,6 +98,10 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	// lookup uses lower(email)) and create a colliding duplicate account.
 	email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
 	password := r.FormValue("password")
+	if !s.allowAuth(r, "signup", email, 8, 3, time.Hour) {
+		s.render(w, http.StatusTooManyRequests, "signup", s.authView(r, s.t(r, "signup.h1"), s.t(r, "flash.try_later")))
+		return
+	}
 
 	if !strings.Contains(email, "@") || len(password) < 8 {
 		s.render(w, http.StatusBadRequest, "signup", s.authView(r, s.t(r, "signup.h1"), s.t(r, "flash.signup_invalid")))

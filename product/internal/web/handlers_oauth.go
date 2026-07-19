@@ -121,6 +121,12 @@ func (s *Server) handleMagicRequest(w http.ResponseWriter, r *http.Request) {
 		s.render(w, http.StatusBadRequest, "login", s.authView(r, s.t(r, "login.h1"), s.t(r, "flash.email_invalid")))
 		return
 	}
+	if !s.allowAuth(r, "magic", email, 10, 3, 15*time.Minute) {
+		// Keep the same response as a sent link: exposing throttling per address
+		// would turn the endpoint into an account/enumeration oracle.
+		s.render(w, http.StatusOK, "login", s.authView(r, s.t(r, "login.h1"), s.t(r, "flash.magic_sent")))
+		return
+	}
 	token := randToken()
 	if err := s.store.CreateLoginToken(r.Context(), &user.LoginToken{
 		TokenHash: hashToken(token), Email: email,
@@ -144,12 +150,11 @@ func (s *Server) handleMagicConsume(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	lt, err := s.store.LoginTokenByHash(r.Context(), hashToken(token))
-	if err != nil || time.Now().After(lt.ExpiresAt) {
+	lt, err := s.store.ConsumeLoginToken(r.Context(), hashToken(token), time.Now().UTC())
+	if err != nil {
 		s.render(w, http.StatusUnauthorized, "login", s.authView(r, s.t(r, "login.h1"), s.t(r, "flash.magic_invalid")))
 		return
 	}
-	_ = s.store.DeleteLoginToken(r.Context(), lt.TokenHash) // single-use
 	u, err := s.findOrCreateUser(r, lt.Email)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)

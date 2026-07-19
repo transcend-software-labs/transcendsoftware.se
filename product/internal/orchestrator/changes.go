@@ -2,7 +2,6 @@ package orchestrator
 
 import (
 	"context"
-	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
 )
@@ -39,22 +38,6 @@ func (o *Orchestrator) ChangesPerMonth() int { return o.changesPerMonth }
 
 // OverageOre is the flat price of an extra change, in öre (for the web view).
 func (o *Orchestrator) OverageOre() int { return o.overageOre }
-
-// meterChange records one paid change against the monthly allowance and bills
-// the flat overage if it's past the allowance. It persists the counter BEFORE
-// billing so an incremented count is never lost after a successful charge. A
-// billing hiccup never blocks the change — the customer's site is what matters;
-// overage is best-effort and alerts the operator on failure.
-func (o *Orchestrator) meterChange(ctx context.Context, p *project.Project) error {
-	overage := p.RecordChange(time.Now().UTC(), o.changesPerMonth)
-	if err := o.save(ctx, p); err != nil {
-		return err
-	}
-	if overage {
-		o.billOverage(ctx, p)
-	}
-	return nil
-}
 
 // billOverage adds the flat overage charge to the customer's next invoice.
 // Best-effort: with no Stripe customer (a comped project) or no biller it's

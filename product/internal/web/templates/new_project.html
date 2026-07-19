@@ -2,6 +2,7 @@
 <section class="form-narrow">
   <h1>{{.T "new.h1"}}</h1>
   <p class="muted">{{.T "new.intro"}}</p>
+  {{if and .User (not .User.Approved) (not .IsAdmin)}}<p class="notice small">{{.T "new.approval_note"}}</p>{{end}}
   <form method="post" action="/projects" class="stack">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
     <label>{{.T "new.name_label"}} <span class="hint">{{.T "new.name_hint"}}</span>
@@ -30,7 +31,7 @@
       </div>
     </div>
     {{end}}
-    <button class="btn" type="submit">{{.T "new.submit"}}</button>
+    <button class="btn" type="submit">{{if and .User (not .User.Approved) (not .IsAdmin)}}{{.T "new.submit_review"}}{{else}}{{.T "new.submit"}}{{end}}</button>
   </form>
 </section>
 {{template "foot" .}}{{end}}

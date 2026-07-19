@@ -64,7 +64,7 @@ type Event struct {
 }
 
 // EventObject carries just the fields the handled events need across
-// checkout.session.completed (a Session), customer.subscription.deleted (a
+// checkout.session.* (a Session), customer.subscription.deleted (a
 // Subscription) and invoice.payment_failed (an Invoice).
 type EventObject struct {
 	ID                string // the object's own id (a subscription id for subscription.* events)

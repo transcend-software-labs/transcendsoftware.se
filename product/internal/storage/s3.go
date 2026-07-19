@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/url"
 	"time"
@@ -52,6 +53,17 @@ func NewS3(p NewS3Params) (*S3, error) {
 	return s, nil
 }
 
+func (s *S3) Health(ctx context.Context) error {
+	ok, err := s.client.BucketExists(ctx, s.bucket)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("storage: bucket %q is unavailable", s.bucket)
+	}
+	return nil
+}
+
 func (s *S3) Put(ctx context.Context, key, contentType string, r io.Reader, size int64) error {
 	_, err := s.client.PutObject(ctx, s.bucket, key, r, size, minio.PutObjectOptions{ContentType: contentType})
 	return err
@@ -80,4 +92,17 @@ func (s *S3) PresignPut(ctx context.Context, key string, expiry time.Duration) (
 		return "", err
 	}
 	return u.String(), nil
+}
+
+func (s *S3) DeletePrefix(ctx context.Context, prefix string) error {
+	objects := s.client.ListObjects(ctx, s.bucket, minio.ListObjectsOptions{Prefix: prefix, Recursive: true})
+	for object := range objects {
+		if object.Err != nil {
+			return fmt.Errorf("storage: list %q: %w", prefix, object.Err)
+		}
+		if err := s.client.RemoveObject(ctx, s.bucket, object.Key, minio.RemoveObjectOptions{}); err != nil {
+			return fmt.Errorf("storage: delete %q: %w", object.Key, err)
+		}
+	}
+	return nil
 }

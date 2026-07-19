@@ -88,6 +88,24 @@ func seedProject(t *testing.T, st store.Store, brief string) string {
 	return p.ID
 }
 
+func TestPlannerDoesNotOverwriteCustomerProjectName(t *testing.T) {
+	st := store.NewMemory()
+	orch := newTestOrch(st)
+	now := time.Now().UTC()
+	p := &project.Project{ID: "named", UserID: "u1", Name: "Launch Review Café",
+		Brief: "A polished cafe website", Status: project.StatusPlanning, CreatedAt: now, UpdatedAt: now}
+	if err := st.CreateProject(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	if err := orch.runPlanGateBuild(context.Background(), p.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.ProjectByID(context.Background(), p.ID)
+	if got.Name != "Launch Review Café" {
+		t.Fatalf("planner overwrote customer name with %q", got.Name)
+	}
+}
+
 func waitFor(t *testing.T, st store.Store, id string, want project.Status) *project.Project {
 	t.Helper()
 	deadline := time.Now().Add(8 * time.Second)
@@ -239,6 +257,69 @@ func TestEscalation_ApproveRoutesToCustomerGate(t *testing.T) {
 	done := waitFor(t, st, id, project.StatusPreviewReady)
 	if done.PreviewURL == "" {
 		t.Error("customer approval should build a preview")
+	}
+}
+
+func TestAccessApproval_NotifiesAndStartsIntake(t *testing.T) {
+	st := store.NewMemory()
+	orch := newTestOrch(st)
+	n := &recordingNotifier{}
+	orch.SetNotifications(n, "admin@example.com", "https://forge.example")
+	ctx := context.Background()
+	now := time.Now().UTC()
+	u := &user.User{ID: "access-u", Email: "new-customer@example.com", Verified: true, CreatedAt: now}
+	if err := st.CreateUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	p := &project.Project{ID: "access-p", UserID: u.ID, Name: "First Bakery",
+		Brief: "A website for a neighbourhood bakery", Status: project.StatusPendingAccessApproval,
+		Locale: "en", CreatedAt: now, UpdatedAt: now}
+	if err := st.CreateProject(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+
+	orch.RequestAccessApproval(ctx, p.ID)
+	if sent := n.all(); len(sent) != 1 || sent[0].To != "admin@example.com" || sent[0].Subject != "Forge: approve a new customer" {
+		t.Fatalf("operator notification = %+v", sent)
+	}
+	if err := orch.ApproveAccess(p.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, st, p.ID, project.StatusNeedsInput)
+	gotUser, _ := st.UserByID(ctx, u.ID)
+	if !gotUser.Approved() {
+		t.Fatal("approval did not persist on the user")
+	}
+	sent := n.all()
+	if len(sent) != 2 || sent[1].To != u.Email || sent[1].Subject != "Your project request was approved" {
+		t.Fatalf("customer approval notification = %+v", sent)
+	}
+}
+
+func TestAccessApproval_RejectLeavesUserUnapproved(t *testing.T) {
+	st := store.NewMemory()
+	orch := newTestOrch(st)
+	n := &recordingNotifier{}
+	orch.SetNotifications(n, "admin@example.com", "https://forge.example")
+	ctx := context.Background()
+	now := time.Now().UTC()
+	u := &user.User{ID: "reject-u", Email: "rejected@example.com", Verified: true, CreatedAt: now}
+	_ = st.CreateUser(ctx, u)
+	p := &project.Project{ID: "reject-p", UserID: u.ID, Name: "Rejected request",
+		Brief: "A request outside the service scope", Status: project.StatusPendingAccessApproval,
+		Locale: "en", CreatedAt: now, UpdatedAt: now}
+	_ = st.CreateProject(ctx, p)
+
+	if err := orch.RejectAccess(p.ID, "Outside the supported scope."); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.ProjectByID(ctx, p.ID)
+	gotUser, _ := st.UserByID(ctx, u.ID)
+	if got.Status != project.StatusRejected || got.RejectReason != "Outside the supported scope." || gotUser.Approved() {
+		t.Fatalf("rejection state: project=%+v user=%+v", got, gotUser)
+	}
+	if sent := n.all(); len(sent) != 1 || sent[0].To != u.Email || sent[0].Subject != "An update on your project request" {
+		t.Fatalf("customer rejection notification = %+v", sent)
 	}
 }
 
@@ -896,7 +977,7 @@ func TestMarkFailed_RefundsFailedPaidChange(t *testing.T) {
 		t.Fatalf("project: %v", err)
 	}
 
-	orch.markFailed(ctx, "p1", errors.New("agent crashed"))
+	orch.markFailed(ctx, "p1", errors.New("agent crashed"), true)
 
 	got, _ := st.ProjectByID(ctx, "p1")
 	if got.Status != project.StatusPreviewReady {
@@ -907,5 +988,29 @@ func TestMarkFailed_RefundsFailedPaidChange(t *testing.T) {
 	}
 	if !sentTo(rec, "rasmus@example.com", "paid change failed") {
 		t.Errorf("operator must be alerted a paid change failed; sent %+v", rec.all())
+	}
+}
+
+func TestMarkFailed_DoesNotRefundOperatorBuild(t *testing.T) {
+	st := store.NewMemory()
+	orch := newTestOrch(st)
+	orch.SetChangePolicy(nil, 3, 4900)
+	ctx := context.Background()
+	p := &project.Project{
+		ID: "operator-build", Name: "Farm", Status: project.StatusBuilding,
+		Paid: true, PreviewURL: "https://forge-p1.fly.dev", IterationsUsed: 1,
+		ChangesThisPeriod: 2, ChangePeriodStart: time.Now().UTC(),
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}
+	if err := st.CreateProject(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	orch.markFailed(ctx, p.ID, errors.New("operator polish failed"), false)
+	got, _ := st.ProjectByID(ctx, p.ID)
+	if got.Status != project.StatusPreviewReady {
+		t.Fatalf("operator failure status = %q", got.Status)
+	}
+	if got.ChangesThisPeriod != 2 {
+		t.Fatalf("operator failure refunded customer credit: %d", got.ChangesThisPeriod)
 	}
 }

@@ -8,9 +8,14 @@ type User struct {
 	ID           string
 	Email        string
 	PasswordHash string
-	Verified     bool // email confirmed (password signups); magic-link/OAuth are inherently verified
+	Verified     bool       // email confirmed (password signups); magic-link/OAuth are inherently verified
+	ApprovedAt   *time.Time // operator approved this customer to start projects; nil until first-project review
 	CreatedAt    time.Time
 }
+
+// Approved reports whether the operator has cleared this account to start
+// projects. Approval is permanent unless an explicit revocation flow is added.
+func (u *User) Approved() bool { return u != nil && u.ApprovedAt != nil }
 
 // Session is a login session. Only a hash of the cookie token is stored, so a
 // leaked database yields no valid cookies.

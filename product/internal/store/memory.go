@@ -21,6 +21,7 @@ type Memory struct {
 	projects    map[string]*project.Project
 	iterations  map[string]*project.Iteration
 	assets      map[string]*project.Asset
+	withdrawals map[string]WithdrawalRequest
 }
 
 // NewMemory returns an empty in-memory store.
@@ -32,6 +33,7 @@ func NewMemory() *Memory {
 		projects:    make(map[string]*project.Project),
 		iterations:  make(map[string]*project.Iteration),
 		assets:      make(map[string]*project.Asset),
+		withdrawals: make(map[string]WithdrawalRequest),
 	}
 }
 
@@ -61,7 +63,22 @@ func (m *Memory) DeleteLoginToken(_ context.Context, tokenHash string) error {
 	return nil
 }
 
+func (m *Memory) ConsumeLoginToken(_ context.Context, tokenHash string, now time.Time) (*user.LoginToken, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, ok := m.loginTokens[tokenHash]
+	if !ok || !now.Before(t.ExpiresAt) {
+		delete(m.loginTokens, tokenHash)
+		return nil, project.ErrNotFound
+	}
+	cp := *t
+	delete(m.loginTokens, tokenHash)
+	return &cp, nil
+}
+
 func (m *Memory) Close() error { return nil }
+
+func (m *Memory) Health(context.Context) error { return nil }
 
 func (m *Memory) CreateUser(_ context.Context, u *user.User) error {
 	m.mu.Lock()
@@ -99,6 +116,43 @@ func (m *Memory) UserByID(_ context.Context, id string) (*user.User, error) {
 	return &cp, nil
 }
 
+func (m *Memory) DeleteUser(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.users[id]
+	if !ok {
+		return project.ErrNotFound
+	}
+	delete(m.users, id)
+	for key, session := range m.sessions {
+		if session.UserID == id {
+			delete(m.sessions, key)
+		}
+	}
+	for key, token := range m.loginTokens {
+		if strings.EqualFold(token.Email, u.Email) {
+			delete(m.loginTokens, key)
+		}
+	}
+	for projectID, pr := range m.projects {
+		if pr.UserID != id {
+			continue
+		}
+		delete(m.projects, projectID)
+		for key, it := range m.iterations {
+			if it.ProjectID == projectID {
+				delete(m.iterations, key)
+			}
+		}
+		for key, asset := range m.assets {
+			if asset.ProjectID == projectID {
+				delete(m.assets, key)
+			}
+		}
+	}
+	return nil
+}
+
 func (m *Memory) MarkUserVerified(_ context.Context, email string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -106,6 +160,20 @@ func (m *Memory) MarkUserVerified(_ context.Context, email string) error {
 		if strings.EqualFold(u.Email, email) {
 			u.Verified = true
 		}
+	}
+	return nil
+}
+
+func (m *Memory) MarkUserApproved(_ context.Context, id string, approvedAt time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.users[id]
+	if !ok {
+		return project.ErrNotFound
+	}
+	if u.ApprovedAt == nil {
+		t := approvedAt
+		u.ApprovedAt = &t
 	}
 	return nil
 }
@@ -163,19 +231,30 @@ func (m *Memory) DeleteExpiredSessions(_ context.Context) error {
 func (m *Memory) CreateProject(_ context.Context, p *project.Project) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	cp := *p
-	m.projects[p.ID] = &cp
+	if p.Status == project.StatusPendingAccessApproval {
+		for _, existing := range m.projects {
+			if existing.UserID == p.UserID && existing.Status == project.StatusPendingAccessApproval {
+				return ErrAccessApprovalPending
+			}
+		}
+	}
+	p.Version = 1
+	m.projects[p.ID] = cloneProject(p)
 	return nil
 }
 
 func (m *Memory) UpdateProject(_ context.Context, p *project.Project) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, ok := m.projects[p.ID]; !ok {
+	cur, ok := m.projects[p.ID]
+	if !ok {
 		return project.ErrNotFound
 	}
-	cp := *p
-	m.projects[p.ID] = &cp
+	if p.Version != cur.Version {
+		return ErrConflict
+	}
+	p.Version++
+	m.projects[p.ID] = cloneProject(p)
 	return nil
 }
 
@@ -206,8 +285,7 @@ func (m *Memory) ProjectByID(_ context.Context, id string) (*project.Project, er
 	if !ok {
 		return nil, project.ErrNotFound
 	}
-	cp := *p
-	return &cp, nil
+	return cloneProject(p), nil
 }
 
 func (m *Memory) ProjectByPreviewHost(_ context.Context, host string) (*project.Project, error) {
@@ -218,8 +296,7 @@ func (m *Memory) ProjectByPreviewHost(_ context.Context, host string) (*project.
 	}
 	for _, p := range m.projects { // scan is fine at memory-store scale
 		if p.PreviewHost == host {
-			cp := *p
-			return &cp, nil
+			return cloneProject(p), nil
 		}
 	}
 	return nil, project.ErrNotFound
@@ -231,8 +308,7 @@ func (m *Memory) ProjectsByUser(_ context.Context, userID string) ([]*project.Pr
 	var out []*project.Project
 	for _, p := range m.projects {
 		if p.UserID == userID {
-			cp := *p
-			out = append(out, &cp)
+			out = append(out, cloneProject(p))
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -246,8 +322,7 @@ func (m *Memory) Projects(_ context.Context) ([]*project.Project, error) {
 	defer m.mu.RUnlock()
 	out := make([]*project.Project, 0, len(m.projects))
 	for _, p := range m.projects {
-		cp := *p
-		out = append(out, &cp)
+		out = append(out, cloneProject(p))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
 	return out, nil
@@ -259,8 +334,7 @@ func (m *Memory) EscalatedProjects(_ context.Context) ([]*project.Project, error
 	var out []*project.Project
 	for _, p := range m.projects {
 		if p.Status == project.StatusEscalated {
-			cp := *p
-			out = append(out, &cp)
+			out = append(out, cloneProject(p))
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
@@ -274,18 +348,101 @@ func (m *Memory) PendingDomainProjects(_ context.Context) ([]*project.Project, e
 	for _, p := range m.projects {
 		switch p.DomainStatus {
 		case project.DomainRegistering, project.DomainPendingDNS, project.DomainVerifying:
-			cp := *p
-			out = append(out, &cp)
+			out = append(out, cloneProject(p))
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
 	return out, nil
 }
 
+func cloneSlice[T any](in []T) []T {
+	if in == nil {
+		return nil
+	}
+	out := make([]T, len(in))
+	copy(out, in)
+	return out
+}
+
+func cloneStrings(in map[string]string) map[string]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
+// cloneProject keeps the in-memory store's lock boundary honest. Project owns
+// several maps and nested slices; a shallow copy would let a caller mutate the
+// stored row before UpdateProject performs its optimistic-version check.
+func cloneProject(in *project.Project) *project.Project {
+	out := *in
+	out.Questions = cloneSlice(in.Questions)
+	out.DesignOptions = cloneSlice(in.DesignOptions)
+	out.Screenshots = cloneSlice(in.Screenshots)
+	out.Findings = cloneSlice(in.Findings) // nil vs empty is semantically significant
+	out.DomainRecords = cloneSlice(in.DomainRecords)
+	out.Spec.Pages = cloneSlice(in.Spec.Pages)
+	for i := range out.Spec.Pages {
+		out.Spec.Pages[i].Paths = cloneSlice(in.Spec.Pages[i].Paths)
+		out.Spec.Pages[i].Names = cloneStrings(in.Spec.Pages[i].Names)
+	}
+	out.Spec.NotIncluded = cloneSlice(in.Spec.NotIncluded)
+	out.Spec.ContentNeeded = cloneSlice(in.Spec.ContentNeeded)
+	for i := range out.Spec.ContentNeeded {
+		out.Spec.ContentNeeded[i].Names = cloneStrings(in.Spec.ContentNeeded[i].Names)
+	}
+	out.ContentAnswers = cloneStrings(in.ContentAnswers)
+	if in.ContentRosters != nil {
+		out.ContentRosters = make(map[string][]project.RosterEntry, len(in.ContentRosters))
+		for slot, entries := range in.ContentRosters {
+			out.ContentRosters[slot] = cloneSlice(entries)
+		}
+	}
+	if in.PendingImages != nil {
+		out.PendingImages = make(map[string]project.ImageCandidates, len(in.PendingImages))
+		for slot, candidates := range in.PendingImages {
+			candidates.Keys = cloneSlice(candidates.Keys)
+			out.PendingImages[slot] = candidates
+		}
+	}
+	return &out
+}
+
 func (m *Memory) CreateIteration(_ context.Context, it *project.Iteration) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	cp := *it
+	m.iterations[it.ID] = &cp
+	return nil
+}
+
+func (m *Memory) ReserveIteration(_ context.Context, it *project.Iteration, maxConcurrent, maxDaily int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	active, recent := 0, 0
+	cutoff := time.Now().UTC().Add(-24 * time.Hour)
+	for _, existing := range m.iterations {
+		if existing.Status == project.StatusBuilding {
+			active++
+		}
+		if !existing.CreatedAt.Before(cutoff) {
+			recent++
+		}
+	}
+	if maxConcurrent > 0 && active >= maxConcurrent {
+		return ErrBuildCapacity
+	}
+	if maxDaily > 0 && recent >= maxDaily {
+		return ErrBuildDailyCap
+	}
+	cp := *it
+	if cp.HeartbeatAt.IsZero() {
+		cp.HeartbeatAt = cp.CreatedAt
+	}
 	m.iterations[it.ID] = &cp
 	return nil
 }
@@ -315,6 +472,13 @@ func (m *Memory) SetAssetDescription(_ context.Context, assetID, description str
 	if a, ok := m.assets[assetID]; ok {
 		a.Description = description
 	}
+	return nil
+}
+
+func (m *Memory) RecordWithdrawalRequest(_ context.Context, request WithdrawalRequest) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.withdrawals[request.ID] = request
 	return nil
 }
 

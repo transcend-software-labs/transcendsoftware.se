@@ -1,37 +1,16 @@
 {{define "terms"}}{{template "head" .}}
-<section class="page-head"><div><a class="muted small" href="/">← Transcend Forge</a><h1>{{$.T "terms.title"}}</h1></div></section>
-
+<section class="page-head"><div><a class="muted small" href="/">← Transcend Forge</a><h1>{{.T "terms.title"}}</h1></div></section>
 <section class="panel terms-doc">
-  <p class="muted small">Senast uppdaterad: 2026. Tjänsten tillhandahålls av Transcend Software (Rasmus Kockum), Sverige.</p>
-
-  <h2>1. Tjänsten</h2>
-  <p>Transcend Forge bygger en webbplats åt dig utifrån din beskrivning. Du får först en kostnadsfri förhandsvisning. När du tecknar en prenumeration granskar Rasmus webbplatsen personligen innan den levereras och görs live.</p>
-
-  <h2>2. Förhandsvisning</h2>
-  <p>Förhandsvisningen är gratis och utan förpliktelser. En förhandsvisning som inte tecknas kan tas bort efter en tids inaktivitet.</p>
-
-  <h2>3. Prenumeration och pris</h2>
-  <p>Leverans och drift av din webbplats kräver en löpande månadsprenumeration i svenska kronor (SEK). Priset visas innan du betalar och kan i framtiden omfatta en domän-/DNS-kostnad som redovisas separat. Betalning sker via Stripe; vi lagrar aldrig dina kortuppgifter. Prenumerationen förnyas automatiskt varje månad tills den sägs upp.</p>
-
-  <h2>4. Ändringar och tillägg</h2>
-  <p>Prenumerationen inkluderar ett bestämt antal ändringar per månad. Antalet visas på din projektsida och förnyas varje månad. Behöver du fler ändringar samma månad kostar varje ytterligare ändring ett fast pris som visas innan du begär den och läggs till på din nästa faktura. En ändring på en redan levererad webbplats blir live så snart du godkänner den nya förhandsvisningen — utan ny granskning.</p>
-
-  <h2>5. Uppsägning</h2>
-  <p>Du kan säga upp när som helst via kundportalen (”Hantera prenumeration”). Uppsägningen gäller från nästa faktureringsperiod — den period du redan betalat för återbetalas inte. När prenumerationen upphör kan drift och eventuell domän för webbplatsen komma att avslutas.</p>
-
-  <h2>6. Ångerrätt</h2>
-  <p>Som konsument har du normalt 14 dagars ångerrätt enligt distansavtalslagen. Genom att teckna prenumerationen samtycker du till att leveransen (Rasmus granskning och driftsättning) påbörjas under ångerfristen. När tjänsten är fullgjord upphör ångerrätten. Kontakta oss om du ångrar dig innan leverans skett.</p>
-
-  <h2>7. Leverans och granskning</h2>
-  <p>Rasmus kontrollerar personligen att varje webbplats fungerar innan den levereras första gången. Du ansvarar själv för att granska innehållet och testa funktionerna, och kan begära ändringar innan du accepterar. Efterföljande ändringar på en levererad webbplats blir live när du godkänner dem, utan ny personlig granskning.</p>
-
-  <h2>8. Ansvar</h2>
-  <p>Tjänsten tillhandahålls i befintligt skick. Vi ansvarar inte för indirekta skador eller utebliven vinst. Vårt sammanlagda ansvar begränsas till vad du betalat de senaste tre månaderna.</p>
-
-  <h2>9. Personuppgifter</h2>
-  <p>Vi behandlar personuppgifter enligt GDPR. Webbplatser driftas inom EU (Stockholm). Betalningsuppgifter hanteras av Stripe. Du kan begära utdrag eller radering genom att kontakta oss.</p>
-
-  <h2>10. Kontakt</h2>
-  <p>Frågor om villkoren eller din prenumeration: <a href="mailto:rasmus@transcendsoftware.se">rasmus@transcendsoftware.se</a>.</p>
+  <p class="muted small">{{.T "terms.updated"}}</p>
+  <h2>{{.T "terms.service.h"}}</h2><p>{{.T "terms.service.p"}}</p>
+  <h2>{{.T "terms.preview.h"}}</h2><p>{{.T "terms.preview.p"}}</p>
+  <h2>{{.T "terms.price.h"}}</h2><p>{{.T "terms.price.p"}}</p>
+  <h2>{{.T "terms.changes.h"}}</h2><p>{{.T "terms.changes.p"}}</p>
+  <h2>{{.T "terms.cancel.h"}}</h2><p>{{.T "terms.cancel.p"}}</p>
+  <h2>{{.T "terms.withdraw.h"}}</h2><p>{{.T "terms.withdraw.p"}} <a href="/withdraw">{{.T "terms.withdraw.link"}}</a>.</p>
+  <h2>{{.T "terms.delivery.h"}}</h2><p>{{.T "terms.delivery.p"}}</p>
+  <h2>{{.T "terms.responsibility.h"}}</h2><p>{{.T "terms.responsibility.p"}}</p>
+  <h2>{{.T "terms.data.h"}}</h2><p>{{.T "terms.data.p"}} <a href="/privacy">{{.T "foot.privacy"}}</a>.</p>
+  <h2>{{.T "terms.contact.h"}}</h2><p>{{.T "terms.contact.p"}} <a href="mailto:rasmus@transcendsoftware.se">rasmus@transcendsoftware.se</a>.</p>
 </section>
 {{template "foot" .}}{{end}}

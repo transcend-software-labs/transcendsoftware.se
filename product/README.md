@@ -2,8 +2,8 @@
 
 The customer-facing application for `forge.transcendsoftware.se`: a landing page,
 login, and a dashboard where a customer describes a website and an autonomous
-agent plans, builds, and deploys it — with every result reviewed and guaranteed
-by a human (Rasmus) before go-live.
+agent plans, builds, and deploys it — with every initial site reviewed and
+guaranteed by a human (Rasmus) before go-live.
 
 This is a separate deploy target from the marketing site (`transcendsoftware.se`,
 the Astro project at the repo root) but lives in the same monorepo.
@@ -21,7 +21,10 @@ the open decisions.
 
 What works today:
 
-- Landing page + email/password auth (bcrypt, cookie sessions, **CSRF-protected** forms)
+- Landing page + email/password, magic-link and OAuth auth (bcrypt, hashed
+  server-side sessions, **CSRF-protected** forms, throttled email endpoints)
+- **First-project approval**: a new customer’s first brief waits in `/admin`
+  before any AI work starts; approval permanently unlocks their future projects
 - Start a project → orchestrator runs **intake (clarifying questions) → plan →
   safety gate → build**
 - **Live build streaming**: the dashboard shows the agent's tool activity as it
@@ -44,6 +47,10 @@ What works today:
 - In-memory store (dev) **and** Postgres — embedded migrations apply
   automatically at startup (tracked in `schema_migrations`, advisory-locked
   against concurrent instances)
+- Stripe subscription Checkout/portal/webhooks, monthly change allowance and
+  optional domain purchase/attachment
+- Localized terms and privacy pages, online withdrawal function, and
+  self-service erasure for unpaid projects/accounts
 - Health check (`/healthz`), graceful shutdown, single static binary
 
 Real build mode (`FLY_API_TOKEN` + `FLY_SANDBOX_APP`/`FLY_SANDBOX_IMAGE` set):
@@ -56,8 +63,7 @@ to reach the sandbox.
 The deploy token the sandbox receives is minted per build, scoped to that one
 customer app (Fly's `createLimitedAccessToken`), so a compromised agent can
 only deploy its own throwaway app. If the runtime token can't mint sub-tokens,
-it falls back to a configured org-scoped token (logged). Not yet built (by
-design): the payment gate.
+it falls back to a configured org-scoped token (logged).
 
 ## Run it
 
@@ -100,13 +106,12 @@ mode.** Each variable independently switches one piece from fake to real:
 | `ADMIN_EMAIL`         | the account allowed into the operator review views (`/admin`) |
 | `MAX_PROJECTS_PER_DAY` | per-user daily project cap (default 3)                    |
 | `MAX_CONCURRENT_BUILDS` | global concurrent build cap (default 3)                  |
+| `MAX_BUILDS_PER_DAY`  | atomic global rolling-24h build cap (default 20)         |
 | `PREVIEW_TTL_DAYS`    | days an untouched preview app stays up before the reaper destroys it (default 14) |
 | `TEMPLATE_KEY`        | object-storage key of the starter-app tarball seeding first builds (empty → greenfield); push with `make template-push` |
 | `RESEND_API_KEY`      | send real email via Resend (else notifications are log-only) |
 | `SANDBOX_COST_PER_HOUR` | est. $/hour for a build sandbox, for /admin cost display (default ~0.02) |
 | `EMAIL_FROM`          | verified sender for outgoing email                         |
-| `GITHUB_TOKEN`        | mirror each project's source to a private repo + deploy-on-push Action (needs `repo` + `workflow` scopes); empty → disabled |
-| `GITHUB_ORG`          | org the mirror repos live under (default `transcend-software-labs`) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | enable "Continue with Google" login (redirect URI `<BASE_URL>/auth/google/callback`) |
 | `LINKEDIN_CLIENT_ID` / `LINKEDIN_CLIENT_SECRET` | enable LinkedIn login (same callback pattern) |
 | `ANTHROPIC_API_KEY`   | use the real planner + safety gate (else a deterministic fake) |
@@ -125,6 +130,10 @@ mode.** Each variable independently switches one piece from fake to real:
 | `ADDR`                | listen address (default `:8080`)                           |
 | `BASE_URL`            | public base URL                                            |
 | `SECURE_COOKIE=true`  | mark the session cookie `Secure` (set behind HTTPS)        |
+| `APP_ENV=production`  | enforce fail-fast validation; Fly production is also detected automatically |
+| `STRIPE_SECRET_KEY` / `STRIPE_PRICE_ID` / `STRIPE_WEBHOOK_SECRET` | enable subscription billing; the group must be complete |
+| `NAME_DOT_COM_USERNAME` / `NAME_DOT_COM_API_KEY` | enable managed domains; both are required, and in-app purchasing also requires Stripe |
+| `DOMAIN_MARKUP_PCT` / `MAX_DOMAIN_SEK` | domain margin (default 10%) and maximum offered first-year/renewal price (default 300 SEK) |
 
 ## Architecture
 
@@ -150,7 +159,7 @@ Packages (`internal/`):
 
 - `project` — domain types + the lifecycle state machine
 - `store` — `Store` interface, `Memory` (dev) and `Postgres` (pgx) impls
-- `auth` — bcrypt + in-memory cookie sessions
+- `auth` — bcrypt + hashed server-side cookie sessions
 - `llm` — `Planner` + `SafetyGate`, with the Anthropic client and a Fake; the
   operating spec ("Rasmus's decisions") lives in `PlannerSystemPrompt`
 - `opencode` — driver to run a build via an opencode server (HTTP + Fake)
@@ -178,6 +187,6 @@ The pipeline is built around a trusted/untrusted split:
 - The **safety gate is tool-less**: it only classifies, so a jailbreak of it
   yields a bad verdict, never an action.
 
-Before exposing this publicly: quotas, preview-app lifecycle, credential
-rotation, and the human review + payment gate — the ordered list lives in
-[`PLAN.md`](PLAN.md).
+Before exposing this publicly, verify the configured Stripe price, provider
+credentials, restore procedure, spend alerts and current legal copy. The
+implementation history and remaining infrastructure work live in [`PLAN.md`](PLAN.md).

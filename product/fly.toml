@@ -21,7 +21,7 @@ primary_region = "arn"  # Stockholm (EU)
     method = "GET"
     path = "/healthz"
     interval = "15s"
-    timeout = "2s"
+    timeout = "5s"
     grace_period = "5s"
 
 [env]

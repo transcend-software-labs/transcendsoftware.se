@@ -1,6 +1,34 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
+
+func TestProductionValidationRejectsFakeFallbacks(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	c := Config{BaseURL: "https://forge.example", SecureCookie: true, FlyAppName: "forge"}
+	if err := c.Validate(); err == nil {
+		t.Fatal("partial production configuration must fail")
+	}
+	c.DatabaseURL = "postgres://db"
+	c.AdminEmail = "admin@example.com"
+	c.ResendAPIKey = "re"
+	c.EmailFrom = "Transcend Forge <hello@forge.example>"
+	c.EmailReplyTo = "support@example.com"
+	c.LLMAPIKey = "llm"
+	c.FlyAPIToken = "fly"
+	c.FlySandboxApp = "sandbox"
+	c.FlySandboxImage = "image"
+	c.StorageEndpoint, c.StorageAccessKey, c.StorageSecretKey, c.StorageBucket = "s3", "ak", "sk", "assets"
+	c.BackupEndpoint, c.BackupAccessKey, c.BackupSecretKey, c.BackupBucket = "s3", "ak", "sk", "backups"
+	c.StripeSecretKey, c.StripePriceID, c.StripeWebhookSecret = "stripe", "price", "whsec"
+	c.MaxProjectsPerDay, c.MaxConcurrentBuilds, c.MaxBuildsPerDay = 3, 1, 10
+	c.ChangesPerMonth, c.OverageOre, c.PreviewTTL = 3, 4900, 14*24*time.Hour
+	if err := c.Validate(); err != nil {
+		t.Fatalf("complete production config rejected: %v", err)
+	}
+}
 
 func TestModelProfiles(t *testing.T) {
 	// No keys → nothing enabled.

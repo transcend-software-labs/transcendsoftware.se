@@ -116,7 +116,7 @@ func TestSubscribe_BundlesBYODIntent(t *testing.T) {
 
 	noRedir := &http.Client{Jar: c.Jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := noRedir.PostForm(srv.URL+"/projects/sub2/subscribe", url.Values{
-		"csrf_token": {tok}, "domain_mode": {"byod"}, "byod_host": {"myown.se"},
+		"csrf_token": {tok}, "consumer_consent": {"yes"}, "domain_mode": {"byod"}, "byod_host": {"myown.se"},
 	})
 	if err != nil {
 		t.Fatalf("subscribe: %v", err)
@@ -142,7 +142,7 @@ func TestSubscribe_NoDomainLeavesNoIntent(t *testing.T) {
 
 	noRedir := &http.Client{Jar: c.Jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := noRedir.PostForm(srv.URL+"/projects/sub3/subscribe", url.Values{
-		"csrf_token": {tok}, "domain_mode": {"none"},
+		"csrf_token": {tok}, "consumer_consent": {"yes"}, "domain_mode": {"none"},
 	})
 	if err != nil {
 		t.Fatalf("subscribe: %v", err)

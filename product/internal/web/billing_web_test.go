@@ -33,7 +33,8 @@ import (
 const webhookSecret = "whsec_test"
 
 func mustUser(id, email string) *user.User {
-	return &user.User{ID: id, Email: email, Verified: true, CreatedAt: time.Now().UTC()}
+	now := time.Now().UTC()
+	return &user.User{ID: id, Email: email, Verified: true, ApprovedAt: &now, CreatedAt: now}
 }
 
 // storeFor returns the memory store registered for a test server's URL.
@@ -133,7 +134,9 @@ func TestSubscribe_RedirectsToCheckout(t *testing.T) {
 
 	// Subscribe → 303 to the Stripe Checkout URL (don't follow the external redirect).
 	noRedir := &http.Client{Jar: c.Jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	resp, err := noRedir.PostForm(srv.URL+"/projects/pay1/subscribe", url.Values{"csrf_token": {tok}})
+	resp, err := noRedir.PostForm(srv.URL+"/projects/pay1/subscribe", url.Values{
+		"csrf_token": {tok}, "consumer_consent": {"yes"},
+	})
 	if err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
@@ -207,6 +210,33 @@ func TestWebhook_PaysAndGates(t *testing.T) {
 	dresp.Body.Close()
 	if got, _ := st.ProjectByID(ctx, "acc1"); got.Status != project.StatusDelivered {
 		t.Fatalf("paid+accepted should deliver, got %q", got.Status)
+	}
+}
+
+func TestWebhook_WaitsForDelayedPayment(t *testing.T) {
+	stripe := fakeStripe(t, nil)
+	defer stripe.Close()
+	srv, st := newBillingServer(t, stripe.URL)
+	defer srv.Close()
+	ctx := t.Context()
+	_ = st.CreateUser(ctx, mustUser("delay-u", "delay@example.com"))
+	_ = st.CreateProject(ctx, &project.Project{ID: "delay-p", UserID: "delay-u", Name: "Delayed",
+		Status: project.StatusAccepted, PreviewURL: "https://x"})
+
+	unpaid := `{"type":"checkout.session.completed","data":{"object":{"id":"cs_delay",` +
+		`"client_reference_id":"delay-p","customer":"cus_delay","subscription":"sub_delay",` +
+		`"payment_status":"unpaid","metadata":{"project_id":"delay-p"}}}}`
+	r := postWebhook(t, srv.URL, unpaid, signStripe(unpaid, time.Now()))
+	r.Body.Close()
+	if got, _ := st.ProjectByID(ctx, "delay-p"); got.Paid {
+		t.Fatal("unpaid Checkout completion must not activate the subscription")
+	}
+
+	settled := strings.Replace(unpaid, `checkout.session.completed`, `checkout.session.async_payment_succeeded`, 1)
+	r = postWebhook(t, srv.URL, settled, signStripe(settled, time.Now()))
+	r.Body.Close()
+	if got, _ := st.ProjectByID(ctx, "delay-p"); !got.Paid || got.StripeSubID != "sub_delay" {
+		t.Fatalf("async payment success did not activate subscription: %+v", got)
 	}
 }
 

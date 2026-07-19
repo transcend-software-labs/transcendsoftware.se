@@ -19,20 +19,21 @@ import (
 type Status string
 
 const (
-	StatusCreated          Status = "created"           // just created, nothing run yet
-	StatusClarifying       Status = "clarifying"        // intake agent is generating clarifying questions
-	StatusNeedsInput       Status = "needs_input"       // waiting for the customer to answer questions
-	StatusPlanning         Status = "planning"          // LLM is turning the brief into a plan
-	StatusScreening        Status = "screening"         // safety gate is evaluating the request
-	StatusAwaitingApproval Status = "awaiting_approval" // plan ready; waiting for the customer to approve the scope
-	StatusEscalated        Status = "escalated"         // safety gate escalated; waiting on operator review
-	StatusRejected         Status = "rejected"          // safety gate rejected the request (terminal)
-	StatusBuilding         Status = "building"          // a sandboxed build is running
-	StatusPreviewReady     Status = "preview_ready"     // a build finished, preview link attached
-	StatusAccepted         Status = "accepted"          // customer accepted the preview; awaiting Rasmus's final review
-	StatusDelivered        Status = "delivered"         // Rasmus reviewed + guaranteed it (terminal, the handover)
-	StatusFailed           Status = "failed"            // a build or pipeline step errored (terminal)
-	StatusExpired          Status = "expired"           // preview reaped after the retention window (terminal)
+	StatusCreated               Status = "created"                 // just created, nothing run yet
+	StatusPendingAccessApproval Status = "pending_access_approval" // first project; waiting for operator to approve the customer
+	StatusClarifying            Status = "clarifying"              // intake agent is generating clarifying questions
+	StatusNeedsInput            Status = "needs_input"             // waiting for the customer to answer questions
+	StatusPlanning              Status = "planning"                // LLM is turning the brief into a plan
+	StatusScreening             Status = "screening"               // safety gate is evaluating the request
+	StatusAwaitingApproval      Status = "awaiting_approval"       // plan ready; waiting for the customer to approve the scope
+	StatusEscalated             Status = "escalated"               // safety gate escalated; waiting on operator review
+	StatusRejected              Status = "rejected"                // safety gate rejected the request (terminal)
+	StatusBuilding              Status = "building"                // a sandboxed build is running
+	StatusPreviewReady          Status = "preview_ready"           // a build finished, preview link attached
+	StatusAccepted              Status = "accepted"                // customer accepted the preview; awaiting Rasmus's final review
+	StatusDelivered             Status = "delivered"               // Rasmus reviewed + guaranteed it (terminal, the handover)
+	StatusFailed                Status = "failed"                  // a build or pipeline step errored (terminal)
+	StatusExpired               Status = "expired"                 // preview reaped after the retention window (terminal)
 )
 
 // MaxIterations is the total number of build passes a project gets:
@@ -295,6 +296,7 @@ type Project struct {
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	Version   int64 // optimistic-lock revision; incremented on every persisted update
 }
 
 // EffectiveBrief is the brief enriched with the customer's clarifying answers
@@ -400,7 +402,7 @@ func (p *Project) CanApprovePlan() bool {
 // current. Terminal-bad states report the step they stopped at.
 func (p *Project) TimelineStep() int {
 	switch p.Status {
-	case StatusCreated:
+	case StatusCreated, StatusPendingAccessApproval:
 		return 0
 	case StatusClarifying, StatusNeedsInput:
 		return 1

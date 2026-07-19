@@ -4,6 +4,35 @@
 </section>
 
 <section class="panel">
+  <h2>New customer approvals</h2>
+  <p class="muted small">Their first brief is saved, but no intake, planning, or build work starts until you approve the customer.</p>
+  {{if .Data.Access}}
+  <ul class="project-list">
+    {{range .Data.Access}}
+    <li class="card">
+      <h3><a href="/admin/projects/{{.ID}}">{{.Name}}</a></h3>
+      <p class="muted small">{{.OwnerEmail}} · submitted {{.CreatedAt.Format "Jan 2 15:04"}}</p>
+      <p class="brief">{{.Brief}}</p>
+      <div class="admin-actions">
+        <form method="post" action="/admin/projects/{{.ID}}/approve-access" class="inline">
+          <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+          <button class="btn btn-sm" type="submit">Approve customer &amp; start</button>
+        </form>
+        <form method="post" action="/admin/projects/{{.ID}}/reject-access" class="inline-actions">
+          <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+          <input type="text" name="reason" placeholder="Reason (optional)">
+          <button class="linklike" type="submit">Decline</button>
+        </form>
+      </div>
+    </li>
+    {{end}}
+  </ul>
+  {{else}}
+  <p class="muted small">No new customers waiting.</p>
+  {{end}}
+</section>
+
+<section class="panel">
   <h2>Last 24 hours</h2>
   {{with .Data.Stats}}
   <ul class="stat-row">
@@ -217,12 +246,12 @@
       <a class="muted small" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{.PreviewURL}} ↗</a>
       {{if .Findings}}<span class="audit-flag" title="{{len .Findings}} design-audit finding(s) — review under Ready for delivery">⚑ {{len .Findings}}</span>{{end}}
       <form method="post" action="/admin/projects/{{.ID}}/destroy-preview" class="inline"
-        onsubmit="return confirm('Destroy this preview app? The customer’s link dies immediately.')">
+        data-confirm="Destroy this preview app? The customer’s link dies immediately.">
         <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
         <button class="linklike" type="submit">Destroy</button>
       </form>
       <form method="post" action="/admin/projects/{{.ID}}/delete" class="inline"
-        onsubmit="return confirm('Delete this project entirely — its Fly app AND its record? This cannot be undone.')">
+        data-confirm="Delete this project entirely — its Fly app AND its record? This cannot be undone.">
         <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
         <button class="linklike danger" type="submit">Delete</button>
       </form>
@@ -268,7 +297,7 @@
   <h2>Danger zone</h2>
   <p class="muted small">Delete <strong>every</strong> project and tear down all their preview Fly apps — a clean slate for testing. Core apps (transcend-forge, its sandbox) are never touched. This cannot be undone.</p>
   <form method="post" action="/admin/purge-all"
-    onsubmit="return confirm('Delete ALL projects and destroy every preview app? This cannot be undone.')">
+    data-confirm="Delete ALL projects and destroy every preview app? This cannot be undone.">
     <input type="hidden" name="csrf_token" value="{{.CSRF}}">
     <button class="btn btn-ghost-danger" type="submit">Delete all projects &amp; previews</button>
   </form>

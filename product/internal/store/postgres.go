@@ -124,6 +124,8 @@ func (p *Postgres) Close() error {
 	return nil
 }
 
+func (p *Postgres) Health(ctx context.Context) error { return p.pool.Ping(ctx) }
+
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
@@ -131,8 +133,8 @@ func isUniqueViolation(err error) bool {
 
 func (p *Postgres) CreateUser(ctx context.Context, u *user.User) error {
 	_, err := p.pool.Exec(ctx,
-		`INSERT INTO users (id, email, password_hash, verified, created_at) VALUES ($1, $2, $3, $4, $5)`,
-		u.ID, u.Email, u.PasswordHash, u.Verified, u.CreatedAt)
+		`INSERT INTO users (id, email, password_hash, verified, approved_at, created_at) VALUES ($1, $2, $3, $4, $5, $6)`,
+		u.ID, u.Email, u.PasswordHash, u.Verified, nullableTimePtr(u.ApprovedAt), u.CreatedAt)
 	if isUniqueViolation(err) {
 		return ErrEmailTaken
 	}
@@ -142,8 +144,8 @@ func (p *Postgres) CreateUser(ctx context.Context, u *user.User) error {
 func (p *Postgres) UserByEmail(ctx context.Context, email string) (*user.User, error) {
 	var u user.User
 	err := p.pool.QueryRow(ctx,
-		`SELECT id, email, password_hash, verified, created_at FROM users WHERE lower(email) = lower($1)`, email).
-		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Verified, &u.CreatedAt)
+		`SELECT id, email, password_hash, verified, approved_at, created_at FROM users WHERE lower(email) = lower($1)`, email).
+		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Verified, &u.ApprovedAt, &u.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, project.ErrNotFound
 	}
@@ -156,8 +158,8 @@ func (p *Postgres) UserByEmail(ctx context.Context, email string) (*user.User, e
 func (p *Postgres) UserByID(ctx context.Context, id string) (*user.User, error) {
 	var u user.User
 	err := p.pool.QueryRow(ctx,
-		`SELECT id, email, password_hash, verified, created_at FROM users WHERE id = $1`, id).
-		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Verified, &u.CreatedAt)
+		`SELECT id, email, password_hash, verified, approved_at, created_at FROM users WHERE id = $1`, id).
+		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Verified, &u.ApprovedAt, &u.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, project.ErrNotFound
 	}
@@ -167,11 +169,45 @@ func (p *Postgres) UserByID(ctx context.Context, id string) (*user.User, error) 
 	return &u, nil
 }
 
+func (p *Postgres) DeleteUser(ctx context.Context, id string) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var email string
+	if err := tx.QueryRow(ctx, `SELECT email FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&email); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return project.ErrNotFound
+		}
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM login_tokens WHERE lower(email)=lower($1)`, email); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM users WHERE id=$1`, id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 // MarkUserVerified flips the verified flag for the account with this email.
 func (p *Postgres) MarkUserVerified(ctx context.Context, email string) error {
 	_, err := p.pool.Exec(ctx,
 		`UPDATE users SET verified = true WHERE lower(email) = lower($1)`, email)
 	return err
+}
+
+func (p *Postgres) MarkUserApproved(ctx context.Context, id string, approvedAt time.Time) error {
+	tag, err := p.pool.Exec(ctx,
+		`UPDATE users SET approved_at = COALESCE(approved_at, $2) WHERE id = $1`, id, approvedAt)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return project.ErrNotFound
+	}
+	return nil
 }
 
 // VerifyAndClearPassword verifies the account and wipes its password in one
@@ -243,7 +279,26 @@ func (p *Postgres) DeleteLoginToken(ctx context.Context, tokenHash string) error
 	return err
 }
 
+func (p *Postgres) ConsumeLoginToken(ctx context.Context, tokenHash string, now time.Time) (*user.LoginToken, error) {
+	var t user.LoginToken
+	err := p.pool.QueryRow(ctx,
+		`DELETE FROM login_tokens WHERE token_hash = $1
+		 RETURNING token_hash, email, expires_at, created_at`, tokenHash).
+		Scan(&t.TokenHash, &t.Email, &t.ExpiresAt, &t.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, project.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !now.Before(t.ExpiresAt) {
+		return nil, project.ErrNotFound
+	}
+	return &t, nil
+}
+
 func (p *Postgres) CreateProject(ctx context.Context, pr *project.Project) error {
+	pr.Version = 1
 	_, err := p.pool.Exec(ctx,
 		`INSERT INTO projects
 		   (id, user_id, name, brief, status, questions, design_options, design_brief,
@@ -261,14 +316,19 @@ func (p *Postgres) CreateProject(ctx context.Context, pr *project.Project) error
 		pr.DomainName, string(pr.DomainStatus), pr.DomainKind, pr.DomainZoneID, pr.DomainIPv6, marshalJSON(pr.DomainRecords), nullableTime(pr.DomainCreatedAt), nullableTime(pr.DomainVerifiedAt),
 		pr.ChangesThisPeriod, nullableTime(pr.ChangePeriodStart), nullableTime(pr.DeliveredAt),
 		pr.DomainIntent, pr.DomainIntentBuy, pr.DomainCostOre, pr.PreviewHost, nullableTime(pr.DomainPaidThrough), pr.PlannerProfile, pr.ImplProfile, pr.DomainPrepaid, pr.ReviewProfile, pr.CodeReview, nullableTime(pr.CodeReviewAt), pr.BuildAgent, pr.DomainRenewalOre)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.ConstraintName == "projects_one_pending_access_per_user_idx" {
+		return ErrAccessApprovalPending
+	}
 	return err
 }
 
 func (p *Postgres) UpdateProject(ctx context.Context, pr *project.Project) error {
-	tag, err := p.pool.Exec(ctx,
+	var nextVersion int64
+	err := p.pool.QueryRow(ctx,
 		`UPDATE projects SET
-		   name=$2, brief=$3, status=$4, questions=$5, design_options=$6, design_brief=$7, answers=$8, plan=$9, verdict=$10, reject_reason=$11, preview_url=$12, snapshot_key=$13, screenshots=$14, findings=$15, critique=$16, iterations_used=$17, updated_at=$18, plan_spec=$19, locale=$20, content_answers=$21, content_rosters=$22, pending_images=$23, image_gen_count=$24, paid=$25, paid_at=$26, paid_via=$27, content_pending=$28, stripe_customer_id=$29, stripe_sub_id=$30, domain_name=$31, domain_status=$32, domain_kind=$33, domain_zone_id=$34, domain_ipv6=$35, domain_records=$36, domain_created_at=$37, domain_verified_at=$38, changes_this_period=$39, change_period_start=$40, delivered_at=$41, domain_intent=$42, domain_intent_buy=$43, domain_cost_ore=$44, preview_host=$45, domain_paid_through=$46, planner_profile=$47, impl_profile=$48, domain_prepaid=$49, review_profile=$50, code_review=$51, code_review_at=$52, build_agent=$53, domain_renewal_ore=$54
-		 WHERE id=$1`,
+		   name=$2, brief=$3, status=$4, questions=$5, design_options=$6, design_brief=$7, answers=$8, plan=$9, verdict=$10, reject_reason=$11, preview_url=$12, snapshot_key=$13, screenshots=$14, findings=$15, critique=$16, iterations_used=$17, updated_at=$18, plan_spec=$19, locale=$20, content_answers=$21, content_rosters=$22, pending_images=$23, image_gen_count=$24, paid=$25, paid_at=$26, paid_via=$27, content_pending=$28, stripe_customer_id=$29, stripe_sub_id=$30, domain_name=$31, domain_status=$32, domain_kind=$33, domain_zone_id=$34, domain_ipv6=$35, domain_records=$36, domain_created_at=$37, domain_verified_at=$38, changes_this_period=$39, change_period_start=$40, delivered_at=$41, domain_intent=$42, domain_intent_buy=$43, domain_cost_ore=$44, preview_host=$45, domain_paid_through=$46, planner_profile=$47, impl_profile=$48, domain_prepaid=$49, review_profile=$50, code_review=$51, code_review_at=$52, build_agent=$53, domain_renewal_ore=$54, version=version+1
+		 WHERE id=$1 AND version=$55 RETURNING version`,
 		pr.ID, pr.Name, pr.Brief, pr.Status, marshalQuestions(pr.Questions),
 		marshalJSON(pr.DesignOptions), pr.DesignBrief, pr.Answers,
 		pr.Plan, pr.Verdict, pr.RejectReason, pr.PreviewURL,
@@ -277,13 +337,21 @@ func (p *Postgres) UpdateProject(ctx context.Context, pr *project.Project) error
 		pr.Paid, nullableTime(pr.PaidAt), pr.PaidVia, pr.ContentPending, pr.StripeCustomerID, pr.StripeSubID,
 		pr.DomainName, string(pr.DomainStatus), pr.DomainKind, pr.DomainZoneID, pr.DomainIPv6, marshalJSON(pr.DomainRecords), nullableTime(pr.DomainCreatedAt), nullableTime(pr.DomainVerifiedAt),
 		pr.ChangesThisPeriod, nullableTime(pr.ChangePeriodStart), nullableTime(pr.DeliveredAt),
-		pr.DomainIntent, pr.DomainIntentBuy, pr.DomainCostOre, pr.PreviewHost, nullableTime(pr.DomainPaidThrough), pr.PlannerProfile, pr.ImplProfile, pr.DomainPrepaid, pr.ReviewProfile, pr.CodeReview, nullableTime(pr.CodeReviewAt), pr.BuildAgent, pr.DomainRenewalOre)
-	if err != nil {
+		pr.DomainIntent, pr.DomainIntentBuy, pr.DomainCostOre, pr.PreviewHost, nullableTime(pr.DomainPaidThrough), pr.PlannerProfile, pr.ImplProfile, pr.DomainPrepaid, pr.ReviewProfile, pr.CodeReview, nullableTime(pr.CodeReviewAt), pr.BuildAgent, pr.DomainRenewalOre, pr.Version).Scan(&nextVersion)
+	if !errors.Is(err, pgx.ErrNoRows) && err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
+	if errors.Is(err, pgx.ErrNoRows) {
+		var exists bool
+		if qerr := p.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM projects WHERE id=$1)`, pr.ID).Scan(&exists); qerr != nil {
+			return qerr
+		}
+		if exists {
+			return ErrConflict
+		}
 		return project.ErrNotFound
 	}
+	pr.Version = nextVersion
 	return nil
 }
 
@@ -299,8 +367,8 @@ func marshalQuestions(qs []string) string {
 }
 
 // DeleteProject removes a project and everything hanging off it (its
-// iterations and asset rows) in one transaction. Object-storage blobs
-// (snapshots, screenshots, assets) are left to lifecycle/reaper cleanup.
+// iterations and asset rows) in one transaction. The orchestrator deletes the
+// project's object-storage prefix before calling this method.
 func (p *Postgres) DeleteProject(ctx context.Context, id string) error {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
@@ -420,7 +488,7 @@ const projectColumns = `SELECT id, user_id, name, brief, status, questions, desi
 	screenshots, findings, critique, iterations_used, created_at, updated_at, plan_spec, locale, content_answers, content_rosters, pending_images, image_gen_count, paid, paid_at, paid_via, content_pending, stripe_customer_id, stripe_sub_id,
 	domain_name, domain_status, domain_kind, domain_zone_id, domain_ipv6, domain_records, domain_created_at, domain_verified_at,
 	changes_this_period, change_period_start, delivered_at,
-	domain_intent, domain_intent_buy, domain_cost_ore, preview_host, domain_paid_through, planner_profile, impl_profile, domain_prepaid, review_profile, code_review, code_review_at, build_agent, domain_renewal_ore
+	domain_intent, domain_intent_buy, domain_cost_ore, preview_host, domain_paid_through, planner_profile, impl_profile, domain_prepaid, review_profile, code_review, code_review_at, build_agent, domain_renewal_ore, version
 	FROM projects`
 
 // rowScanner is satisfied by both pgx.Row and pgx.Rows.
@@ -437,7 +505,7 @@ func scanProject(row rowScanner) (*project.Project, error) {
 		&pr.Answers, &pr.Plan, &pr.Verdict, &pr.RejectReason, &pr.PreviewURL, &pr.SnapshotKey, &screenshotsJSON, &findingsJSON, &pr.Critique, &pr.IterationsUsed, &pr.CreatedAt, &pr.UpdatedAt, &specJSON, &pr.Locale, &contentJSON, &rostersJSON, &pendingJSON, &pr.ImageGenCount, &pr.Paid, &paidAt, &pr.PaidVia, &pr.ContentPending, &pr.StripeCustomerID, &pr.StripeSubID,
 		&pr.DomainName, &pr.DomainStatus, &pr.DomainKind, &pr.DomainZoneID, &pr.DomainIPv6, &domainRecordsJSON, &domainCreatedAt, &domainVerifiedAt,
 		&pr.ChangesThisPeriod, &changePeriodStart, &deliveredAt,
-		&pr.DomainIntent, &pr.DomainIntentBuy, &pr.DomainCostOre, &pr.PreviewHost, &domainPaidThrough, &pr.PlannerProfile, &pr.ImplProfile, &pr.DomainPrepaid, &pr.ReviewProfile, &pr.CodeReview, &codeReviewAt, &pr.BuildAgent, &pr.DomainRenewalOre)
+		&pr.DomainIntent, &pr.DomainIntentBuy, &pr.DomainCostOre, &pr.PreviewHost, &domainPaidThrough, &pr.PlannerProfile, &pr.ImplProfile, &pr.DomainPrepaid, &pr.ReviewProfile, &pr.CodeReview, &codeReviewAt, &pr.BuildAgent, &pr.DomainRenewalOre, &pr.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -509,6 +577,13 @@ func nullableTime(t time.Time) any {
 	return t
 }
 
+func nullableTimePtr(t *time.Time) any {
+	if t == nil {
+		return nil
+	}
+	return *t
+}
+
 // marshalObj renders v as a JSON object for a jsonb/text column, "{}" on failure.
 func marshalObj(v any) string {
 	b, err := json.Marshal(v)
@@ -537,6 +612,13 @@ func (p *Postgres) CreateAsset(ctx context.Context, a *project.Asset) error {
 
 func (p *Postgres) SetAssetDescription(ctx context.Context, assetID, description string) error {
 	_, err := p.pool.Exec(ctx, `UPDATE assets SET description = $2 WHERE id = $1`, assetID, description)
+	return err
+}
+
+func (p *Postgres) RecordWithdrawalRequest(ctx context.Context, request WithdrawalRequest) error {
+	_, err := p.pool.Exec(ctx,
+		`INSERT INTO withdrawal_requests (id, email, project_id, created_at) VALUES ($1,$2,$3,$4)`,
+		request.ID, request.Email, request.ProjectID, request.CreatedAt)
 	return err
 }
 
@@ -572,6 +654,45 @@ func (p *Postgres) CreateIteration(ctx context.Context, it *project.Iteration) e
 		it.ID, it.ProjectID, it.Number, it.Prompt, it.PreviewURL, it.Status, validUTF8(it.Log),
 		it.MachineID, it.SessionID, it.SandboxAddr, hb, it.Tokens, it.ImplModel, it.PlannerModel, it.CreatedAt, it.TokensInput)
 	return err
+}
+
+func (p *Postgres) ReserveIteration(ctx context.Context, it *project.Iteration, maxConcurrent, maxDaily int) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	// Serialize only the tiny count+insert reservation across every Forge
+	// machine. The iteration itself is the durable reservation.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('forge-build-capacity'))`); err != nil {
+		return err
+	}
+	var active, recent int
+	if err := tx.QueryRow(ctx,
+		`SELECT count(*) FILTER (WHERE status = 'building'),
+		        count(*) FILTER (WHERE created_at >= now() - interval '24 hours')
+		   FROM iterations`).Scan(&active, &recent); err != nil {
+		return err
+	}
+	if maxConcurrent > 0 && active >= maxConcurrent {
+		return ErrBuildCapacity
+	}
+	if maxDaily > 0 && recent >= maxDaily {
+		return ErrBuildDailyCap
+	}
+	hb := it.HeartbeatAt
+	if hb.IsZero() {
+		hb = it.CreatedAt
+	}
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO iterations
+		   (id, project_id, number, prompt, preview_url, status, log, machine_id, session_id, sandbox_addr, heartbeat_at, tokens, impl_model, planner_model, created_at, tokens_input)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+		it.ID, it.ProjectID, it.Number, it.Prompt, it.PreviewURL, it.Status, validUTF8(it.Log),
+		it.MachineID, it.SessionID, it.SandboxAddr, hb, it.Tokens, it.ImplModel, it.PlannerModel, it.CreatedAt, it.TokensInput); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // validUTF8 scrubs invalid UTF-8 so a text write can't fail on binary bytes —

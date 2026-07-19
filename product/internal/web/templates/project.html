@@ -11,6 +11,7 @@
 
 {{template "project_status" $.Data.Status}}
 
+{{if ne .Status "pending_access_approval"}}
 {{if $.Data.Shots}}
 <section class="panel">
   <h2>{{$.T "prj.shots.h2"}}</h2>
@@ -172,11 +173,11 @@
           {{else}}
           {{$cands := index $.Data.Candidates $slug}}
           {{$chosen := index $.Data.GenSlots $slug}}
-          <button type="button" class="btn btn-sm btn-ghost-accent gen-open" onclick="document.getElementById('genm-{{$slug}}').showModal()"><span class="gen-spark">✦</span> {{if $cands}}{{$.T "prj.gen.review"}}{{else if $chosen}}{{$.T "prj.gen.refine"}}{{else}}{{$.T "prj.gen.button"}}{{end}}</button>
+          <button type="button" class="btn btn-sm btn-ghost-accent gen-open" data-dialog-open="genm-{{$slug}}"><span class="gen-spark">✦</span> {{if $cands}}{{$.T "prj.gen.review"}}{{else if $chosen}}{{$.T "prj.gen.refine"}}{{else}}{{$.T "prj.gen.button"}}{{end}}</button>
           <dialog id="genm-{{$slug}}" class="gen-modal">
             <div class="gen-modal-head">
               <h3>{{$.T "prj.gen.modal_title"}}</h3>
-              <button type="button" class="gen-modal-x" onclick="this.closest('dialog').close()" aria-label="{{$.T "prj.gen.close"}}">✕</button>
+              <button type="button" class="gen-modal-x" data-dialog-close aria-label="{{$.T "prj.gen.close"}}">✕</button>
             </div>
             <div class="gen-modal-content">
               <div class="gen-spin" id="gen-spin-{{$slug}}"><span class="spinner"></span> {{$.T "prj.gen.loading"}}</div>
@@ -302,6 +303,7 @@
       {{end}}
     </fieldset>
     {{end}}
+    <label class="ack-later"><input type="checkbox" name="consumer_consent" value="yes" required> {{$.T "sub.consumer_consent"}}</label>
     <button class="btn" type="submit">{{$.T "sub.btn"}}</button>
   </form>
   <p class="muted small sub-terms">{{$.T "sub.terms_pre"}}<a href="/terms" target="_blank" rel="noopener">{{$.T "sub.terms_link"}}</a>.</p>
@@ -411,6 +413,7 @@
 </section>
 {{end}}
 {{end}}
+{{end}}
 
 {{if .Data.Iterations}}
 <section class="panel">
@@ -426,6 +429,18 @@
     {{end}}
     {{end}}
   </ol>
+</section>
+{{end}}
+
+{{if $.Data.CanDelete}}
+<section class="panel danger-zone">
+  <h2>{{$.T "project.delete.h2"}}</h2>
+  <p class="muted small">{{$.T "project.delete.intro"}}</p>
+  <form method="post" action="/projects/{{.Data.Project.ID}}/delete" class="stack">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <label class="ack-later"><input type="checkbox" name="confirm" value="delete" required> {{$.T "project.delete.confirm"}}</label>
+    <button class="btn btn-ghost-danger" type="submit">{{$.T "project.delete.btn"}}</button>
+  </form>
 </section>
 {{end}}
 {{template "foot" .}}{{end}}

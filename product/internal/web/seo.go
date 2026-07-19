@@ -22,7 +22,7 @@ import (
 
 // publicPages are the crawlable URLs listed in /sitemap.xml. Everything else
 // is either auth-gated or an auth page — nothing worth indexing.
-var publicPages = []string{"/", "/terms"}
+var publicPages = []string{"/", "/terms", "/privacy"}
 
 // origin is the site's canonical origin: BaseURL when configured (so pages
 // served via the fly.dev host still canonicalize to the real domain), else

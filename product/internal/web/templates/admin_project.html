@@ -9,6 +9,25 @@
   <span class="badge badge-{{.Status}}">{{statusLabel .Status}}</span>
 </section>
 
+{{if eq .Status "pending_access_approval"}}
+<section class="panel card">
+  <h2>Approve this customer?</h2>
+  <p class="muted small">No AI work has started. Approval permanently clears {{$.Data.OwnerEmail}} to start this and future projects; the normal safety gate still reviews every brief.</p>
+  <p class="brief">{{.Brief}}</p>
+  <div class="admin-actions">
+    <form method="post" action="/admin/projects/{{.ID}}/approve-access" class="inline">
+      <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+      <button class="btn btn-sm" type="submit">Approve customer &amp; start</button>
+    </form>
+    <form method="post" action="/admin/projects/{{.ID}}/reject-access" class="inline-actions">
+      <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+      <input type="text" name="reason" placeholder="Reason (optional)">
+      <button class="linklike" type="submit">Decline</button>
+    </form>
+  </div>
+</section>
+{{else}}
+
 {{if .PreviewURL}}
 <p><a class="btn btn-sm" href="{{.PreviewURL}}" target="_blank" rel="noopener">{{.PreviewURL}} ↗</a>
   {{if .SnapshotKey}} <a class="muted small" href="/admin/projects/{{.ID}}/source">browse source</a> · <a class="muted small" href="/admin/projects/{{.ID}}/source.tgz">download .tgz</a>{{end}}</p>
@@ -69,7 +88,7 @@
   </table>
   </div>
   {{end}}
-  <form method="post" action="/admin/projects/{{.ID}}/domain/detach" class="inline" onsubmit="return confirm('Detach {{.DomainName}}?')">
+  <form method="post" action="/admin/projects/{{.ID}}/domain/detach" class="inline" data-confirm="Detach {{.DomainName}}?">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
     <button class="linklike danger" type="submit">Detach domain</button>
   </form>
@@ -80,7 +99,7 @@
   <p class="muted small">This project paid for a bundled domain at checkout ({{.DomainCostOre}} öre) but none is attached — provisioning likely failed. Re-run registration below. It uses the already-paid (prepaid) path, so the customer is <strong>not</strong> charged again. Enter the exact domain they chose.</p>
   {{if eq $.Data.DomainRetryFlash "started"}}<p class="verdict-line">✓ Retry started — watch the registration progress and refresh.</p>{{end}}
   {{if eq $.Data.DomainRetryFlash "failed"}}<p class="verdict-line">⚠ Retry could not start — check the logs (eligibility, captured amount, or hostname).</p>{{end}}
-  <form method="post" action="/admin/projects/{{.ID}}/domain/retry" onsubmit="return confirm('Register this domain on the prepaid path (no new charge)?')">
+  <form method="post" action="/admin/projects/{{.ID}}/domain/retry" data-confirm="Register this domain on the prepaid path (no new charge)?">
     <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
     <input type="text" name="host" placeholder="e.g. ippfnotti.nu" required>
     <button class="btn btn-sm" type="submit">Register (no re-charge)</button>
@@ -96,7 +115,7 @@
      sibling it connects once, appends new lines, and auto-scrolls to newest. */}}
 <div class="log livelog" id="livelog"
      hx-ext="sse" sse-connect="/projects/{{.ID}}/stream" sse-swap="log"
-     hx-swap="beforeend" hx-on::after-swap="this.scrollTop = this.scrollHeight"></div>
+     hx-swap="beforeend"></div>
 {{end}}
 
 {{if .Shots}}
@@ -169,6 +188,7 @@
   <h2>Plan (raw)</h2>
   <pre class="plan">{{.Plan}}</pre>
 </section>
+{{end}}
 {{end}}
 {{end}}
 

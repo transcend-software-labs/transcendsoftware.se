@@ -11,14 +11,35 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
 )
 
+// WithdrawalRequest is the durable audit record created by the public
+// statutory withdrawal function. It deliberately stores only what is needed to
+// identify and act on the request.
+type WithdrawalRequest struct {
+	ID        string
+	Email     string
+	ProjectID string
+	CreatedAt time.Time
+}
+
 // Store is the persistence boundary for the whole product.
 type Store interface {
+	// Health verifies the persistence dependency used by readiness checks.
+	Health(ctx context.Context) error
+
 	// Users
 	CreateUser(ctx context.Context, u *user.User) error
 	UserByEmail(ctx context.Context, email string) (*user.User, error)
 	UserByID(ctx context.Context, id string) (*user.User, error)
+	// DeleteUser removes the account, sessions and login tokens. Callers must
+	// purge each project through the orchestrator first so external resources and
+	// object-storage data are removed before the database cascade.
+	DeleteUser(ctx context.Context, id string) error
 	// MarkUserVerified confirms a password-signup account's email.
 	MarkUserVerified(ctx context.Context, email string) error
+	// MarkUserApproved permanently clears a customer to start projects after
+	// the operator reviews their first brief. It preserves the first approval
+	// timestamp when called more than once.
+	MarkUserApproved(ctx context.Context, id string, approvedAt time.Time) error
 	// VerifyAndClearPassword marks an account verified and drops its password,
 	// but only while it is still unverified. Called when a social/magic login
 	// adopts a pre-existing account: a password set on an unverified address was
@@ -37,6 +58,8 @@ type Store interface {
 	CreateLoginToken(ctx context.Context, t *user.LoginToken) error
 	LoginTokenByHash(ctx context.Context, tokenHash string) (*user.LoginToken, error)
 	DeleteLoginToken(ctx context.Context, tokenHash string) error
+	// ConsumeLoginToken atomically returns and deletes one unexpired token.
+	ConsumeLoginToken(ctx context.Context, tokenHash string, now time.Time) (*user.LoginToken, error)
 
 	// Projects
 	CreateProject(ctx context.Context, p *project.Project) error
@@ -59,6 +82,10 @@ type Store interface {
 
 	// Iterations
 	CreateIteration(ctx context.Context, it *project.Iteration) error
+	// ReserveIteration atomically enforces global concurrent/daily build limits
+	// and creates the building iteration when capacity remains. A non-positive
+	// limit disables that dimension.
+	ReserveIteration(ctx context.Context, it *project.Iteration, maxConcurrent, maxDaily int) error
 	UpdateIteration(ctx context.Context, it *project.Iteration) error
 	IterationsByProject(ctx context.Context, projectID string) ([]*project.Iteration, error)
 	// ActiveIterations returns build passes currently in the building state
@@ -74,6 +101,9 @@ type Store interface {
 	// SetAssetDescription updates one asset's caption (which recipe/item a photo
 	// is for), so the build can pair it correctly.
 	SetAssetDescription(ctx context.Context, assetID, description string) error
+
+	// Consumer requests
+	RecordWithdrawalRequest(ctx context.Context, request WithdrawalRequest) error
 
 	// Close releases resources (no-op for the in-memory store).
 	Close() error

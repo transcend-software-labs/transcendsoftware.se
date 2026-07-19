@@ -3,18 +3,7 @@
   <h1>{{.T "landing.h1a"}}<br>{{.T "landing.h1b"}}</h1>
   <p class="lead">{{.T "landing.lead1"}}<strong>{{.T "landing.lead_strong"}}</strong>{{.T "landing.lead2"}}</p>
   <a class="btn btn-lg" href="/signup">{{.T "landing.cta"}}</a>
-  <p class="muted small">{{.T "landing.sub"}}</p>
-</section>
-
-<section class="about">
-  <h2>{{.T "landing.about.h2"}}</h2>
-  <p>{{.T "landing.about.p1"}}<strong>{{.T "landing.about.strong"}}</strong>{{.T "landing.about.p2"}}</p>
-  <ul class="proof">
-    <li><span class="proof-stat">{{.T "landing.proof1.stat"}}</span><span class="proof-label">{{.T "landing.proof1.label"}}</span></li>
-    <li><span class="proof-stat">{{.T "landing.proof2.stat"}}</span><span class="proof-label">{{.T "landing.proof2.label"}}</span></li>
-    <li><span class="proof-stat">{{.T "landing.proof3.stat"}}</span><span class="proof-label">{{.T "landing.proof3.label"}}</span></li>
-  </ul>
-  <a class="about-link" href="https://transcendsoftware.se">{{.T "landing.track"}}</a>
+  <p class="muted small">{{with .Data}}{{if .DomainBuy}}{{$.T "landing.sub_domain"}}{{else}}{{$.T "landing.sub"}}{{end}}{{else}}{{.T "landing.sub"}}{{end}}</p>
 </section>
 
 <section class="how">
@@ -25,6 +14,33 @@
     <li><strong>{{.T "landing.how3.strong"}}</strong>{{.T "landing.how3.text"}}</li>
     <li><strong>{{.T "landing.how4.strong"}}</strong>{{.T "landing.how4.text"}}</li>
   </ol>
+</section>
+
+{{with .Data}}{{if .DomainBuy}}
+<section class="domain-callout" aria-labelledby="domain-heading">
+  <div class="domain-copy">
+    <h2 id="domain-heading">{{$.T "landing.domain.h2"}}</h2>
+    <p>{{$.T "landing.domain.text"}}</p>
+    <p class="muted small">{{$.T "landing.domain.note"}}</p>
+  </div>
+  <ul class="domain-points">
+    <li>{{$.T "landing.domain.point1"}}</li>
+    <li>{{$.T "landing.domain.point2"}}</li>
+    <li>{{$.T "landing.domain.point3"}}</li>
+  </ul>
+  <p class="domain-existing muted small">{{$.T "landing.domain.existing"}}</p>
+</section>
+{{end}}{{end}}
+
+<section class="about">
+  <h2>{{.T "landing.about.h2"}}</h2>
+  <p>{{.T "landing.about.p1"}}<strong>{{.T "landing.about.strong"}}</strong>{{.T "landing.about.p2"}}</p>
+  <ul class="proof">
+    <li><span class="proof-stat">{{.T "landing.proof1.stat"}}</span><span class="proof-label">{{.T "landing.proof1.label"}}</span></li>
+    <li><span class="proof-stat">{{.T "landing.proof2.stat"}}</span><span class="proof-label">{{.T "landing.proof2.label"}}</span></li>
+    <li><span class="proof-stat">{{.T "landing.proof3.stat"}}</span><span class="proof-label">{{.T "landing.proof3.label"}}</span></li>
+  </ul>
+  <a class="about-link" href="https://transcendsoftware.se">{{.T "landing.track"}}</a>
 </section>
 
 {{with .Data}}
@@ -42,7 +58,7 @@
       </ul>
       {{if .OverageStr}}<p class="muted small">{{printf ($.T "landing.price.overage") .OverageStr}}</p>{{end}}
     </div>
-    {{if .Domains}}
+    {{if .DomainBuy}}
     <div class="price-card price-card-domain">
       <h3>{{$.T "landing.price.domain.h3"}}</h3>
       <p>{{$.T "landing.price.domain.text"}}</p>

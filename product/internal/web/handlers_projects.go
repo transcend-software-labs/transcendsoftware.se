@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -12,9 +13,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/transcend-software-labs/rasmus-ai/internal/auth"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/id"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
+	"github.com/transcend-software-labs/rasmus-ai/internal/store"
 	"github.com/transcend-software-labs/rasmus-ai/internal/stream"
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
 	"github.com/transcend-software-labs/rasmus-ai/internal/web/i18n"
@@ -32,8 +35,91 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request, u *user
 		v.Flash = s.t(r, "flash.verified")
 	case r.URL.Query().Get("verify_sent") != "":
 		v.Flash = s.t(r, "flash.verify_sent")
+	case r.URL.Query().Get("account") == "managed":
+		v.Flash = s.t(r, "flash.account_managed")
+	case r.URL.Query().Get("account") == "busy":
+		v.Flash = s.t(r, "flash.delete_busy")
 	}
 	s.render(w, http.StatusOK, "dashboard", v)
+}
+
+func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request, u *user.User) {
+	p, ok := s.ownedProject(w, r, u)
+	if !ok {
+		return
+	}
+	// A paid project can carry a live subscription and managed domain. Those
+	// require coordinated cancellation/transfer and cannot be erased with a
+	// blind button press.
+	if p.Paid || p.StripeSubID != "" || p.HasDomain() {
+		http.Redirect(w, r, "/projects/"+p.ID+"?sub=managed", http.StatusSeeOther)
+		return
+	}
+	if !deletableProject(p) {
+		http.Redirect(w, r, "/projects/"+p.ID+"?sub=busy", http.StatusSeeOther)
+		return
+	}
+	if r.FormValue("confirm") != "delete" {
+		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+		return
+	}
+	if err := s.orch.PurgeProject(r.Context(), p.ID); err != nil {
+		s.log.Error("customer delete project", "project", p.ID, "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+}
+
+func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request, u *user.User) {
+	s.accountMu.Lock()
+	defer s.accountMu.Unlock()
+	if r.FormValue("confirm") != "delete" {
+		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		return
+	}
+	projects, err := s.store.ProjectsByUser(r.Context(), u.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	for _, p := range projects {
+		if p.Paid || p.StripeSubID != "" || p.HasDomain() {
+			http.Redirect(w, r, "/dashboard?account=managed", http.StatusSeeOther)
+			return
+		}
+		if !deletableProject(p) {
+			http.Redirect(w, r, "/dashboard?account=busy", http.StatusSeeOther)
+			return
+		}
+	}
+	for _, p := range projects {
+		if err := s.orch.PurgeProject(r.Context(), p.ID); err != nil {
+			s.log.Error("customer delete account: purge project", "project", p.ID, "err", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	}
+	if c, err := r.Cookie(auth.CookieName); err == nil {
+		s.sessions.Destroy(r.Context(), c.Value)
+	}
+	if err := s.store.DeleteUser(r.Context(), u.ID); err != nil {
+		s.log.Error("customer delete account", "user", u.ID, "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	s.sessions.ClearCookie(w, s.cfg.SecureCookie)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func deletableProject(p *project.Project) bool {
+	switch p.Status {
+	case project.StatusPendingAccessApproval, project.StatusNeedsInput, project.StatusAwaitingApproval, project.StatusEscalated,
+		project.StatusRejected, project.StatusPreviewReady, project.StatusAccepted,
+		project.StatusDelivered, project.StatusFailed, project.StatusExpired:
+		return true
+	}
+	return false
 }
 
 func (s *Server) handleNewProjectForm(w http.ResponseWriter, r *http.Request, u *user.User) {
@@ -65,6 +151,8 @@ func (s *Server) newProjectData(u *user.User) newProjectView {
 const maxBriefLen = 4000
 
 func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request, u *user.User) {
+	s.accountMu.Lock()
+	defer s.accountMu.Unlock()
 	// Email must be confirmed before a project can be created — building spends
 	// real money, so we don't let unverified addresses trigger it.
 	if !u.Verified {
@@ -98,12 +186,17 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request, u *
 	}
 
 	now := time.Now().UTC()
+	pendingAccess := !u.Approved() && !s.isAdmin(u)
+	status := project.StatusCreated
+	if pendingAccess {
+		status = project.StatusPendingAccessApproval
+	}
 	p := &project.Project{
 		ID:        id.New(),
 		UserID:    u.ID,
 		Name:      name,
 		Brief:     brief,
-		Status:    project.StatusCreated,
+		Status:    status,
 		Locale:    s.lang(r), // the language their emails go out in
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -116,12 +209,24 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request, u *
 		p.ImplProfile = s.validProfileKey(r.FormValue("impl_profile"))
 	}
 	if err := s.store.CreateProject(r.Context(), p); err != nil {
+		if errors.Is(err, store.ErrAccessApprovalPending) {
+			v := s.view(r, s.t(r, "new.h1"), s.newProjectData(u))
+			v.Flash = s.t(r, "flash.approval_pending")
+			s.render(w, http.StatusTooManyRequests, "new_project", v)
+			return
+		}
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
-	// Signal the orchestrator: intake → plan → gate → build (async).
-	s.orch.StartIntake(p.ID)
+	if pendingAccess {
+		// The brief is durable and visible to the operator, but no intake,
+		// planning, or build work starts until they approve this account.
+		s.orch.RequestAccessApproval(r.Context(), p.ID)
+	} else {
+		// Signal the orchestrator: intake → plan → gate → build (async).
+		s.orch.StartIntake(p.ID)
+	}
 
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 }
@@ -213,7 +318,7 @@ func (s *Server) quotaBlock(r *http.Request, u *user.User) string {
 			recent++
 		}
 		switch p.Status {
-		case project.StatusClarifying, project.StatusPlanning,
+		case project.StatusPendingAccessApproval, project.StatusClarifying, project.StatusPlanning,
 			project.StatusScreening, project.StatusBuilding:
 			return s.t(r, "flash.one_at_a_time")
 		}
@@ -224,6 +329,11 @@ func (s *Server) quotaBlock(r *http.Request, u *user.User) string {
 	}
 	if s.cfg.MaxConcurrentBuilds > 0 {
 		if active, err := s.store.ActiveIterations(ctx); err == nil && len(active) >= s.cfg.MaxConcurrentBuilds {
+			return s.t(r, "flash.capacity")
+		}
+	}
+	if s.cfg.MaxBuildsPerDay > 0 {
+		if recentBuilds, err := s.store.IterationsSince(ctx, time.Now().UTC().Add(-24*time.Hour)); err == nil && len(recentBuilds) >= s.cfg.MaxBuildsPerDay {
 			return s.t(r, "flash.capacity")
 		}
 	}
@@ -246,6 +356,7 @@ type projectView struct {
 	GenPrompts   map[string]string           // slug → the auto-seeded prompt (shown, editable)
 	GenExhausted bool                        // the project has hit its AI-generation cap
 	GenNotice    string                      // localized notice for a failed/blocked generation attempt
+	CanDelete    bool                        // settled unpaid project; no active pipeline can be orphaned
 
 	CanSubscribe    bool   // show the subscribe panel (billing on, unpaid, preview/accepted)
 	SubActive       bool   // paid via stripe — show "active" + manage-subscription
@@ -405,7 +516,7 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		Shots: s.withScreenshots(ctx, p).Shots, Status: s.statusOf(r, p),
 		FilledSlots: filled, Rosters: rosters, SlotAssets: slotAssets, Candidates: candidates,
 		MissingReq: missing, ImageGen: s.imagegen != nil, GenSlots: genSlots, GenPrompts: genPrompts,
-		GenExhausted: exhausted, GenNotice: genNotice,
+		GenExhausted: exhausted, GenNotice: genNotice, CanDelete: !p.Paid && p.StripeSubID == "" && !p.HasDomain() && deletableProject(p),
 	}
 	sub := r.URL.Query().Get("sub")
 	// The explicit accept step only exists where subscribing can't stand in for
@@ -468,6 +579,12 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		v.Flash = i18n.T(lang, "flash.sub_error")
 	case "domainbad":
 		v.Flash = i18n.T(lang, "flash.domain_unavailable")
+	case "consent":
+		v.Flash = i18n.T(lang, "flash.consent_required")
+	case "managed":
+		v.Flash = i18n.T(lang, "flash.account_managed")
+	case "busy":
+		v.Flash = i18n.T(lang, "flash.delete_busy")
 	}
 	s.render(w, http.StatusOK, "project", v)
 }
@@ -553,6 +670,10 @@ func (s *Server) handleUploadAsset(w http.ResponseWriter, r *http.Request, u *us
 	if !ok {
 		return
 	}
+	if p.Status == project.StatusPendingAccessApproval {
+		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+		return
+	}
 	if err := r.ParseMultipartForm(maxUpload + (1 << 20)); err != nil {
 		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 		return
@@ -580,10 +701,8 @@ func (s *Server) handleUploadAsset(w http.ResponseWriter, r *http.Request, u *us
 			return
 		}
 	}
-	if markContentPending(p); p.ContentPending {
-		if err := s.store.UpdateProject(r.Context(), p); err != nil {
-			s.log.Error("flag content pending", "project", p.ID, "err", err)
-		}
+	if _, err := s.mutateProject(r.Context(), p.ID, markContentPending); err != nil {
+		s.log.Error("flag content pending", "project", p.ID, "err", err)
 	}
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 }
@@ -621,10 +740,8 @@ func (s *Server) handleCaptionAsset(w http.ResponseWriter, r *http.Request, u *u
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	if markContentPending(p); p.ContentPending {
-		if err := s.store.UpdateProject(r.Context(), p); err != nil {
-			s.log.Error("flag content pending", "project", p.ID, "err", err)
-		}
+	if _, err := s.mutateProject(r.Context(), p.ID, markContentPending); err != nil {
+		s.log.Error("flag content pending", "project", p.ID, "err", err)
 	}
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 }
@@ -642,12 +759,16 @@ func (s *Server) storeUpload(ctx context.Context, projectID string, hdr *multipa
 	}
 	defer file.Close()
 	filename := sanitizeFilename(hdr.Filename)
-	key := fmt.Sprintf("projects/%s/assets/%s", projectID, filename)
+	assetID := id.New()
+	// Keep the original display filename in metadata, but namespace the object
+	// itself. Re-uploading a common name such as logo.png must not overwrite the
+	// bytes referenced by an older asset row.
+	key := fmt.Sprintf("projects/%s/assets/%s-%s", projectID, assetID, filename)
 	if err := s.storage.Put(ctx, key, ct, file, hdr.Size); err != nil {
 		return "", err
 	}
 	return key, s.store.CreateAsset(ctx, &project.Asset{
-		ID: id.New(), ProjectID: projectID, Key: key, Filename: filename,
+		ID: assetID, ProjectID: projectID, Key: key, Filename: filename,
 		ContentType: ct, Description: desc, Slot: slot, Generated: generated, Size: hdr.Size, CreatedAt: time.Now().UTC(),
 	})
 }
@@ -711,16 +832,17 @@ func (s *Server) handleRoster(w http.ResponseWriter, r *http.Request, u *user.Us
 		}
 		entries = append(entries, e)
 	}
-	if p.ContentRosters == nil {
-		p.ContentRosters = map[string][]project.RosterEntry{}
-	}
-	if len(entries) == 0 {
-		delete(p.ContentRosters, slot)
-	} else {
-		p.ContentRosters[slot] = entries
-	}
-	markContentPending(p)
-	if err := s.store.UpdateProject(r.Context(), p); err != nil {
+	if _, err := s.mutateProject(r.Context(), p.ID, func(fresh *project.Project) {
+		if fresh.ContentRosters == nil {
+			fresh.ContentRosters = map[string][]project.RosterEntry{}
+		}
+		if len(entries) == 0 {
+			delete(fresh.ContentRosters, slot)
+		} else {
+			fresh.ContentRosters[slot] = entries
+		}
+		markContentPending(fresh)
+	}); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -941,16 +1063,17 @@ func (s *Server) handleContentAnswer(w http.ResponseWriter, r *http.Request, u *
 	if len(value) > 2000 {
 		value = value[:2000]
 	}
-	if p.ContentAnswers == nil {
-		p.ContentAnswers = map[string]string{}
-	}
-	if value == "" {
-		delete(p.ContentAnswers, slot) // clearing the field un-fills the slot
-	} else {
-		p.ContentAnswers[slot] = value
-	}
-	markContentPending(p)
-	if err := s.store.UpdateProject(r.Context(), p); err != nil {
+	if _, err := s.mutateProject(r.Context(), p.ID, func(fresh *project.Project) {
+		if fresh.ContentAnswers == nil {
+			fresh.ContentAnswers = map[string]string{}
+		}
+		if value == "" {
+			delete(fresh.ContentAnswers, slot) // clearing the field un-fills the slot
+		} else {
+			fresh.ContentAnswers[slot] = value
+		}
+		markContentPending(fresh)
+	}); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

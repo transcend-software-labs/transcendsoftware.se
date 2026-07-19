@@ -3,8 +3,12 @@
 package web
 
 import (
+	"context"
+	"crypto/rand"
 	"crypto/subtle"
 	"embed"
+	"encoding/base64"
+	"errors"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -61,6 +65,9 @@ type Server struct {
 	priceAmt   int64  // cached numeric price in minor units (öre) — for JSON-LD
 	priceCur   string // cached price currency ("sek")
 	priceAt    time.Time
+
+	authLimiter *attemptLimiter // in-process edge abuse guard; one live machine today
+	accountMu   sync.Mutex      // serializes account erasure against project creation
 }
 
 // NewServer wires the HTTP server.
@@ -70,7 +77,8 @@ func NewServer(cfg config.Config, st store.Store, sessions *auth.Sessions, orch 
 		return nil, err
 	}
 	return &Server{cfg: cfg, store: st, sessions: sessions, orch: orch, broker: broker,
-		storage: assets, oauth: oauth.NewRegistry(), notifier: notify.Noop{}, tmpl: tmpl, log: log}, nil
+		storage: assets, oauth: oauth.NewRegistry(), notifier: notify.Noop{}, tmpl: tmpl, log: log,
+		authLimiter: newAttemptLimiter()}, nil
 }
 
 // SetImageGen enables "Generate with AI" for image content slots.
@@ -110,7 +118,22 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/static/favicon.svg", http.StatusMovedPermanently)
 	})
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		// Keep this shorter than Fly's outer five-second check timeout so a slow
+		// dependency still produces a useful 503 instead of an ambiguous probe
+		// timeout during a rolling deploy.
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		defer cancel()
+		if err := s.store.Health(ctx); err != nil {
+			s.log.Error("health: store", "err", err)
+			http.Error(w, "store unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		if err := s.storage.Health(ctx); err != nil {
+			s.log.Error("health: storage", "err", err)
+			http.Error(w, "storage unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
@@ -127,6 +150,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /signup", s.handleSignupForm)
 	mux.HandleFunc("POST /signup", s.handleSignup)
 	mux.HandleFunc("POST /logout", s.handleLogout)
+	mux.HandleFunc("POST /account/delete", s.requireUser(s.handleDeleteAccount))
 
 	// Passwordless + social login.
 	mux.HandleFunc("POST /auth/magic", s.handleMagicRequest)
@@ -158,6 +182,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /projects/{id}/accept", s.requireUser(s.handleAccept))
 	mux.HandleFunc("POST /projects/{id}/subscribe", s.requireUser(s.handleSubscribe))
 	mux.HandleFunc("POST /projects/{id}/billing", s.requireUser(s.handleBillingPortal))
+	mux.HandleFunc("POST /projects/{id}/delete", s.requireUser(s.handleDeleteProject))
 
 	// Custom domains (invisible until a registrar is wired; guarded per-handler).
 	mux.HandleFunc("GET /projects/{id}/domain/search", s.requireUser(s.handleDomainSearch))
@@ -170,10 +195,15 @@ func (s *Server) Handler() http.Handler {
 	// is the authentication). Bare handler like the magic-link route.
 	mux.HandleFunc("POST /webhooks/stripe", limitBody(1<<20, s.handleStripeWebhook))
 	mux.HandleFunc("GET /terms", s.handleTerms)
+	mux.HandleFunc("GET /privacy", s.handlePrivacy)
+	mux.HandleFunc("GET /withdraw", s.handleWithdrawalForm)
+	mux.HandleFunc("POST /withdraw", limitBody(32<<10, s.handleWithdrawal))
 
 	// Operator/admin views (gated by ADMIN_EMAIL).
 	mux.HandleFunc("GET /admin", s.requireAdmin(s.handleAdmin))
 	mux.HandleFunc("GET /admin/projects/{id}", s.requireAdmin(s.handleAdminProject))
+	mux.HandleFunc("POST /admin/projects/{id}/approve-access", s.requireAdmin(s.handleAdminApproveAccess))
+	mux.HandleFunc("POST /admin/projects/{id}/reject-access", s.requireAdmin(s.handleAdminRejectAccess))
 	mux.HandleFunc("POST /admin/projects/{id}/approve", s.requireAdmin(s.handleAdminApprove))
 	mux.HandleFunc("POST /admin/projects/{id}/reject", s.requireAdmin(s.handleAdminReject))
 	mux.HandleFunc("POST /admin/projects/{id}/destroy-preview", s.requireAdmin(s.handleAdminDestroyPreview))
@@ -195,7 +225,9 @@ func (s *Server) Handler() http.Handler {
 
 	// Preview hosts branch off before langSelector (?lang= must not redirect a
 	// proxied preview); logging stays outermost so those requests are logged too.
-	return logRequests(s.log, s.previewProxy(langSelector(mux)))
+	// Forge pages get the control-plane security policy. Preview hosts bypass it:
+	// they serve independent customer applications with their own asset needs.
+	return logRequests(s.log, s.previewProxy(securityHeaders(langSelector(mux))))
 }
 
 // langSelector turns ?lang=xx on any GET into a persistent cookie choice and
@@ -263,6 +295,7 @@ type View struct {
 	Providers  []oauth.Provider // social-login buttons on auth pages
 	MagicLink  bool             // advertise passwordless email login
 	Unverified bool             // logged in but email not yet confirmed → show the verify banner
+	Nonce      string           // per-response CSP nonce for the inline JSON-LD and helper script
 }
 
 // T translates a catalog key into the view's language (templates: {{.T "nav.login"}}).
@@ -320,7 +353,30 @@ func (s *Server) view(r *http.Request, title string, data any) View {
 	return View{Title: title, User: u, IsAdmin: s.isAdmin(u), CSRF: s.csrfToken(r), Lang: s.lang(r),
 		Data: data, Providers: s.oauth.Enabled(), MagicLink: s.cfg.MagicLinkEnabled,
 		Canonical: origin + r.URL.Path, OGImage: origin + "/static/og.png", JSONLD: s.siteJSONLD(r),
-		Unverified: u != nil && !u.Verified}
+		Unverified: u != nil && !u.Verified, Nonce: nonceFrom(r.Context())}
+}
+
+// mutateProject applies one web-owned field change to the latest row. Customer
+// content edits can race a Stripe webhook or a finishing build; retrying the
+// field mutation preserves both instead of either clobbering data or surfacing
+// a transient 500 to the customer.
+func (s *Server) mutateProject(ctx context.Context, projectID string, mutate func(*project.Project)) (*project.Project, error) {
+	for attempt := 0; attempt < 4; attempt++ {
+		p, err := s.store.ProjectByID(ctx, projectID)
+		if err != nil {
+			return nil, err
+		}
+		mutate(p)
+		p.UpdatedAt = time.Now().UTC()
+		if err := s.store.UpdateProject(ctx, p); err != nil {
+			if errors.Is(err, store.ErrConflict) {
+				continue
+			}
+			return nil, err
+		}
+		return p, nil
+	}
+	return nil, store.ErrConflict
 }
 
 // authView builds a View for the login/signup pages with a flash message,
@@ -434,6 +490,8 @@ func statusLabel(s project.Status) string {
 	switch s {
 	case project.StatusCreated:
 		return "Queued"
+	case project.StatusPendingAccessApproval:
+		return "Waiting for customer approval"
 	case project.StatusClarifying:
 		return "Reading your brief…"
 	case project.StatusNeedsInput:
@@ -484,15 +542,98 @@ func polling(p *project.Project) bool {
 // running, slow while waiting on the operator (which can take hours).
 func pollEvery(p *project.Project) string {
 	// Waiting on a human (Rasmus) — poll slowly; those states can take a while.
-	if p.Status == project.StatusEscalated || p.Status == project.StatusAccepted {
+	if p.Status == project.StatusPendingAccessApproval || p.Status == project.StatusEscalated || p.Status == project.StatusAccepted {
 		return "15s"
 	}
 	return "2s"
 }
 
+type nonceContextKey struct{}
+
+func nonceFrom(ctx context.Context) string {
+	nonce, _ := ctx.Value(nonceContextKey{}).(string)
+	return nonce
+}
+
+// securityHeaders applies the control plane's browser boundary. A fresh nonce
+// keeps the small inline helper and JSON-LD compatible with a strict CSP.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var raw [18]byte
+		if _, err := rand.Read(raw[:]); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		// URL-safe base64 avoids html/template escaping '+' in the nonce
+		// attribute, which would make the rendered value differ from the header.
+		nonce := base64.RawURLEncoding.EncodeToString(raw[:])
+		policy := "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: https:; object-src 'none'; script-src 'self' 'nonce-" + nonce + "'; style-src 'self'"
+		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
+		w.Header().Set("Permissions-Policy", "camera=(), geolocation=(), microphone=()")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			policy += "; upgrade-insecure-requests"
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		w.Header().Set("Content-Security-Policy", policy)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), nonceContextKey{}, nonce)))
+	})
+}
+
+type responseStatusWriter struct {
+	http.ResponseWriter
+	status int
+	bytes  int
+}
+
+// Unwrap lets net/http discover optional capabilities (notably Hijacker for a
+// proxied WebSocket) through the logging wrapper.
+func (w *responseStatusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (w *responseStatusWriter) WriteHeader(status int) {
+	if w.status != 0 {
+		return
+	}
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *responseStatusWriter) Write(p []byte) (int, error) {
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	n, err := w.ResponseWriter.Write(p)
+	w.bytes += n
+	return n, err
+}
+
+// Flush preserves streaming responses (project SSE) through the logging
+// wrapper. ResponseController works through wrappers only when Flush is exposed.
+func (w *responseStatusWriter) Flush() {
+	_ = http.NewResponseController(w.ResponseWriter).Flush()
+}
+
 func logRequests(log *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Info("request", "method", r.Method, "path", r.URL.Path)
-		next.ServeHTTP(w, r)
+		start := time.Now()
+		requestID := r.Header.Get("Fly-Request-Id")
+		if requestID == "" {
+			var raw [9]byte
+			if _, err := rand.Read(raw[:]); err == nil {
+				requestID = base64.RawURLEncoding.EncodeToString(raw[:])
+			}
+		}
+		if requestID != "" {
+			w.Header().Set("X-Request-ID", requestID)
+		}
+		rw := &responseStatusWriter{ResponseWriter: w}
+		next.ServeHTTP(rw, r)
+		if rw.status == 0 {
+			rw.status = http.StatusOK
+		}
+		log.Info("request", "method", r.Method, "path", r.URL.Path,
+			"status", rw.status, "bytes", rw.bytes, "duration", time.Since(start), "request_id", requestID)
 	})
 }

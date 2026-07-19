@@ -40,6 +40,10 @@ import (
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		log.Error("configuration", "err", err)
+		os.Exit(1)
+	}
 
 	st, err := newStore(cfg, log)
 	if err != nil {
@@ -78,6 +82,7 @@ func main() {
 	broker := stream.NewBroker(500)
 	orch := orchestrator.New(st, intake, planner, gate, build, machines, assets, broker, newVerifier(cfg, log), log)
 	orch.SetNotifications(newNotifier(cfg, log), cfg.AdminEmail, cfg.BaseURL)
+	orch.SetBuildLimits(cfg.MaxConcurrentBuilds, cfg.MaxBuildsPerDay)
 	if cfg.TemplateKey != "" {
 		log.Info("template: starter app enabled", "key", cfg.TemplateKey)
 		orch.SetTemplate(cfg.TemplateKey)

@@ -323,7 +323,7 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 	}
 	if len(appSecrets) > 0 {
 		if err := b.machines.SetAppSecrets(ctx, appName, appSecrets); err != nil {
-			emit(hooks.OnLog, "Note: could not set the app's backup/owner secrets for this build.")
+			return Result{}, fmt.Errorf("set generated app backup/owner secrets: %w", err)
 		}
 	}
 	token, err := b.machines.AppDeployToken(ctx, appName)

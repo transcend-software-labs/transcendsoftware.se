@@ -3,3 +3,5 @@ bin/
 .env
 docker-compose.yml
 README.md
+server
+domainctl

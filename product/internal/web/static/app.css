@@ -64,7 +64,7 @@
   --radius-lg: 14px;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.18);
   --ease: cubic-bezier(.22,.61,.36,1);
-  --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', ui-monospace, monospace;
+  --font-mono: 'SF Mono', 'Cascadia Code', 'Roboto Mono', ui-monospace, monospace;
   --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
@@ -241,6 +241,20 @@ h3 {
 }
 .how .steps li strong { display: block; color: var(--text); font-weight: 500; margin-bottom: var(--sp-1); }
 
+/* Managed-domain callout: the key non-technical benefit gets its own place in
+   the story instead of being buried in a pricing footnote. */
+.domain-callout {
+  margin-top: var(--sp-7); padding: var(--sp-6);
+  display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(14rem, 1fr); gap: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--accent-border); border-radius: var(--radius-lg); background: var(--accent-glow);
+}
+.domain-copy p { color: var(--muted); max-width: 48ch; }
+.domain-copy .small { margin-top: var(--sp-3); }
+.domain-points { list-style: none; display: flex; flex-direction: column; gap: var(--sp-3); align-self: center; }
+.domain-points li { position: relative; padding-left: var(--sp-6); }
+.domain-points li::before { content: "\2713"; position: absolute; left: 0; color: var(--accent); font-weight: 600; }
+.domain-existing { grid-column: 1 / -1; padding-top: var(--sp-4); border-top: 1px solid var(--accent-border); }
+
 /* Credibility strip */
 .about { margin-top: var(--sp-7); border-top: 1px solid var(--border); padding-top: var(--sp-6); }
 .about p { color: var(--muted); max-width: 58ch; margin-bottom: var(--sp-5); }
@@ -345,7 +359,7 @@ textarea { resize: vertical; }
 }
 .badge-preview_ready, .badge-delivered { color: var(--green); border-color: var(--green); }
 .badge-rejected, .badge-failed { color: var(--red); border-color: var(--red); }
-.badge-building, .badge-planning, .badge-screening, .badge-clarifying, .badge-needs_input, .badge-escalated, .badge-accepted { color: var(--accent); border-color: var(--accent); }
+.badge-building, .badge-planning, .badge-screening, .badge-clarifying, .badge-needs_input, .badge-pending_access_approval, .badge-escalated, .badge-accepted { color: var(--accent); border-color: var(--accent); }
 /* Filled variants: payment state reads at a glance. */
 .badge-paid { color: var(--green); border-color: transparent; background: var(--green-fill); font-weight: 600; }
 .badge-unpaid { color: var(--red); border-color: transparent; background: var(--red-fill); font-weight: 600; }
@@ -365,7 +379,7 @@ textarea { resize: vertical; }
 .status-preview_ready, .status-delivered { border-color: var(--green); }
 .status-accepted { border-color: var(--accent); }
 .status-rejected, .status-failed { border-color: var(--red); }
-.status-building, .status-planning, .status-screening, .status-clarifying { border-color: var(--accent-border); }
+.status-pending_access_approval, .status-building, .status-planning, .status-screening, .status-clarifying { border-color: var(--accent-border); }
 .reason { color: var(--muted); margin-top: .4rem; }
 
 .spinner {
@@ -921,6 +935,8 @@ label.ack-later { display: flex; flex-direction: row; align-items: flex-start; g
    hamburger (the #nav-toggle checkbox drives it — no JS), operator-dashboard
    reflow, 44px touch targets, and the content/AI-prompt form stacking. */
 @media (max-width: 720px) {
+  .domain-callout { grid-template-columns: 1fr; padding: var(--sp-5); }
+
   .nav-burger {
     display: flex; flex-direction: column; justify-content: center; gap: 5px;
     width: 44px; height: 44px; padding: 11px; cursor: pointer;

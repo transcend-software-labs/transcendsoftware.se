@@ -92,7 +92,11 @@ var testStores sync.Map // base URL → store.Store
 
 func verifyTestUser(base, email string) {
 	if v, ok := testStores.Load(base); ok {
-		_ = v.(store.Store).MarkUserVerified(context.Background(), email)
+		st := v.(store.Store)
+		_ = st.MarkUserVerified(context.Background(), email)
+		if u, err := st.UserByEmail(context.Background(), email); err == nil {
+			_ = st.MarkUserApproved(context.Background(), u.ID, time.Now().UTC())
+		}
 	}
 }
 
@@ -369,10 +373,10 @@ func TestProjectStatus_BuildingStreamsInline(t *testing.T) {
 
 	buildingID := seed(project.StatusBuilding)
 	// Neither the status fragment nor the customer page may carry the raw log.
-	if frag := get(buildingID); strings.Contains(frag, "livelog") {
+	if frag := get(buildingID); strings.Contains(frag, `id="livelog"`) {
 		t.Errorf("status fragment must not carry the live log:\n%s", frag)
 	}
-	if page := getPage(buildingID); strings.Contains(page, "livelog") {
+	if page := getPage(buildingID); strings.Contains(page, `id="livelog"`) {
 		t.Errorf("customer project page must not carry the live log (operator-only now):\n%s", page)
 	}
 	// The operator page streams it while the build runs.
@@ -393,7 +397,7 @@ func TestProjectStatus_BuildingStreamsInline(t *testing.T) {
 		}
 	}
 	// A finished project shows no live log anywhere.
-	if strings.Contains(getPage(seed(project.StatusDelivered)), "livelog") {
+	if strings.Contains(getPage(seed(project.StatusDelivered)), `id="livelog"`) {
 		t.Errorf("a finished project page should not stream a live log")
 	}
 }
@@ -540,7 +544,7 @@ func TestVerify_UnverifiedBlockedFromCreate(t *testing.T) {
 	}
 }
 
-func TestVerify_ConfirmLinkUnlocksCreate(t *testing.T) {
+func TestVerify_ConfirmLinkUnlocksFirstProjectSubmission(t *testing.T) {
 	rec := &recNotifier{}
 	srv, st, _ := newTestServerAuth(t, config.Config{AdminEmail: "admin@example.com", BaseURL: "http://app.example"}, rec)
 	defer srv.Close()
@@ -566,7 +570,8 @@ func TestVerify_ConfirmLinkUnlocksCreate(t *testing.T) {
 		t.Fatalf("account should be verified after the link, got %+v (err %v)", u, err)
 	}
 
-	// And project creation now goes through to intake.
+	// The verified customer may submit a project, but no AI work starts until
+	// the operator approves this first brief.
 	tok := csrfToken(t, c, srv.URL)
 	resp, err = c.PostForm(srv.URL+"/projects", url.Values{
 		"brief": {"A brochure site for an apple farm selling juice"}, "csrf_token": {tok},
@@ -576,8 +581,98 @@ func TestVerify_ConfirmLinkUnlocksCreate(t *testing.T) {
 	}
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "A few quick questions") {
-		t.Fatalf("verified create should reach intake, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "Waiting for Rasmus’s approval") {
+		t.Fatalf("verified first project should wait for approval, got %d", resp.StatusCode)
+	}
+	pid := path.Base(resp.Request.URL.Path)
+	p, err := st.ProjectByID(context.Background(), pid)
+	if err != nil || p.Status != project.StatusPendingAccessApproval || len(p.Questions) != 0 {
+		t.Fatalf("project should be resting before intake, got %+v (err %v)", p, err)
+	}
+	u, _ = st.UserByEmail(context.Background(), "newbie@example.com")
+	if u.Approved() {
+		t.Fatal("email verification must not implicitly approve project access")
+	}
+}
+
+func TestFirstProject_AdminApprovalStartsIntakeAndApprovesUser(t *testing.T) {
+	srv, st, _ := newTestServerAuth(t, config.Config{AdminEmail: "admin@example.com"}, nil)
+	defer srv.Close()
+	ctx := context.Background()
+
+	// Sign up and verify a new customer without using signedInClient: that
+	// helper represents an established approved account for the older tests.
+	customer := signupRaw(t, srv.URL, "first-project@example.com")
+	if err := st.MarkUserVerified(ctx, "first-project@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	tok := csrfToken(t, customer, srv.URL)
+	resp, err := customer.PostForm(srv.URL+"/projects", url.Values{
+		"name": {"First Bakery"}, "brief": {"A welcoming website for a neighbourhood bakery with opening hours and a menu"},
+		"csrf_token": {tok},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	pid := path.Base(resp.Request.URL.Path)
+	if !strings.Contains(string(body), "Rasmus will review it before any work starts") {
+		t.Fatalf("customer approval explanation missing: %s", body)
+	}
+	p, _ := st.ProjectByID(ctx, pid)
+	if p.Status != project.StatusPendingAccessApproval || p.Plan != "" || len(p.Questions) != 0 {
+		t.Fatalf("AI pipeline ran before approval: %+v", p)
+	}
+
+	// A second pending brief is refused and the durable queue stays at one.
+	tok = csrfToken(t, customer, srv.URL)
+	second, err := customer.PostForm(srv.URL+"/projects", url.Values{
+		"brief": {"A second website that must not create another pending approval"}, "csrf_token": {tok},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second.Body.Close()
+	if second.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("second pending project status = %d, want 429", second.StatusCode)
+	}
+	projects, _ := st.ProjectsByUser(ctx, p.UserID)
+	if len(projects) != 1 {
+		t.Fatalf("created %d pending projects, want one", len(projects))
+	}
+
+	admin := signedInAdminClient(t, srv.URL)
+	adminPage, _ := admin.Get(srv.URL + "/admin")
+	adminBody, _ := io.ReadAll(adminPage.Body)
+	adminPage.Body.Close()
+	if !strings.Contains(string(adminBody), "first-project@example.com") ||
+		!strings.Contains(string(adminBody), "Approve customer &amp; start") {
+		t.Fatalf("pending customer missing from admin queue: %s", adminBody)
+	}
+	adminTok := csrfToken(t, admin, srv.URL)
+	approved, err := admin.PostForm(srv.URL+"/admin/projects/"+pid+"/approve-access", url.Values{
+		"csrf_token": {adminTok},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved.Body.Close()
+
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		p, _ = st.ProjectByID(ctx, pid)
+		if p.Status == project.StatusNeedsInput {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if p.Status != project.StatusNeedsInput {
+		t.Fatalf("approved project did not start intake, status %q", p.Status)
+	}
+	u, _ := st.UserByEmail(ctx, "first-project@example.com")
+	if !u.Approved() {
+		t.Fatal("admin approval did not permanently approve the customer")
 	}
 }
 

@@ -8,6 +8,22 @@ package orchestrator
 type emailCopy struct{ Subject, Body string } // Body ends with "\n\n" + link at call site
 
 var customerEmails = map[string]map[string]emailCopy{
+	"access_approved": {
+		"en": {"Your project request was approved",
+			"Your project request for \"%s\" was approved. We’re reading your brief now; follow its progress here:"},
+		"sv": {"Din projektförfrågan har godkänts",
+			"Din projektförfrågan för ”%s” har godkänts. Vi läser din beskrivning nu; följ projektet här:"},
+		"ru": {"Ваш запрос на проект одобрен",
+			"Ваш запрос на проект «%s» одобрен. Мы уже изучаем ваше описание; следите за ходом работы здесь:"},
+	},
+	"access_rejected": {
+		"en": {"An update on your project request",
+			"Your project request for \"%s\" wasn’t approved. Open the project to see the decision:"},
+		"sv": {"Uppdatering om din projektförfrågan",
+			"Din projektförfrågan för ”%s” godkändes inte. Öppna projektet för att se beslutet:"},
+		"ru": {"Обновление по вашему запросу",
+			"Ваш запрос на проект «%s» не был одобрен. Откройте проект, чтобы посмотреть решение:"},
+	},
 	"plan_ready": {
 		"en": {"Your plan is ready to approve",
 			"Your plan for \"%s\" is ready. Have a look at what's included and approve it to start the build:"},

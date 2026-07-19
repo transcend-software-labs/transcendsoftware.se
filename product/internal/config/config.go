@@ -6,6 +6,8 @@
 package config
 
 import (
+	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -43,6 +45,7 @@ type Config struct {
 	// Quotas — every build spends real money (sandbox machine + LLM tokens).
 	MaxProjectsPerDay   int // per user, rolling 24h (default 3)
 	MaxConcurrentBuilds int // across all users (default 3)
+	MaxBuildsPerDay     int // across all users, rolling 24h (default 20)
 
 	// Forge Pro change model: a subscriber gets ChangesPerMonth included changes
 	// (fixes/tweaks) that renew monthly; each change beyond that adds a flat
@@ -188,7 +191,7 @@ type Config struct {
 
 // StorageEnabled reports whether a real S3-compatible backend is configured.
 func (c Config) StorageEnabled() bool {
-	return c.StorageEndpoint != "" && c.StorageAccessKey != "" && c.StorageSecretKey != ""
+	return c.StorageEndpoint != "" && c.StorageAccessKey != "" && c.StorageSecretKey != "" && c.StorageBucket != ""
 }
 
 // Load reads configuration from the environment, applying dev-friendly defaults.
@@ -211,6 +214,7 @@ func Load() Config {
 
 		MaxProjectsPerDay:   envIntOr("MAX_PROJECTS_PER_DAY", 3),
 		MaxConcurrentBuilds: envIntOr("MAX_CONCURRENT_BUILDS", 3),
+		MaxBuildsPerDay:     envIntOr("MAX_BUILDS_PER_DAY", 20),
 		ChangesPerMonth:     envIntOr("FORGE_CHANGES_PER_MONTH", 3),
 		OverageOre:          envIntOr("FORGE_OVERAGE_SEK", 49) * 100,
 		PreviewTTL:          time.Duration(envIntOr("PREVIEW_TTL_DAYS", 14)) * 24 * time.Hour,
@@ -380,6 +384,73 @@ func (c Config) DomainBuyEnabled() bool {
 // DevMode reports whether the app is running fully in-memory/fake.
 func (c Config) DevMode() bool {
 	return c.DatabaseURL == "" && c.AnthropicAPIKey == "" && c.OpencodeURL == "" && c.FlyAPIToken == ""
+}
+
+// Production reports whether fail-fast launch validation applies. Fly injects
+// FLY_APP_NAME, so the live deployment is protected even if APP_ENV was omitted;
+// APP_ENV=production remains useful on other hosts.
+func (c Config) Production() bool {
+	return strings.EqualFold(os.Getenv("APP_ENV"), "production") ||
+		(c.FlyAppName != "" && strings.HasPrefix(strings.ToLower(c.BaseURL), "https://"))
+}
+
+// Validate rejects partial integration groups everywhere and prevents a live
+// deployment from silently falling back to fake LLMs, in-memory persistence,
+// log-only email, or fake infrastructure.
+func (c Config) Validate() error {
+	var missing []string
+	require := func(ok bool, name string) {
+		if !ok {
+			missing = append(missing, name)
+		}
+	}
+	allOrNone := func(name string, values ...string) {
+		set := 0
+		for _, value := range values {
+			if value != "" {
+				set++
+			}
+		}
+		if set != 0 && set != len(values) {
+			missing = append(missing, name+" (partially configured)")
+		}
+	}
+	allOrNone("Stripe", c.StripeSecretKey, c.StripePriceID, c.StripeWebhookSecret)
+	// STORAGE_BUCKET has a non-empty development default, so the credential
+	// trio—not the bucket name—determines whether this optional group was begun.
+	allOrNone("object storage", c.StorageEndpoint, c.StorageAccessKey, c.StorageSecretKey)
+	allOrNone("site backups", c.BackupEndpoint, c.BackupAccessKey, c.BackupSecretKey, c.BackupBucket)
+	allOrNone("generated-site email", c.SitesEmailKey, c.SitesEmailFrom)
+	allOrNone("Google OAuth", c.GoogleClientID, c.GoogleClientSecret)
+	allOrNone("LinkedIn OAuth", c.LinkedInClientID, c.LinkedInClientSecret)
+
+	if c.Production() {
+		base, err := url.Parse(c.BaseURL)
+		require(err == nil && base.Scheme == "https" && base.Host != "", "valid HTTPS BASE_URL")
+		require(c.SecureCookie, "SECURE_COOKIE=true")
+		require(c.DatabaseURL != "", "DATABASE_URL")
+		require(c.AdminEmail != "", "ADMIN_EMAIL")
+		require(c.ResendAPIKey != "", "RESEND_API_KEY")
+		require(c.EmailFrom != "" && !strings.Contains(strings.ToLower(c.EmailFrom), "onboarding@resend.dev"), "verified production EMAIL_FROM")
+		require(c.EmailReplyTo != "", "EMAIL_REPLY_TO")
+		require(c.LLMAPIKey != "" || c.AnthropicAPIKey != "", "LLM_API_KEY or ANTHROPIC_API_KEY")
+		require(c.FlyAPIToken != "", "FLY_API_TOKEN")
+		require(c.FlySandboxApp != "", "FLY_SANDBOX_APP")
+		require(c.FlySandboxImage != "", "FLY_SANDBOX_IMAGE")
+		require(c.StorageEnabled(), "complete object storage configuration")
+		require(c.BackupEndpoint != "" && c.BackupAccessKey != "" && c.BackupSecretKey != "" && c.BackupBucket != "", "complete site backup configuration")
+		require(c.StripeEnabled(), "complete Stripe configuration")
+		require(c.MaxProjectsPerDay > 0, "MAX_PROJECTS_PER_DAY > 0")
+		require(c.MaxConcurrentBuilds > 0, "MAX_CONCURRENT_BUILDS > 0")
+		require(c.MaxBuildsPerDay > 0, "MAX_BUILDS_PER_DAY > 0")
+		require(c.ChangesPerMonth > 0, "FORGE_CHANGES_PER_MONTH > 0")
+		require(c.OverageOre > 0, "FORGE_OVERAGE_SEK > 0")
+		require(c.PreviewTTL > 0, "PREVIEW_TTL_DAYS > 0")
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("configuration invalid: %s", strings.Join(missing, ", "))
+	}
+	return nil
 }
 
 // listenAddr resolves the listen address, preferring ADDR, then PORT (which

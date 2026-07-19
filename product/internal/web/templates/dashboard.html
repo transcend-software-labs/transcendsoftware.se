@@ -19,4 +19,14 @@
 {{else}}
 <p class="muted empty">{{.T "dash.empty"}} <a href="/projects/new">{{.T "dash.empty_link"}}</a></p>
 {{end}}
+
+<section class="panel danger-zone">
+  <h2>{{.T "account.delete.h2"}}</h2>
+  <p class="muted small">{{.T "account.delete.intro"}}</p>
+  <form method="post" action="/account/delete" class="stack">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <label class="ack-later"><input type="checkbox" name="confirm" value="delete" required> {{.T "account.delete.confirm"}}</label>
+    <button class="btn btn-ghost-danger" type="submit">{{.T "account.delete.btn"}}</button>
+  </form>
+</section>
 {{template "foot" .}}{{end}}

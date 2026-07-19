@@ -22,4 +22,5 @@
   {{if eq .Status "failed"}}<p class="reason">{{tr .Lang "st.failed"}} {{.RejectReason}}</p>{{end}}
   {{if eq .Status "expired"}}<p class="reason">{{.RejectReason}}</p>{{end}}
   {{if eq .Status "escalated"}}<p class="reason">{{tr .Lang "st.escalated_note"}}</p>{{end}}
+  {{if eq .Status "pending_access_approval"}}<p class="reason">{{tr .Lang "st.pending_access_note"}}</p>{{end}}
 </div>{{end}}

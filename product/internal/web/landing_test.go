@@ -15,7 +15,7 @@ func TestLandingPricing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse templates: %v", err)
 	}
-	lv := landingView{PriceStr: "299 kr", IncludedChanges: 3, OverageStr: "49 kr", Domains: true}
+	lv := landingView{PriceStr: "299 kr", IncludedChanges: 3, OverageStr: "49 kr", DomainBuy: true}
 
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, "landing", View{Lang: "en", Data: lv}); err != nil {
@@ -23,12 +23,15 @@ func TestLandingPricing(t *testing.T) {
 	}
 	out := buf.String()
 	for _, want := range []string{
-		"299 kr",                  // the live Stripe price
-		"/month",                  // the per-interval suffix
-		"3 changes a month",       // included allowance, %d-formatted
-		"49 kr",                   // flat overage price, %s-formatted
-		"Buy a domain right here", // the domain card
-		"DNS and HTTPS",           // auto-configured claim
+		"299 kr",                         // the live Stripe price
+		"/month",                         // the per-interval suffix
+		"3 changes a month",              // included allowance, %d-formatted
+		"49 kr",                          // flat overage price, %s-formatted
+		"Choose your domain here",        // the prominent domain callout
+		"Search for and buy your domain", // the domain card
+		"DNS and HTTPS automatically",    // auto-configured claim
+		"yearly renewal price",           // price transparency
+		"two DNS records",                // accurate BYOD setup expectation
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("landing pricing missing %q", want)
@@ -43,7 +46,7 @@ func TestLandingPricingFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse templates: %v", err)
 	}
-	lv := landingView{PriceStr: "", IncludedChanges: 1, OverageStr: "49 kr", Domains: false}
+	lv := landingView{PriceStr: "", IncludedChanges: 1, OverageStr: "49 kr", DomainBuy: false}
 
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, "landing", View{Lang: "sv", Data: lv}); err != nil {
@@ -53,8 +56,8 @@ func TestLandingPricingFallback(t *testing.T) {
 	if !strings.Contains(out, "299 kr") { // sv fallback amount
 		t.Errorf("expected fallback price; got:\n%s", out)
 	}
-	if strings.Contains(out, "konfigurerar Forge") { // domain card hidden when Domains=false
-		t.Errorf("domain card should be hidden when Domains is false")
+	if strings.Contains(out, "Välj din domän här") { // domain marketing hidden when DomainBuy=false
+		t.Errorf("domain marketing should be hidden when domain buying is unavailable")
 	}
 	// Singular allowance copy for IncludedChanges == 1.
 	if !strings.Contains(out, "1 ändring i månaden") {

@@ -86,3 +86,28 @@ func TestCreateUser_RejectsCaseVariantDuplicate(t *testing.T) {
 		}
 	})
 }
+
+func TestMarkUserApproved_PersistsFirstTimestamp(t *testing.T) {
+	runUserStores(t, func(t *testing.T, st Store) {
+		ctx := context.Background()
+		now := time.Now().UTC().Truncate(time.Microsecond)
+		u := &user.User{ID: "approve-user", Email: "approve-user@utest.example", Verified: true, CreatedAt: now}
+		if err := st.CreateUser(ctx, u); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := st.UserByID(ctx, u.ID); got.Approved() {
+			t.Fatal("new user should require approval")
+		}
+		if err := st.MarkUserApproved(ctx, u.ID, now); err != nil {
+			t.Fatal(err)
+		}
+		later := now.Add(time.Hour)
+		if err := st.MarkUserApproved(ctx, u.ID, later); err != nil {
+			t.Fatal(err)
+		}
+		got, err := st.UserByID(ctx, u.ID)
+		if err != nil || got.ApprovedAt == nil || !got.ApprovedAt.Equal(now) {
+			t.Fatalf("approval timestamp = %v, want %v (err %v)", got.ApprovedAt, now, err)
+		}
+	})
+}

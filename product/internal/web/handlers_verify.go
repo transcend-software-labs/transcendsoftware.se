@@ -43,12 +43,11 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	lt, err := s.store.LoginTokenByHash(r.Context(), hashToken(token))
-	if err != nil || time.Now().After(lt.ExpiresAt) {
+	lt, err := s.store.ConsumeLoginToken(r.Context(), hashToken(token), time.Now().UTC())
+	if err != nil {
 		s.render(w, http.StatusUnauthorized, "login", s.authView(r, s.t(r, "login.h1"), s.t(r, "flash.verify_invalid")))
 		return
 	}
-	_ = s.store.DeleteLoginToken(r.Context(), lt.TokenHash) // single-use
 	if err := s.store.MarkUserVerified(r.Context(), lt.Email); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -65,7 +64,7 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 // handleResendVerification re-sends the confirmation link to the logged-in,
 // still-unverified user.
 func (s *Server) handleResendVerification(w http.ResponseWriter, r *http.Request, u *user.User) {
-	if !u.Verified {
+	if !u.Verified && s.allowAuth(r, "verify", strings.ToLower(u.Email), 8, 3, 30*time.Minute) {
 		s.sendVerificationEmail(r.Context(), u.Email, s.lang(r))
 	}
 	http.Redirect(w, r, "/dashboard?verify_sent=1", http.StatusSeeOther)
