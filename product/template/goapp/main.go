@@ -56,6 +56,9 @@ func main() {
 		SecureCookie: os.Getenv("SECURE_COOKIE") == "true",
 		OwnerEmail:   os.Getenv("OWNER_EMAIL"),
 		SiteName:     siteName,
+		Language:     envOr("SITE_LANGUAGE", "en"),
+		ThemeColor:   envOr("THEME_COLOR", "#ffffff"),
+		ColorScheme:  envOr("COLOR_SCHEME", "light"),
 		Notifiers:    notifiers,
 	}, log)
 

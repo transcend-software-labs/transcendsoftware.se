@@ -9,10 +9,14 @@ import (
 	"database/sql"
 	"embed"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"path"
+	"strings"
 
 	"app/internal/auth"
 	"app/internal/hooks"
@@ -42,8 +46,46 @@ var assetVersion = func() string {
 	return hex.EncodeToString(h.Sum(nil))[:12]
 }()
 
-// asset returns the versioned URL for a file in static/.
-func asset(name string) string { return "/static/" + name + "?v=" + assetVersion }
+// asset returns the versioned URL for a file in static/. The build-time image
+// optimizer writes a WebP sibling for PNG/JPEG inputs; selecting it here makes
+// existing {{asset "photo.png"}} calls automatically serve the smaller file.
+func asset(name string) string {
+	clean := strings.TrimPrefix(path.Clean("/"+name), "/")
+	ext := strings.ToLower(path.Ext(clean))
+	if ext == ".png" || ext == ".jpg" || ext == ".jpeg" {
+		webp := strings.TrimSuffix(clean, path.Ext(clean)) + ".webp"
+		if _, err := staticFS.ReadFile("static/" + webp); err == nil {
+			clean = webp
+		}
+	}
+	return "/static/" + clean + "?v=" + assetVersion
+}
+
+// assetSrcSet returns the responsive WebP variants created by
+// scripts/optimize-images.js. Use it on content/hero <img> elements together
+// with a meaningful sizes attribute. Empty means the asset has no variants.
+func assetSrcSet(name string) string {
+	clean := strings.TrimPrefix(path.Clean("/"+name), "/")
+	base := strings.TrimSuffix(clean, path.Ext(clean))
+	var out []string
+	seen := map[int]bool{}
+	for _, width := range []int{480, 768, 1200, 1600} {
+		variant := fmt.Sprintf("%s-%d.webp", base, width)
+		if _, err := staticFS.ReadFile("static/" + variant); err == nil {
+			out = append(out, asset(variant)+fmt.Sprintf(" %dw", width))
+			seen[width] = true
+		}
+	}
+	var manifest map[string]struct {
+		Width int `json:"width"`
+	}
+	if raw, err := staticFS.ReadFile("static/image-manifest.json"); err == nil && json.Unmarshal(raw, &manifest) == nil {
+		if dim, ok := manifest[clean]; ok && dim.Width > 0 && !seen[dim.Width] {
+			out = append(out, asset(clean)+fmt.Sprintf(" %dw", dim.Width))
+		}
+	}
+	return strings.Join(out, ", ")
+}
 
 // cacheStatic serves embedded static files with caching enabled. embed.FS has
 // no file modtimes, so without this every asset would be re-downloaded on every
@@ -51,7 +93,11 @@ func asset(name string) string { return "/static/" + name + "?v=" + assetVersion
 func cacheStatic(next http.Handler) http.Handler {
 	etag := `"` + assetVersion + `"`
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "public, max-age=300")
+		if r.URL.Query().Get("v") == assetVersion {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "public, max-age=300")
+		}
 		w.Header().Set("ETag", etag) // FileServer answers If-None-Match with 304 from this
 		next.ServeHTTP(w, r)
 	})
@@ -62,6 +108,9 @@ type Options struct {
 	SecureCookie bool
 	OwnerEmail   string                    // reserves the first (owner) account for this address
 	SiteName     string                    // shown in notification copy
+	Language     string                    // public HTML language, e.g. "sv"
+	ThemeColor   string                    // browser chrome color, matching the public theme
+	ColorScheme  string                    // "light", "dark", or "light dark"
 	Notifiers    map[string]hooks.Notifier // by type ("email"); for hook "send test"
 }
 
@@ -72,6 +121,9 @@ type Server struct {
 	secureCookie bool
 	ownerEmail   string
 	siteName     string
+	language     string
+	themeColor   string
+	colorScheme  string
 	notifiers    map[string]hooks.Notifier
 	tmpl         *template.Template
 	log          *slog.Logger
@@ -80,14 +132,27 @@ type Server struct {
 // New wires the HTTP layer.
 func New(db *sql.DB, sessions *auth.Sessions, opts Options, log *slog.Logger) *Server {
 	tmpl := template.Must(template.New("").
-		Funcs(template.FuncMap{"asset": asset}).
+		Funcs(template.FuncMap{"asset": asset, "assetSrcSet": assetSrcSet}).
 		ParseFS(templatesFS, "templates/*.html"))
 	site := opts.SiteName
 	if site == "" {
 		site = "your site"
 	}
+	language := opts.Language
+	if language == "" {
+		language = "en"
+	}
+	themeColor := opts.ThemeColor
+	if themeColor == "" {
+		themeColor = "#ffffff"
+	}
+	colorScheme := opts.ColorScheme
+	if colorScheme == "" {
+		colorScheme = "light"
+	}
 	return &Server{db: db, sessions: sessions, secureCookie: opts.SecureCookie,
-		ownerEmail: opts.OwnerEmail, siteName: site, notifiers: opts.Notifiers,
+		ownerEmail: opts.OwnerEmail, siteName: site, language: language,
+		themeColor: themeColor, colorScheme: colorScheme, notifiers: opts.Notifiers,
 		tmpl: tmpl, log: log}
 }
 
@@ -128,13 +193,32 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /admin/hooks/{id}/toggle", s.requireOwner(s.handleHookToggle))
 	mux.HandleFunc("POST /admin/hooks/{id}/test", s.requireOwner(s.handleHookTest))
 	mux.HandleFunc("POST /admin/hooks/{id}/delete", s.requireOwner(s.handleHookDelete))
-	return mux
+	return securityHeaders(mux)
+}
+
+// securityHeaders is intentionally centralized so generated projects inherit a
+// safe browser baseline without each build having to remember it. The policy
+// permits hosted fonts and customer imagery while keeping scripts, forms and
+// framing same-origin. JSON-LD is the only inline script in the starter.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'")
+		w.Header().Set("Permissions-Policy", "camera=(), geolocation=(), microphone=()")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // View is the data passed to every page template.
 type View struct {
-	Title    string
-	SiteName string // shown in the Forge-branded admin header
+	Title       string
+	SiteName    string // shown in the Forge-branded admin header
+	Language    string
+	ThemeColor  string
+	ColorScheme string
 
 	// SEO — layout.html renders these into <head>; see seo.go and AGENTS.md.
 	// SET Description ON EVERY PUBLIC PAGE (one honest sentence about THAT page):
@@ -154,7 +238,8 @@ type View struct {
 
 func (s *Server) view(r *http.Request, title string, data any) View {
 	return View{
-		Title: title, SiteName: s.siteName,
+		Title: title, SiteName: s.siteName, Language: s.language,
+		ThemeColor: s.themeColor, ColorScheme: s.colorScheme,
 		Canonical: absURL(r, r.URL.Path), JSONLD: s.siteJSONLD(r),
 		User: s.currentUser(r), CSRF: s.csrfToken(r), Data: data,
 	}

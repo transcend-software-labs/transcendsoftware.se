@@ -248,7 +248,7 @@ func (f *Fake) Exec(_ context.Context, machineID string, command []string, _ int
 	// deterministic two-page one so dev/tests exercise the capture path.
 	joined := strings.Join(command, " ")
 	if strings.Contains(joined, "crawl.js") {
-		return ExecResult{ExitCode: 0, Stdout: `[{"slot":0,"path":"/"},{"slot":1,"path":"/kontakt"}]`}, nil
+		return ExecResult{ExitCode: 0, Stdout: `[{"slot":0,"path":"/ · desktop"},{"slot":1,"path":"/ · mobile"}]`}, nil
 	}
 	// The design audit (rendered audit.js, or the source-scan fallback) expects
 	// an impeccable JSON findings array on stdout; return a clean one.

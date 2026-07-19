@@ -241,18 +241,36 @@ h3 {
 }
 .how .steps li strong { display: block; color: var(--text); font-weight: 500; margin-bottom: var(--sp-1); }
 
-/* Managed-domain callout: the key non-technical benefit gets its own place in
-   the story instead of being buried in a pricing footnote. */
+/* The two non-technical differentiators get dedicated callouts instead of
+   being buried in feature lists: Forge can create the site's image world and
+   can buy/configure its domain. */
+.image-callout,
 .domain-callout {
   margin-top: var(--sp-7); padding: var(--sp-6);
   display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(14rem, 1fr); gap: var(--sp-5) var(--sp-6);
-  border: 1px solid var(--accent-border); border-radius: var(--radius-lg); background: var(--accent-glow);
+  border-radius: var(--radius-lg);
 }
+.image-callout { border: 1px solid var(--border); background: var(--surface); }
+.image-copy .badge { margin-bottom: var(--sp-3); }
+.image-copy p,
 .domain-copy p { color: var(--muted); max-width: 48ch; }
-.domain-copy .small { margin-top: var(--sp-3); }
+.image-points,
 .domain-points { list-style: none; display: flex; flex-direction: column; gap: var(--sp-3); align-self: center; }
+.image-points li,
 .domain-points li { position: relative; padding-left: var(--sp-6); }
+.image-points li::before,
 .domain-points li::before { content: "\2713"; position: absolute; left: 0; color: var(--accent); font-weight: 600; }
+.model-note {
+  grid-column: 1 / -1; padding-top: var(--sp-5); border-top: 1px solid var(--border);
+  display: grid; grid-template-columns: minmax(12rem, .65fr) minmax(0, 1.35fr); gap: var(--sp-4) var(--sp-6); align-items: start;
+}
+.model-note .badge { margin-bottom: var(--sp-3); }
+.model-note h3 { margin: 0; }
+.model-note p { color: var(--muted); max-width: 58ch; margin: 0; }
+.domain-callout {
+  border: 1px solid var(--accent-border); background: var(--accent-glow);
+}
+.domain-copy .small { margin-top: var(--sp-3); }
 .domain-existing { grid-column: 1 / -1; padding-top: var(--sp-4); border-top: 1px solid var(--accent-border); }
 
 /* Real Forge work. Hidden at the template level until examples exist; when
@@ -277,6 +295,7 @@ h3 {
   object-fit: cover; object-position: top; border: 2px solid var(--bg); border-radius: var(--radius); box-shadow: var(--shadow);
 }
 .example-copy { padding: var(--sp-5); }
+.example-badges { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
 .example-copy h3 { margin: var(--sp-3) 0 var(--sp-2); color: var(--text); }
 .example-copy p { color: var(--muted); margin-bottom: var(--sp-3); }
 .example-link { font-size: var(--fs-md); }
@@ -725,14 +744,24 @@ label.design-option:hover { border-color: var(--accent); }
 .stat-row li { display: flex; flex-direction: column; gap: .15rem; }
 .stat-num { font-size: var(--fs-2xl); font-weight: 600; color: var(--text); line-height: 1; }
 
-.oauth-buttons { display: flex; flex-direction: column; gap: .6rem; margin-bottom: var(--sp-4); }
+/* Auth pages use an explicit top-to-bottom rhythm. The global reset removes
+   heading/paragraph margins, so each transition is owned here: heading →
+   notice → OAuth → divider → email/password → account link. */
+.auth-page > h1 { margin-bottom: var(--sp-5); }
+.oauth-buttons {
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  margin: var(--sp-5) 0 var(--sp-4);
+}
 /* Layout only — appearance comes from .btn-ghost. */
 .btn-oauth { display: block; text-align: center; }
-.or-divider { display: flex; align-items: center; gap: .8rem; color: var(--muted); font-size: var(--fs-md); margin: .4rem 0 var(--sp-4); }
+.or-divider {
+  display: flex; align-items: center; gap: var(--sp-3);
+  color: var(--muted); font-size: var(--fs-md); margin: 0 0 var(--sp-5);
+}
 .or-divider::before, .or-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
-.password-login { margin-top: var(--sp-4); }
+.password-login { margin: var(--sp-5) 0; }
 .password-login summary { cursor: pointer; }
-.password-login .stack { margin-top: .6rem; }
+.password-login .stack { margin: var(--sp-3) 0 0; }
 
 /* Tables: one component. Wrap in .table-scroll when columns may overflow. */
 .table-scroll { overflow-x: auto; margin-top: var(--sp-4); }
@@ -917,6 +946,8 @@ label.ack-later { display: flex; flex-direction: row; align-items: flex-start; g
   background: color-mix(in srgb, var(--bg-2) 88%, transparent);
 }
 .gen-spin.htmx-request { display: flex; }
+.gen-running { display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--sp-3) 0; }
+.gen-running p { margin: 0 0 var(--sp-1); }
 .gen-form { display: flex; flex-direction: column; gap: .6rem; }
 .gen-form textarea { width: 100%; }
 /* The seeded prompt is long — give it real height, and auto-grow to the content
@@ -961,7 +992,9 @@ label.ack-later { display: flex; flex-direction: row; align-items: flex-start; g
    hamburger (the #nav-toggle checkbox drives it — no JS), operator-dashboard
    reflow, 44px touch targets, and the content/AI-prompt form stacking. */
 @media (max-width: 720px) {
+  .image-callout,
   .domain-callout { grid-template-columns: 1fr; padding: var(--sp-5); }
+  .model-note { grid-template-columns: 1fr; }
   .example-grid { grid-template-columns: 1fr; }
   .examples-3 .example-card:first-child { grid-column: auto; }
   .example-copy { padding: var(--sp-4); }

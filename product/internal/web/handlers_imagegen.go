@@ -27,24 +27,83 @@ func generatableSlot(p *project.Project, slot string) (project.ContentItem, bool
 	return project.ContentItem{}, false
 }
 
-// genCandidates stores n generated PNGs under a slot's gen prefix and records
-// them as the slot's pending candidates awaiting the customer's pick.
-func (s *Server) genCandidates(ctx context.Context, p *project.Project, slot, prompt string, pngs [][]byte) (*project.Project, error) {
+const imageJobTimeout = 4 * time.Minute
+
+// genCandidates stores generated PNGs and completes the matching background
+// job. JobID keeps a late completion from replacing a newer request.
+func (s *Server) genCandidates(ctx context.Context, projectID, slot, jobID, prompt string, pngs [][]byte) (*project.Project, error) {
 	keys := make([]string, 0, len(pngs))
 	for _, png := range pngs {
-		key := fmt.Sprintf("projects/%s/gen/%s/%s.png", p.ID, slot, id.New())
+		key := fmt.Sprintf("projects/%s/gen/%s/%s.png", projectID, slot, id.New())
 		if err := s.storage.Put(ctx, key, "image/png", bytes.NewReader(png), int64(len(png))); err != nil {
 			return nil, err
 		}
 		keys = append(keys, key)
 	}
-	return s.mutateProject(ctx, p.ID, func(fresh *project.Project) {
+	return s.mutateProject(ctx, projectID, func(fresh *project.Project) {
 		if fresh.PendingImages == nil {
 			fresh.PendingImages = map[string]project.ImageCandidates{}
 		}
-		fresh.PendingImages[slot] = project.ImageCandidates{Prompt: prompt, Keys: keys}
-		fresh.ImageGenCount++ // each generate/improve is one paid API call; count it toward the cap
+		if current, ok := fresh.PendingImages[slot]; ok && current.JobID == jobID {
+			fresh.PendingImages[slot] = project.ImageCandidates{Prompt: prompt, Keys: keys, Status: "ready", JobID: jobID}
+		}
 	})
+}
+
+// reserveImageJob atomically claims a slot and one unit of the project's paid
+// generation allowance. It lets requests for different slots start freely,
+// while a double-click for the same slot remains a no-op.
+func (s *Server) reserveImageJob(ctx context.Context, projectID, slot, prompt string) (*project.Project, string, string, error) {
+	jobID := id.New()
+	outcome := ""
+	p, err := s.mutateProject(ctx, projectID, func(fresh *project.Project) {
+		outcome = ""
+		if current, ok := fresh.PendingImages[slot]; ok && current.Status == "running" {
+			jobID = current.JobID
+			outcome = "running"
+			return
+		}
+		if s.imageGenExhausted(fresh) {
+			outcome = "limit"
+			return
+		}
+		if fresh.PendingImages == nil {
+			fresh.PendingImages = map[string]project.ImageCandidates{}
+		}
+		fresh.PendingImages[slot] = project.ImageCandidates{
+			Prompt: prompt, Status: "running", JobID: jobID, StartedAt: time.Now().UTC(),
+		}
+		fresh.ImageGenCount++
+		outcome = "started"
+	})
+	return p, jobID, outcome, err
+}
+
+func (s *Server) failImageJob(projectID, slot, jobID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := s.mutateProject(ctx, projectID, func(fresh *project.Project) {
+		if current, ok := fresh.PendingImages[slot]; ok && current.JobID == jobID {
+			current.Status = "failed"
+			current.StartedAt = time.Time{}
+			fresh.PendingImages[slot] = current
+		}
+	}); err != nil {
+		s.log.Error("imagegen mark failed", "project", projectID, "slot", slot, "err", err)
+	}
+}
+
+func (s *Server) runImageJob(projectID, slot, jobID, prompt string, generate func(context.Context) ([][]byte, error)) {
+	ctx, cancel := context.WithTimeout(context.Background(), imageJobTimeout)
+	defer cancel()
+	pngs, err := generate(ctx)
+	if err == nil {
+		_, err = s.genCandidates(ctx, projectID, slot, jobID, prompt, pngs)
+	}
+	if err != nil {
+		s.log.Error("background imagegen", "project", projectID, "slot", slot, "err", err)
+		s.failImageJob(projectID, slot, jobID)
+	}
 }
 
 // imageGenExhausted reports whether the project has hit its generation cap.
@@ -101,10 +160,19 @@ func defaultImagePrompt(p *project.Project, c project.ContentItem, lang string) 
 		b.WriteString(" " + i18n.T(lang, "gen.prompt.direction") + p.DesignBrief + ".")
 	}
 	b.WriteString(" " + i18n.T(lang, "gen.prompt.style"))
+	b.WriteString(" " + imagePromptGuard(p, c, lang))
 	return b.String()
 }
 
-// handleGenerateImage generates 3 candidate images for a generatable slot.
+func imagePromptGuard(p *project.Project, c project.ContentItem, lang string) string {
+	label := strings.ToLower(c.Slug + " " + c.Name("en") + " " + c.Name("sv") + " " + c.Name("ru"))
+	if strings.Contains(label, "logo") || strings.Contains(label, "logotyp") || strings.Contains(label, "логотип") {
+		return fmt.Sprintf(i18n.T(lang, "gen.prompt.logo_guard"), p.Name)
+	}
+	return i18n.T(lang, "gen.prompt.photo_guard")
+}
+
+// handleGenerateImage queues 3 candidate images and returns immediately.
 func (s *Server) handleGenerateImage(w http.ResponseWriter, r *http.Request, u *user.User) {
 	p, ok := s.ownedProject(w, r, u)
 	if !ok {
@@ -120,10 +188,18 @@ func (s *Server) handleGenerateImage(w http.ResponseWriter, r *http.Request, u *
 	prompt := strings.TrimSpace(r.FormValue("prompt"))
 	if prompt == "" {
 		prompt = defaultImagePrompt(p, c, lang)
-	} else if len(prompt) > 1000 {
-		prompt = prompt[:1000]
+	} else {
+		if len(prompt) > 1000 {
+			prompt = prompt[:1000]
+		}
+		prompt += " " + imagePromptGuard(p, c, lang)
 	}
-	if s.imageGenExhausted(p) {
+	p, jobID, outcome, err := s.reserveImageJob(r.Context(), p.ID, slot, prompt)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if outcome == "limit" {
 		if isHTMX(r) {
 			s.renderGen(w, r, "gen_prompt", map[string]any{"PID": p.ID, "Slug": slot, "Prompt": prompt, "Err": i18n.T(lang, "prj.gen.limit_note")})
 			return
@@ -131,26 +207,47 @@ func (s *Server) handleGenerateImage(w http.ResponseWriter, r *http.Request, u *
 		http.Redirect(w, r, "/projects/"+p.ID+"?genlimit=1", http.StatusSeeOther)
 		return
 	}
-	pngs, err := s.imagegen.Generate(r.Context(), prompt, 3)
-	if err != nil {
-		s.log.Error("imagegen generate", "err", err)
-		if isHTMX(r) {
-			s.renderGen(w, r, "gen_prompt", map[string]any{"PID": p.ID, "Slug": slot, "Prompt": prompt, "Err": i18n.T(lang, "prj.gen.failed")})
-			return
-		}
-		http.Redirect(w, r, "/projects/"+p.ID+"?genfail=1", http.StatusSeeOther)
-		return
-	}
-	p, err = s.genCandidates(r.Context(), p, slot, prompt, pngs)
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
+	if outcome == "started" {
+		go s.runImageJob(p.ID, slot, jobID, prompt, func(ctx context.Context) ([][]byte, error) {
+			return s.imagegen.Generate(ctx, prompt, 3)
+		})
 	}
 	if isHTMX(r) {
-		s.renderGen(w, r, "gen_candidates", map[string]any{"PID": p.ID, "Slug": slot, "Prompt": prompt, "Candidates": s.slotCandidates(r.Context(), p, slot)})
+		s.renderGen(w, r, "gen_running", map[string]any{"PID": p.ID, "Slug": slot})
 		return
 	}
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+}
+
+// handleImageGenerationStatus is the small polling endpoint used by a modal.
+// Reloading the project reconstructs the same state from the persisted job.
+func (s *Server) handleImageGenerationStatus(w http.ResponseWriter, r *http.Request, u *user.User) {
+	p, ok := s.ownedProject(w, r, u)
+	if !ok {
+		return
+	}
+	lang := s.lang(r)
+	slot := slotID(r.URL.Query().Get("slot"))
+	c, ok := generatableSlot(p, slot)
+	if !ok || s.imagegen == nil {
+		http.NotFound(w, r)
+		return
+	}
+	set, exists := p.PendingImages[slot]
+	if exists && set.Status == "running" && !set.StartedAt.IsZero() && time.Since(set.StartedAt) > imageJobTimeout+time.Minute {
+		s.failImageJob(p.ID, slot, set.JobID)
+		set.Status = "failed"
+	}
+	switch {
+	case exists && set.Status == "running":
+		s.renderGen(w, r, "gen_running", map[string]any{"PID": p.ID, "Slug": slot})
+	case exists && len(set.Keys) > 0:
+		s.renderGen(w, r, "gen_candidates", map[string]any{"PID": p.ID, "Slug": slot, "Prompt": set.Prompt, "Candidates": s.slotCandidates(r.Context(), p, slot)})
+	case exists && set.Status == "failed":
+		s.renderGen(w, r, "gen_prompt", map[string]any{"PID": p.ID, "Slug": slot, "Prompt": set.Prompt, "Err": i18n.T(lang, "prj.gen.failed")})
+	default:
+		s.renderGen(w, r, "gen_prompt", map[string]any{"PID": p.ID, "Slug": slot, "Prompt": defaultImagePrompt(p, c, lang)})
+	}
 }
 
 // handlePickImage promotes a chosen candidate to the slot's asset (so the build
@@ -209,8 +306,7 @@ func (s *Server) handlePickImage(w http.ResponseWriter, r *http.Request, u *user
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 }
 
-// handleImproveImage edits the slot's currently chosen image with the
-// customer's instruction, producing a fresh set of candidates to pick from.
+// handleImproveImage queues an edit of the chosen image in the background.
 func (s *Server) handleImproveImage(w http.ResponseWriter, r *http.Request, u *user.User) {
 	p, ok := s.ownedProject(w, r, u)
 	if !ok {
@@ -218,7 +314,8 @@ func (s *Server) handleImproveImage(w http.ResponseWriter, r *http.Request, u *u
 	}
 	lang := s.lang(r)
 	slot := slotID(r.FormValue("slot"))
-	if _, ok := generatableSlot(p, slot); !ok || s.imagegen == nil {
+	c, ok := generatableSlot(p, slot)
+	if !ok || s.imagegen == nil {
 		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 		return
 	}
@@ -229,14 +326,6 @@ func (s *Server) handleImproveImage(w http.ResponseWriter, r *http.Request, u *u
 		}
 		http.Redirect(w, r, "/projects/"+p.ID+"?genfail=1", http.StatusSeeOther)
 	}
-	if s.imageGenExhausted(p) {
-		if isHTMX(r) {
-			s.renderGen(w, r, "gen_improve", map[string]any{"PID": p.ID, "Slug": slot, "Err": i18n.T(lang, "prj.gen.limit_note")})
-			return
-		}
-		http.Redirect(w, r, "/projects/"+p.ID+"?genlimit=1", http.StatusSeeOther)
-		return
-	}
 	instruction := strings.TrimSpace(r.FormValue("instruction"))
 	if instruction == "" {
 		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
@@ -245,6 +334,7 @@ func (s *Server) handleImproveImage(w http.ResponseWriter, r *http.Request, u *u
 	if len(instruction) > 1000 {
 		instruction = instruction[:1000]
 	}
+	instruction += " " + fmt.Sprintf(i18n.T(lang, "gen.prompt.improve_guard"), c.Name(lang)) + " " + imagePromptGuard(p, c, lang)
 	// The image to improve: the slot's most recent generated asset.
 	assets, err := s.store.AssetsByProject(r.Context(), p.ID)
 	if err != nil {
@@ -266,19 +356,22 @@ func (s *Server) handleImproveImage(w http.ResponseWriter, r *http.Request, u *u
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	pngs, err := s.imagegen.Edit(r.Context(), src, instruction, 3)
-	if err != nil {
-		s.log.Error("imagegen edit", "err", err)
-		improveErr("prj.gen.failed")
-		return
-	}
-	p, err = s.genCandidates(r.Context(), p, slot, instruction, pngs)
+	p, jobID, outcome, err := s.reserveImageJob(r.Context(), p.ID, slot, instruction)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	if outcome == "limit" {
+		improveErr("prj.gen.limit_note")
+		return
+	}
+	if outcome == "started" {
+		go s.runImageJob(p.ID, slot, jobID, instruction, func(ctx context.Context) ([][]byte, error) {
+			return s.imagegen.Edit(ctx, src, instruction, 3)
+		})
+	}
 	if isHTMX(r) {
-		s.renderGen(w, r, "gen_candidates", map[string]any{"PID": p.ID, "Slug": slot, "Prompt": instruction, "Candidates": s.slotCandidates(r.Context(), p, slot)})
+		s.renderGen(w, r, "gen_running", map[string]any{"PID": p.ID, "Slug": slot})
 		return
 	}
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)

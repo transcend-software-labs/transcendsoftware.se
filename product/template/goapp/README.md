@@ -12,14 +12,19 @@ Included out of the box:
 - Embedded, numbered SQL migrations
 - Cached static assets (ETag + versioned URLs) and native CSS view transitions
   — navigation is plain links and forms, no client-side routing layer
+- Fluid type and spacing, accessible mobile navigation, focus states, 44px touch
+  targets, reusable composition primitives, and a discreet owner-login path
+- Automatic WebP conversion and responsive image variants for PNG/JPEG assets
+- Rendered desktop/mobile quality gates for accessibility, metadata, layout,
+  image semantics and payload budgets, plus a visual design-director review
 - One typed path for client JS: `web/src/app.ts` (strict TypeScript, compiled
   by `make js` via esbuild's Go API — empty by default)
 - `/healthz`, graceful shutdown, Dockerfile + fly.toml (auto-stop, 1 machine)
 
 Run locally:
 
-    make run      # http://localhost:8080, data in ./data (compiles app.ts first)
-    make test     # builds + type-checks app.ts, then go test
+    make run      # http://localhost:8080, data in ./data (images + app.ts first)
+    make test     # optimizes images, builds/type-checks app.ts, then go test
 
 Build agents: read [`AGENTS.md`](AGENTS.md) before changing anything.
 

@@ -25,7 +25,7 @@ ARG GO_VERSION=1.25.0
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      git curl ca-certificates jq \
+      git curl ca-certificates jq webp \
  && rm -rf /var/lib/apt/lists/*
 
 # pnpm via npm. (Corepack in the base image has stale signing keys and can't
@@ -76,7 +76,7 @@ RUN curl -fsSL https://x.ai/cli/install.sh | bash \
 RUN node --version && npm --version && pnpm --version && go version \
  && command -v opencode && command -v flyctl && command -v git \
  && command -v playwright && test -d /ms-playwright \
- && impeccable --version && tsc --version
+ && command -v cwebp && impeccable --version && tsc --version
 
 # Warm the Go module + build caches with the starter template's dependency
 # tree (staged into .template/ by `make sandbox-build`). modernc SQLite alone

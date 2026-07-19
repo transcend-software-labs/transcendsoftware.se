@@ -4,7 +4,7 @@ import "testing"
 
 func TestExtractSpec(t *testing.T) {
 	plan := "## Summary\nA bakery site.\n\n## Pages\n- Home\n\n" +
-		"```json\n{\"pages\":[{\"slug\":\"start\",\"paths\":[\"index\",\"home\"]," +
+		"```json\n{\"archetype\":\"local_retail\",\"pages\":[{\"slug\":\"start\",\"paths\":[\"index\",\"home\"]," +
 		"\"names\":{\"sv\":\"Startsidan\",\"en\":\"the home page\"},\"included\":\"Hero och kontakt\"}]," +
 		"\"not_included\":[\"Onlinebetalning\"]," +
 		"\"content_needed\":[{\"slug\":\"logo\",\"names\":{\"sv\":\"Logotyp\"},\"required\":true}]}\n```"
@@ -12,6 +12,9 @@ func TestExtractSpec(t *testing.T) {
 	spec, cleaned := ExtractSpec(plan)
 	if len(spec.Pages) != 1 || spec.Pages[0].Slug != "start" {
 		t.Fatalf("pages = %+v", spec.Pages)
+	}
+	if spec.Archetype != "local_retail" {
+		t.Errorf("archetype = %q", spec.Archetype)
 	}
 	if got := spec.Pages[0].Name("sv"); got != "Startsidan" {
 		t.Errorf("sv name = %q", got)

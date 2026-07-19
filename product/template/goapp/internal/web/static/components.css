@@ -11,15 +11,52 @@
 
 * { box-sizing: border-box; }
 
+html { scroll-behavior: smooth; }
+
 body {
   margin: 0;
   font-family: var(--font-body);
+  font-size: var(--text-base);
   color: var(--text);
   background: var(--bg);
   line-height: var(--leading);
+  min-height: 100vh;
+  overflow-wrap: break-word;
 }
 
-h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); }
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  line-height: var(--leading-heading);
+  text-wrap: balance;
+}
+h1 { font-size: var(--text-h1); line-height: var(--leading-tight); }
+h2 { font-size: var(--text-h2); }
+h3 { font-size: var(--text-h3); }
+p { text-wrap: pretty; }
+img, picture, video, canvas, svg { max-width: 100%; }
+img, video { height: auto; }
+img { display: block; }
+
+/* Universal keyboard affordance. The second outline keeps the ring visible on
+   both pale and dark project palettes without prescribing a visual theme. */
+:where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 1px var(--focus-offset);
+}
+:where(a, button, summary, label[for]) { touch-action: manipulation; }
+
+.skip-link {
+  position: fixed; top: var(--space-2); left: var(--container-pad); z-index: 100;
+  transform: translateY(calc(-100% - var(--space-4)));
+  padding: var(--space-2) var(--space-4); border-radius: var(--radius-sm);
+  color: var(--accent-ink); background: var(--accent); font-weight: 700;
+}
+.skip-link:focus { transform: translateY(0); }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
 
 /* --- Navigation -------------------------------------------------------- */
 /* Solid background by default (--nav-bg): a header must never be invisible
@@ -34,8 +71,8 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); }
 }
 .brand { font-weight: 700; color: var(--nav-ink); text-decoration: none; }
 .navlinks { display: flex; align-items: center; gap: var(--space-4); }
-.navlinks a { color: var(--nav-ink); opacity: .78; text-decoration: none; }
-.navlinks a:hover { opacity: 1; }
+.navlinks a { color: var(--nav-ink); text-decoration: none; }
+.navlinks a:hover { text-decoration: underline; text-underline-offset: .22em; }
 
 /* Cross-page polish: native navigations get a smooth crossfade on browsers
    that support view transitions (Chrome, Safari, recent Firefox) and a normal
@@ -48,8 +85,9 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); }
    Pure CSS (the #nav-toggle checkbox drives it): no JavaScript. Cramped links
    on a phone are the #1 "unfinished" tell, so keep a real mobile menu on every
    site. */
-.nav-burger { display: none; }
+.nav-toggle, .nav-burger { display: none; }
 @media (max-width: 720px) {
+  .nav-toggle { display: block; min-height: 0; }
   .nav-burger {
     display: flex; flex-direction: column; justify-content: center; gap: 5px;
     width: 44px; height: 44px; padding: 11px; cursor: pointer;
@@ -71,6 +109,10 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); }
     padding: var(--space-3) var(--container-pad); border-top: 1px solid var(--border);
   }
   .nav-toggle:checked ~ .navlinks { display: flex; }
+  .nav-toggle:focus-visible + .nav-burger {
+    outline: 3px solid var(--focus); outline-offset: 3px;
+    box-shadow: 0 0 0 1px var(--focus-offset);
+  }
   /* Hamburger morphs into an X while the menu is open. */
   .nav-toggle:checked ~ .nav-burger span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
   .nav-toggle:checked ~ .nav-burger span:nth-child(2) { opacity: 0; }
@@ -83,7 +125,24 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); }
   margin: 0 auto;
   padding: var(--space-6) var(--container-pad) var(--space-8);
 }
-.narrow { max-width: 26rem; margin-left: auto; margin-right: auto; }
+.container-wide { max-width: var(--container-wide); margin-inline: auto; }
+.container-copy { max-width: var(--container-copy); margin-inline: auto; }
+.narrow { max-width: var(--container-narrow); margin-left: auto; margin-right: auto; }
+.prose { max-width: var(--measure-copy); }
+.lead { max-width: var(--measure-lead); }
+
+/* Composition primitives: structure without a house style. They give every
+   build a disciplined grid while tokens + app.css still decide the identity. */
+.split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-7); align-items: center; }
+.grid-2, .grid-3, .grid-4 { display: grid; gap: var(--space-5); }
+.grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.section-heading { max-width: var(--measure-copy); margin-bottom: var(--space-6); }
+.media-frame { overflow: hidden; border-radius: var(--media-radius); }
+.media-frame > :where(img, picture, video) { width: 100%; height: 100%; object-fit: cover; }
+.trust-strip { display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-6); align-items: center; }
 
 /* Full-bleed section band: background spans the viewport, content stays inside
    a container. Stack these on the landing page; the shared vertical rhythm and
@@ -95,8 +154,8 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); }
 .section-tint { background: var(--bg-2); }
 
 .hero { padding: var(--space-7) 0 var(--space-6); }
-.hero h1 { font-size: 2.2rem; margin: 0 0 var(--space-2); }
-.lead { color: var(--muted); font-size: 1.1rem; }
+.hero h1 { margin: 0 0 var(--space-2); }
+.lead { color: var(--muted); font-size: var(--text-lead); }
 
 .panel {
   background: var(--bg-2); border: 1px solid var(--border);
@@ -112,19 +171,23 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); }
    per footer; mixing centered and left-aligned blocks reads as broken. */
 .foot, .footer {
   padding: var(--space-7) var(--container-pad);
-  color: var(--muted); font-size: .85rem;
+  color: var(--muted); font-size: var(--text-sm);
 }
 .footer > .container { padding: 0; }
+.footer-row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+.footer a { color: inherit; }
 .center { text-align: center; }
 
 /* --- Forms ---------------------------------------------------------------- */
-.stack { display: flex; flex-direction: column; gap: var(--space-3); }
+.stack { display: flex; flex-direction: column; gap: var(--space-4); }
 label { display: flex; flex-direction: column; gap: var(--space-1); font-weight: 500; }
 input, textarea, select {
-  font: inherit; padding: var(--space-2) var(--space-3); border: 1px solid var(--border);
+  font: inherit; min-height: var(--control-min); padding: var(--space-2) var(--space-3); border: 1px solid var(--border);
   border-radius: var(--radius-sm); background: var(--bg); color: var(--text);
 }
-input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.form-field { display: flex; flex-direction: column; gap: var(--space-1); }
+.field-hint { color: var(--muted); font-size: var(--text-sm); font-weight: 400; }
+.field-error { color: var(--error); font-size: var(--text-sm); font-weight: 600; }
 
 /* --- Buttons --------------------------------------------------------------
    Color/background are protected with !important so a generic link rule
@@ -137,15 +200,35 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
   background: var(--btn-bg, var(--accent)) !important;
   color: var(--btn-ink, var(--accent-ink)) !important;
   border: 0; text-decoration: none;
-  padding: var(--space-2) var(--space-4); border-radius: var(--radius-sm);
+  min-height: var(--control-min); padding: var(--space-2) var(--space-4); border-radius: var(--radius-sm);
   align-self: flex-start;
 }
-.btn:hover { filter: brightness(1.08); }
+.btn:hover { filter: saturate(1.08) brightness(.94); }
 .linklike {
   font: inherit; background: none; border: 0; padding: 0;
   color: var(--muted); cursor: pointer; text-decoration: underline;
 }
 .inline { display: inline; }
+
+@media (max-width: 900px) {
+  .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .split, .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .container { padding-left: var(--container-pad); padding-right: var(--container-pad); }
+  input, textarea, select { font-size: max(16px, var(--text-base)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
 
 /* --- Feedback + utilities -------------------------------------------------- */
 .flash {

@@ -171,8 +171,8 @@ func TestBuild_CapturesScreenshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
-	if len(res.Screenshots) != 2 || res.Screenshots[0].Path != "/" || res.Screenshots[1].Path != "/kontakt" {
-		t.Errorf("expected the crawler's two-page manifest, got %+v", res.Screenshots)
+	if len(res.Screenshots) != 2 || res.Screenshots[0].Path != "/ · desktop" || res.Screenshots[1].Path != "/ · mobile" {
+		t.Errorf("expected the crawler's desktop/mobile manifest, got %+v", res.Screenshots)
 	}
 	var found bool
 	for _, e := range machines.Execs() {

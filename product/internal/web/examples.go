@@ -15,6 +15,7 @@ type showcaseExample struct {
 	DesktopImage string // /static/examples/<slug>-desktop.webp (1440×900)
 	MobileImage  string // /static/examples/<slug>-mobile.webp (390×844); optional
 	URL          string // optional public customer URL
+	AIImages     bool   // disclose that the example's image world was generated in Forge
 }
 
 // publishedShowcase is intentionally empty until real work is supplied.
@@ -32,6 +33,7 @@ type landingExample struct {
 	DesktopImage string
 	MobileImage  string
 	URL          string
+	AIImages     bool
 }
 
 func localizedExampleText(values map[string]string, lang string) string {
@@ -48,7 +50,7 @@ func landingExamples(lang string) []landingExample {
 			Name: localizedExampleText(example.Name, lang), Category: localizedExampleText(example.Category, lang),
 			Summary: localizedExampleText(example.Summary, lang), DesktopAlt: localizedExampleText(example.DesktopAlt, lang),
 			MobileAlt: localizedExampleText(example.MobileAlt, lang), DesktopImage: example.DesktopImage,
-			MobileImage: example.MobileImage, URL: example.URL,
+			MobileImage: example.MobileImage, URL: example.URL, AIImages: example.AIImages,
 		})
 	}
 	return out

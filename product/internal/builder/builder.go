@@ -117,7 +117,7 @@ type ModelSpec struct {
 }
 
 // CapturedPage is one screenshot the crawler produced: which slot (PUT URL
-// index) it was uploaded to and the site path it shows.
+// index) it was uploaded to and the site path + viewport it shows.
 type CapturedPage struct {
 	Slot int    `json:"slot"`
 	Path string `json:"path"`
@@ -548,8 +548,9 @@ func (b *Sandbox) review(ctx context.Context, sb *fly.Sandbox, preview string, r
 	return shots, critique, findings
 }
 
-// crawlerJS crawls a deployed site's same-origin pages and screenshots each
-// (one browser session), uploading to the presigned PUT URLs passed as argv.
+// crawlerJS crawls a deployed site's same-origin pages and screenshots each at
+// desktop + mobile widths (one browser session), uploading to the presigned
+// PUT URLs passed as argv.
 // It prints a JSON manifest [{slot,path}] of what it captured.
 const crawlerJS = `const { chromium } = require('playwright');
 const https = require('https');
@@ -581,15 +582,25 @@ function put(url, buf) {
       if (!paths.includes(p)) paths.push(p);
     } catch {}
   }
-  const list = paths.slice(0, putURLs.length);
+  const viewports = [
+    { name: 'desktop', width: 1280, height: 900 },
+    { name: 'mobile', width: 390, height: 844 },
+  ];
+  const list = paths.slice(0, Math.max(1, Math.floor(putURLs.length / viewports.length)));
   const captured = [];
-  for (let i = 0; i < list.length; i++) {
-    try {
-      await page.goto(origin + list[i], { waitUntil: 'networkidle', timeout: 30000 });
-      const buf = await page.screenshot({ fullPage: true });
-      await put(putURLs[i], buf);
-      captured.push({ slot: i, path: list[i] });
-    } catch {}
+  let slot = 0;
+  for (const route of list) {
+    for (const viewport of viewports) {
+      if (slot >= putURLs.length) break;
+      try {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await page.goto(origin + route, { waitUntil: 'networkidle', timeout: 30000 });
+        const buf = await page.screenshot({ fullPage: true });
+        await put(putURLs[slot], buf);
+        captured.push({ slot, path: route + ' · ' + viewport.name });
+      } catch {}
+      slot++;
+    }
   }
   await browser.close();
   console.log(JSON.stringify(captured));
@@ -828,8 +839,10 @@ after: that wastes an entire deploy on an unpolished site.
 With the app running locally (./scripts/serve.sh) and the browser tests passing,
 audit the RENDERED site — not the source — with the provided script:
   node scripts/audit.js
-It crawls your running pages, renders each, and runs the impeccable design
-detector on the REAL assembled HTML. This is load-bearing: many defects exist
+It crawls your running pages, runs impeccable on the REAL assembled HTML, and
+drives Chromium at 1280px + 390px for responsive overflow, keyboard navigation,
+touch targets, metadata, image dimensions/lazy-loading/modern formats and a
+2.5MB page image budget. This is load-bearing: many defects exist
 ONLY once the page is composed and never appear in a single template file — e.g.
 a section rule (.section-dark a) overriding a .btn text color so the button is
 invisible until hover, or opacity making footer text too faint. Scanning the
@@ -844,9 +857,10 @@ finding genuinely will not clear.
 
 Then SEE your own work: with the app still running locally, run
   node scripts/design-review.js
-It screenshots your pages and a design director (a vision model) critiques the
-REAL rendered look — hierarchy, balance, whether it reads as intentionally
-designed or generic — things a linter can't judge. If it replies POLISH, apply
+It screenshots your pages at desktop + mobile sizes, includes close crops of
+content images, and a design director critiques hierarchy, balance, conversion,
+page length, business specificity, and whether each labelled image depicts the
+correct product/project without garbled text or unsafe claims. If it replies POLISH, apply
 the concrete fixes it lists (edit CSS/templates, not the plan), then run it again
 to confirm. Do at most TWO polish passes: land the clear wins, then stop — don't
 chase subjective nitpicks. If it can't run (prints that it's skipping), just rely

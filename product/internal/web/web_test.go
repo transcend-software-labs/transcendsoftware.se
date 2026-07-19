@@ -2,6 +2,8 @@ package web_test
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +22,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
+	"github.com/transcend-software-labs/rasmus-ai/internal/imagegen"
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
 	"github.com/transcend-software-labs/rasmus-ai/internal/notify"
 	"github.com/transcend-software-labs/rasmus-ai/internal/oauth"
@@ -54,6 +58,10 @@ func (n *recNotifier) Send(_ context.Context, _, _, body string) error {
 // magic-link tests, and returns the httptest server plus the backing store
 // (for tests that seed projects directly).
 func newTestServerAuth(t *testing.T, cfg config.Config, notifier *recNotifier) (*httptest.Server, store.Store, *recNotifier) {
+	return newTestServerAuthImageGen(t, cfg, notifier, nil)
+}
+
+func newTestServerAuthImageGen(t *testing.T, cfg config.Config, notifier *recNotifier, images *imagegen.Client) (*httptest.Server, store.Store, *recNotifier) {
 	t.Helper()
 	st := store.NewMemory()
 	fake := llm.NewFake()
@@ -67,6 +75,9 @@ func newTestServerAuth(t *testing.T, cfg config.Config, notifier *recNotifier) (
 	srv, err := web.NewServer(cfg, st, sessions, orch, broker, assets, log)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
+	}
+	if images != nil {
+		srv.SetImageGen(images)
 	}
 	var reg *oauth.Registry
 	if cfg.GoogleClientID != "" {
@@ -987,5 +998,137 @@ func TestPickImage_HTMXClosesWithRedirect(t *testing.T) {
 	}
 	if assets, _ := st.AssetsByProject(ctx, "proj-pick"); len(assets) != 1 || !assets[0].Generated || assets[0].Slot != "logo" {
 		t.Fatalf("pick should create the generated slot asset: %+v", assets)
+	}
+}
+
+func TestGenerateImage_RunsInBackgroundAndPersistsResults(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	releaseImages := func() { releaseOnce.Do(func() { close(release) }) }
+	defer releaseImages()
+	var calls atomic.Int32
+	imageAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			close(started)
+		}
+		<-release
+		encoded := base64.StdEncoding.EncodeToString([]byte("generated png"))
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{
+			map[string]any{"b64_json": encoded},
+			map[string]any{"b64_json": encoded},
+			map[string]any{"b64_json": encoded},
+		}})
+	}))
+	defer imageAPI.Close()
+
+	images := imagegen.New(imageAPI.URL, "sk-test", "gpt-image-test")
+	srv, st, _ := newTestServerAuthImageGen(t, config.Config{
+		AdminEmail: "admin@example.com", ImageGenMaxPerProject: 20,
+	}, nil, images)
+	defer srv.Close()
+	c := signedInClient(t, srv.URL)
+	ctx := context.Background()
+	u, _ := st.UserByEmail(ctx, "neighbour@example.com")
+	p := &project.Project{
+		ID: "proj-background-image", UserID: u.ID, Name: "X", Status: project.StatusPreviewReady,
+		Spec: project.PlanSpec{ContentNeeded: []project.ContentItem{
+			{Slug: "hero-image", Names: map[string]string{"en": "Hero image"}, Kind: "file", Generatable: true},
+			{Slug: "gallery-image", Names: map[string]string{"en": "Gallery image"}, Kind: "file", Generatable: true},
+		}},
+	}
+	if err := st.CreateProject(ctx, p); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	tok := csrfToken(t, c, srv.URL)
+	submit := func(slot string) (string, error) {
+		req, _ := http.NewRequest("POST", srv.URL+"/projects/"+p.ID+"/content/generate",
+			strings.NewReader(url.Values{"csrf_token": {tok}, "slot": {slot}, "prompt": {"A warm bakery image"}}.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+		resp, err := c.Do(req)
+		if err != nil {
+			return "", err
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return string(body), nil
+	}
+
+	type response struct {
+		body string
+		err  error
+	}
+	returned := make(chan response, 1)
+	go func() {
+		body, err := submit("hero-image")
+		returned <- response{body: body, err: err}
+	}()
+	select {
+	case result := <-returned:
+		if result.err != nil {
+			t.Fatalf("generate: %v", result.err)
+		}
+		if !strings.Contains(result.body, "close this window and start another image") {
+			t.Fatalf("response did not show background state: %s", result.body)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Forge waited for the image API instead of returning immediately")
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("background image API call did not start")
+	}
+
+	got, _ := st.ProjectByID(ctx, p.ID)
+	if set := got.PendingImages["hero-image"]; set.Status != "running" || set.JobID == "" || got.ImageGenCount != 1 {
+		t.Fatalf("running job was not persisted and charged once: %+v count=%d", set, got.ImageGenCount)
+	}
+	if _, err := submit("hero-image"); err != nil { // a double-submit must attach to the same job, not start or charge another
+		t.Fatalf("double-submit: %v", err)
+	}
+	got, _ = st.ProjectByID(ctx, p.ID)
+	if got.ImageGenCount != 1 || calls.Load() != 1 {
+		t.Fatalf("double-submit started another generation: count=%d calls=%d", got.ImageGenCount, calls.Load())
+	}
+	if _, err := submit("gallery-image"); err != nil {
+		t.Fatalf("second slot: %v", err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for calls.Load() != 2 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	got, _ = st.ProjectByID(ctx, p.ID)
+	if got.ImageGenCount != 2 || calls.Load() != 2 || got.PendingImages["gallery-image"].Status != "running" {
+		t.Fatalf("different slots did not run concurrently: count=%d calls=%d jobs=%+v", got.ImageGenCount, calls.Load(), got.PendingImages)
+	}
+
+	releaseImages()
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		got, _ = st.ProjectByID(ctx, p.ID)
+		hero := got.PendingImages["hero-image"]
+		gallery := got.PendingImages["gallery-image"]
+		if hero.Status == "ready" && len(hero.Keys) == 3 && gallery.Status == "ready" && len(gallery.Keys) == 3 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	set := got.PendingImages["hero-image"]
+	if set.Status != "ready" || len(set.Keys) != 3 {
+		t.Fatalf("background result did not become reviewable: %+v", set)
+	}
+	if set := got.PendingImages["gallery-image"]; set.Status != "ready" || len(set.Keys) != 3 {
+		t.Fatalf("second background result did not become reviewable: %+v", set)
+	}
+	resp, err := c.Get(srv.URL + "/projects/" + p.ID + "/content/generation?slot=hero-image")
+	if err != nil {
+		t.Fatalf("poll results: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if strings.Count(string(body), "Use this") != 3 {
+		t.Fatalf("poll did not render three choices: %s", body)
 	}
 }

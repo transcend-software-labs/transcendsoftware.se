@@ -1,16 +1,22 @@
 {{define "landing"}}{{template "head" .}}
-<section class="hero">
-  <h1>Welcome</h1>
-  <p class="lead">This is the starting point for your new site. Replace this page with your real content.</p>
+<section class="hero section">
+  <div class="container">
+    <h1>Welcome</h1>
+    <p class="lead">This is the starting point for your new site. Replace this page with your real content.</p>
+  </div>
 </section>
 
-<section class="panel" id="contact">
-  <h2>Contact us</h2>
-  <form method="post" action="/contact" class="stack">
-    <label>Name <input type="text" name="name" required maxlength="200"></label>
-    <label>Email <input type="email" name="email" maxlength="200"></label>
-    <label>Message <textarea name="message" rows="5" required maxlength="4000"></textarea></label>
-    <button class="btn" type="submit">Send</button>
-  </form>
+<section class="section section-tint" id="contact">
+  <div class="container container-copy">
+    <div class="panel">
+      <h2>Contact us</h2>
+      <form method="post" action="/contact" class="stack">
+        <label>Name <input type="text" name="name" required maxlength="200" autocomplete="name"></label>
+        <label>Email <input type="email" name="email" maxlength="200" autocomplete="email" spellcheck="false"></label>
+        <label>Message <textarea name="message" rows="5" required maxlength="4000"></textarea></label>
+        <button class="btn" type="submit">Send</button>
+      </form>
+    </div>
+  </div>
 </section>
 {{template "foot" .}}{{end}}

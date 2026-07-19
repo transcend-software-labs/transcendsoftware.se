@@ -354,6 +354,7 @@ type projectView struct {
 	ImageGen     bool                        // "Generate with AI" is available
 	GenSlots     map[string]bool             // slug → has a chosen AI-generated image (offer "improve")
 	GenPrompts   map[string]string           // slug → the auto-seeded prompt (shown, editable)
+	GenStatus    map[string]string           // slug → background generation state
 	GenExhausted bool                        // the project has hit its AI-generation cap
 	GenNotice    string                      // localized notice for a failed/blocked generation attempt
 	CanDelete    bool                        // settled unpaid project; no active pipeline can be orphaned
@@ -482,7 +483,9 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 	}
 	// Pending AI-image candidates awaiting a pick.
 	candidates := map[string][]candidateImage{}
+	genStatus := map[string]string{}
 	for slug, set := range p.PendingImages {
+		genStatus[slug] = set.Status
 		for i, key := range set.Keys {
 			candidates[slug] = append(candidates[slug], candidateImage{Index: i, URL: presign(key)})
 		}
@@ -501,6 +504,11 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 			genPrompts[c.Slug] = defaultImagePrompt(p, c, lang) // shown pre-filled, editable
 		}
 	}
+	for slug, set := range p.PendingImages {
+		if set.Prompt != "" {
+			genPrompts[slug] = set.Prompt
+		}
+	}
 
 	exhausted := s.imageGenExhausted(p)
 	genNotice := ""
@@ -515,7 +523,7 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		Project: p, Iterations: its, Assets: general,
 		Shots: s.withScreenshots(ctx, p).Shots, Status: s.statusOf(r, p),
 		FilledSlots: filled, Rosters: rosters, SlotAssets: slotAssets, Candidates: candidates,
-		MissingReq: missing, ImageGen: s.imagegen != nil, GenSlots: genSlots, GenPrompts: genPrompts,
+		MissingReq: missing, ImageGen: s.imagegen != nil, GenSlots: genSlots, GenPrompts: genPrompts, GenStatus: genStatus,
 		GenExhausted: exhausted, GenNotice: genNotice, CanDelete: !p.Paid && p.StripeSubID == "" && !p.HasDomain() && deletableProject(p),
 	}
 	sub := r.URL.Query().Get("sub")

@@ -200,7 +200,13 @@ func TestStaticAssetsAreCacheable(t *testing.T) {
 	defer srv.Close()
 	c := &http.Client{}
 
-	resp, err := c.Get(srv.URL + "/static/tokens.css")
+	page, _ := get(t, c, srv.URL+"/")
+	re := regexp.MustCompile(`href="(/static/tokens\.css\?v=[^"]+)"`)
+	m := re.FindStringSubmatch(page)
+	if m == nil {
+		t.Fatal("landing page does not link versioned tokens.css")
+	}
+	resp, err := c.Get(srv.URL + m[1])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,13 +217,15 @@ func TestStaticAssetsAreCacheable(t *testing.T) {
 	}
 	if cc := resp.Header.Get("Cache-Control"); !strings.Contains(cc, "max-age") {
 		t.Errorf("Cache-Control = %q, want a max-age", cc)
+	} else if !strings.Contains(cc, "max-age=31536000") || !strings.Contains(cc, "immutable") {
+		t.Errorf("Cache-Control = %q, want one-year immutable caching for versioned assets", cc)
 	}
 	etag := resp.Header.Get("ETag")
 	if etag == "" {
 		t.Fatal("static response has no ETag")
 	}
 
-	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/static/tokens.css", nil)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+m[1], nil)
 	req.Header.Set("If-None-Match", etag)
 	resp2, err := c.Do(req)
 	if err != nil {
@@ -230,9 +238,49 @@ func TestStaticAssetsAreCacheable(t *testing.T) {
 	}
 
 	// Pages must reference assets through the versioned helper.
-	page, _ := get(t, c, srv.URL+"/")
 	if !strings.Contains(page, "/static/app.css?v=") {
 		t.Error("landing page does not link app.css with a ?v= cache-buster")
+	}
+}
+
+func TestPublicLayoutCarriesQualityBaseline(t *testing.T) {
+	srv := newTestServer(t, "owner@example.com")
+	defer srv.Close()
+	page, resp := get(t, &http.Client{}, srv.URL+"/")
+	for _, header := range []string{"Content-Security-Policy", "Permissions-Policy", "Referrer-Policy", "Strict-Transport-Security", "X-Content-Type-Options", "X-Frame-Options"} {
+		if resp.Header.Get(header) == "" {
+			t.Errorf("missing security header %s", header)
+		}
+	}
+	for _, want := range []string{
+		`<html lang="en"`, `name="theme-color"`, `name="color-scheme"`,
+		`rel="icon"`, `class="skip-link" href="#main-content"`,
+		`id="main-content"`, `href="/login">Owner login</a>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("public layout missing %q", want)
+		}
+	}
+	headerEnd := strings.Index(page, "</header>")
+	if headerEnd > 0 && strings.Contains(page[:headerEnd], `href="/login"`) {
+		t.Error("owner login must stay out of the public primary navigation")
+	}
+}
+
+func TestCanonicalUsesBrandedForwardedHost(t *testing.T) {
+	srv := newTestServer(t, "")
+	defer srv.Close()
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "example.forge.test")
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(string(body), `rel="canonical" href="https://example.forge.test/"`) {
+		t.Errorf("canonical did not honor the public forwarded host: %.500s", body)
 	}
 }
 

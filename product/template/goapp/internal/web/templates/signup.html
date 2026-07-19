@@ -1,13 +1,17 @@
 {{define "signup"}}{{template "head" .}}
-<section class="panel narrow">
-  <h1>Create account</h1>
-  <form method="post" action="/signup" class="stack">
-    <label>Email <input type="email" name="email" required autocomplete="email"></label>
-    <label>Password <input type="password" name="password" required minlength="8" autocomplete="new-password">
-      <span class="muted small">At least 8 characters.</span></label>
-    <button class="btn" type="submit">Create account</button>
-  </form>
-  <p class="muted small">The first account created becomes the site owner, with access to the site admin and all its data.</p>
-  <p class="muted small">Already have an account? <a href="/login">Log in</a>.</p>
+<section class="section">
+  <div class="container narrow">
+    <div class="panel">
+      <h1>Create owner account</h1>
+      <form method="post" action="/signup" class="stack">
+        <label>Email <input type="email" name="email" required autocomplete="email" spellcheck="false"></label>
+        <label>Password <input type="password" name="password" required minlength="8" autocomplete="new-password">
+          <span class="field-hint">At least 8 characters.</span></label>
+        <button class="btn" type="submit">Create account</button>
+      </form>
+      <p class="muted small">The first account belongs to the site owner and can access the site admin and its data.</p>
+      <p class="muted small">Already have an account? <a href="/login">Log in</a>.</p>
+    </div>
+  </div>
 </section>
 {{template "foot" .}}{{end}}

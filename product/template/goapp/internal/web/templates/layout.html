@@ -1,9 +1,12 @@
 {{define "head"}}<!doctype html>
-<html lang="en">
+<html lang="{{.Language}}" style="color-scheme: {{.ColorScheme}}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{.Title}}</title>
+  <meta name="theme-color" content="{{.ThemeColor}}">
+  <meta name="color-scheme" content="{{.ColorScheme}}">
+  <link rel="icon" href="{{asset "favicon.svg"}}" type="image/svg+xml">
   <!-- SEO + social. Description is the snippet search engines and every chat/
        social preview show — set View.Description on each page (see seo.go).
        Canonical/JSONLD are filled automatically; og:image makes shared links
@@ -31,32 +34,39 @@
   <script src="{{asset "app.js"}}" defer></script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header class="nav">
   <a class="brand" href="/">Your Site</a>
   <!-- Mobile menu: a CSS-only checkbox toggle (styled in app.css) collapses the
        links into a hamburger on phones. No JS. Keep this pattern on every nav
        you build — see AGENTS.md. -->
-  <input type="checkbox" id="nav-toggle" class="nav-toggle" hidden>
-  <label for="nav-toggle" class="nav-burger" aria-label="Toggle menu" aria-controls="site-nav">
-    <span></span><span></span><span></span>
+  <input type="checkbox" id="nav-toggle" class="nav-toggle sr-only" aria-controls="site-nav">
+  <label for="nav-toggle" class="nav-burger">
+    <span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span>
+    <span class="sr-only">Toggle menu</span>
   </label>
   <nav id="site-nav" class="navlinks" aria-label="Main navigation">
+    <a href="/">Home</a>
+    <a href="/#contact">Contact</a>
     {{if .User}}
       {{if .User.IsAdmin}}<a href="/admin">Site admin</a>{{else}}<a href="/app">Account</a>{{end}}
       <form method="post" action="/logout" class="inline">
         <input type="hidden" name="csrf_token" value="{{.CSRF}}">
         <button class="linklike">Log out</button>
       </form>
-    {{else}}
-      <a href="/login">Log in</a>
     {{end}}
   </nav>
 </header>
-<main class="container">
-{{if .Flash}}<div class="flash">{{.Flash}}</div>{{end}}
+<main id="main-content">
+{{if .Flash}}<div class="container"><div class="flash" role="status">{{.Flash}}</div></div>{{end}}
 {{end}}
 
 {{define "foot"}}</main>
-<footer class="foot center"><span class="muted">© Your Site</span></footer>
+<footer class="footer">
+  <div class="container-wide footer-row">
+    <span>© {{.SiteName}}</span>
+    {{if not .User}}<a href="/login">Owner login</a>{{end}}
+  </div>
+</footer>
 </body>
 </html>{{end}}

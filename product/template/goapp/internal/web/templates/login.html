@@ -1,11 +1,15 @@
 {{define "login"}}{{template "head" .}}
-<section class="panel narrow">
-  <h1>Log in</h1>
-  <form method="post" action="/login" class="stack">
-    <label>Email <input type="email" name="email" required autocomplete="email"></label>
-    <label>Password <input type="password" name="password" required autocomplete="current-password"></label>
-    <button class="btn" type="submit">Log in</button>
-  </form>
-  <p class="muted small">No account? <a href="/signup">Create one</a>.</p>
+<section class="section">
+  <div class="container narrow">
+    <div class="panel">
+      <h1>Owner login</h1>
+      <form method="post" action="/login" class="stack">
+        <label>Email <input type="email" name="email" required autocomplete="email" spellcheck="false"></label>
+        <label>Password <input type="password" name="password" required autocomplete="current-password"></label>
+        <button class="btn" type="submit">Log in</button>
+      </form>
+      <p class="muted small">No owner account yet? <a href="/signup">Create it</a>.</p>
+    </div>
+  </div>
 </section>
 {{template "foot" .}}{{end}}

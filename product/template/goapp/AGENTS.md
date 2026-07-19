@@ -53,7 +53,8 @@ that implements the plan.
 - **Any authenticated POST:** include the hidden `csrf_token` input (see the
   logout form) and call `s.checkCSRF(r)` first.
 - **Content/branding:** replace "Your Site" in `layout.html`, the landing page,
-  and the `static/tokens.css` variables. Write real, complete copy in the customer's
+  the `static/tokens.css` variables, and the neutral `static/favicon.svg` with a
+  simple project-specific mark. Write real, complete copy in the customer's
   language (Swedish unless the brief says otherwise).
 - **Client-side JS (rare):** if the plan genuinely needs an interactive widget
   (gallery/lightbox, date picker, live filter), write it in `web/src/app.ts` —
@@ -88,6 +89,10 @@ Forge-specific rules layered on top of it.
     cards, imagery treatment, the signature element. Compose with
     `.section`/`.container` so insets stay consistent, and take every
     padding/margin/gap from the `--space-*` scale.
+- **Use the locked composition primitives before inventing another layout
+  system:** `.split`, `.grid-2/-3/-4`, `.actions`, `.section-heading`, `.prose`,
+  `.media-frame`, `.trust-strip`, and the narrow/copy/wide container variants.
+  They carry only structure; `app.css` still owns the look.
 - Buttons: restyle variants via custom properties only —
   `.btn-secondary { --btn-bg: …; --btn-ink: …; }`. Never raw `color:` rules on
   buttons; the component pins button ink so section link-colors can't make
@@ -104,11 +109,14 @@ Forge-specific rules layered on top of it.
 - Keep semantic HTML and the responsive behavior. The **Interface quality floor**
   below (keyboard/focus, forms, contrast, every-state, motion) is the
   non-negotiable bar under every design — beauty never trumps usability.
-- **The site's language drives more than copy**: set `<html lang="…">` in
-  `layout.html` to the site's language, and pick typefaces that actually cover
+- **The site's language drives more than copy**: set `Language` in `main.go`
+  (`web.Options`) to the site's language, and pick typefaces that actually cover
   its script — many display faces are Latin-only, so for Cyrillic, Greek, etc.
   verify the display font has the glyphs (or use a well-covered face / system
   stack for headings). Tofu or silent fallback in headings is a shipped bug.
+- Replace `static/favicon.svg` with a small project-specific mark. Keep it SVG,
+  legible at 16px and free of tiny text; the rendered audit rejects the neutral
+  starter icon on a finished site.
 - **Record the chosen direction in `DESIGN.md`** (palette, type, spacing, voice)
   before you build the UI, then build to it.
 
@@ -136,12 +144,24 @@ Forge-specific rules layered on top of it.
   toggled below 720px): reuse it for the public nav — restyle it, but keep the
   collapse behavior. It needs no JavaScript. Always check the nav at a 375px
   width before deploying.
-- **Login must stay reachable.** The starter serves /login and /signup on every
-  site, and the starter nav's `{{if .User}}` block links them. When you redesign
-  the header, KEEP that block (restyled however you like) — or link /login from
-  the footer. A site whose auth pages exist but are linked from nowhere fails
-  the audit (`orphaned-auth-page`): the owner literally cannot find their own
-  login. If the site takes orders/bookings, "Log in" belongs in the nav.
+- **Owner login stays reachable but out of the customer journey.** The starter
+  footer links it as “Owner login”; keep an equivalent discreet footer link.
+  Put login/account in the PRIMARY nav only when the PLAN explicitly includes
+  customer accounts. Taking orders/bookings does not by itself imply accounts.
+  The audit follows the footer link to verify `/login` → `/signup` reachability.
+
+### Page composition — use an archetype, never a formula
+
+The plan names one starting archetype: local service, local retail,
+professional, portfolio, booking, or campaign. Follow its visitor logic, then
+adapt it to the real content. In the first two screenfuls communicate who/what/
+where, ONE visually primary action, and one REAL reason to trust or choose the
+business. Never invent testimonials, certifications, statistics, awards,
+prices, opening hours or response times. Do not automatically add a three-step
+process, FAQ, numbered stats or card grid: every section answers a real visitor
+question or it is removed. On a home page, feature a small selection and link
+to the full catalogue/portfolio rather than making the landing unnecessarily
+long. End every path with a useful next step and build a complete footer.
 
 ### Interface quality floor — every page clears these
 
@@ -184,6 +204,11 @@ fails these is not done. Walk this list before you deploy.
   Tint borders and shadows toward the surface's own hue rather than pure black.
   Set `<meta name="theme-color">` and `color-scheme` on `<html>` so the browser
   chrome matches the page.
+- **Images are exact content, not decoration.** A card labelled “Croissant”
+  must visibly show a croissant. Reject garbled text, misspelled wordmarks,
+  accidental logos, unsafe technical diagrams and unsupported standards or
+  certification claims. For logos, prefer a symbol-only SVG plus a real HTML/SVG
+  wordmark over rasterized AI text.
 - **Motion.** Honor `prefers-reduced-motion` — wrap non-essential animation in
   `@media (prefers-reduced-motion: no-preference)` (or disable it under
   `reduce`). Animate only `transform` and `opacity`; never `transition: all`.
@@ -212,8 +237,9 @@ small edits:
   win available: it's what earns rich results and Maps eligibility. Use ONLY
   details the intake actually gave you — invented hours or a made-up phone number
   are worse than no markup at all. No real details? Leave `Organization`.
-- **`<html lang>`** in `layout.html` is `"en"`. If the site is Swedish, it is
-  `"sv"`. Wrong `lang` mis-signals the audience and breaks screen readers.
+- **The `Language` option** in `main.go` defaults to `"en"`. If the site is
+  Swedish, set it to `"sv"`. Wrong `lang` mis-signals the audience and breaks
+  screen readers. Set `ThemeColor` and `ColorScheme` there at the same time.
 
 Then the on-page basics, which are just good HTML: exactly **one `<h1>`** per page
 naming what the page is (headings descend in order — no jumping h2→h4), real
@@ -221,6 +247,17 @@ naming what the page is (headings descend in order — no jumping h2→h4), real
 get `alt=""`), and `<title>`s that read `Specific thing · Site name` rather than
 "Home". If the business serves a place, say the place in the words on the page —
 "sourdough bakery in Södermalm" is how someone searches.
+
+### Image delivery — automatic baseline
+
+Copy public PNG/JPEG originals into `internal/web/static/`; `make test` runs
+`scripts/optimize-images.js`, which creates WebP siblings and 480/768/1200/1600
+variants. The `asset` helper automatically serves the WebP sibling. Use
+`assetSrcSet` plus an honest `sizes` value for hero/content images. Every `<img>`
+has intrinsic `width` and `height`, exact alt text, eager/high priority only in
+the first viewport, and `loading="lazy"` below it. Use SVG for logos when
+possible. The rendered audit rejects oversized assets, non-modern delivery,
+layout shift, below-fold eager loading and a page image budget over 2.5 MB.
 
 ## Rules
 
@@ -327,25 +364,26 @@ get `alt=""`), and `<title>`s that read `Specific thing · Site name` rather tha
 
       node scripts/audit.js
 
-  It crawls your running pages, renders each, and runs the impeccable detector on
-  the REAL assembled HTML — so it catches defects that live only in the composed
-  page and never in a template file (a section rule like `.section-dark a`
-  overriding a `.btn` colour so a button is invisible until hover; opacity making
-  footer text too faint; low-contrast text). Auditing the template SOURCE misses
-  all of these. Fix what it flags in the CSS and re-run until it prints `clean`.
-  Do NOT edit `audit.js`.
+  It recursively crawls the public routes, runs impeccable on the REAL assembled
+  HTML, then drives desktop and 390px Chromium. It catches defects that only
+  exist in the composed page plus overflow, keyboard/mobile-nav failures, small
+  touch targets, incomplete metadata, unchanged starter branding, image layout
+  shift, bad loading priority, old/oversized formats and the page image budget.
+  Auditing template SOURCE misses these. Fix what it flags and re-run until it
+  prints `clean`. Do NOT edit `audit.js`.
 
 - **Visual design review — see your own work before deploy.** audit.js is a
   linter; this is a pair of eyes. With the app still running:
 
       node scripts/design-review.js
 
-  It screenshots your pages and a design director (a vision model) critiques the
-  real rendered look — hierarchy, balance, whether it reads as intentionally
-  designed or generic — judgments a linter can't make. If it says `POLISH`, apply
-  the concrete fixes it lists (CSS/templates) and run it again; do at most two
-  polish passes, then stop. If it prints that it's skipping (no vision model),
-  just rely on audit.js. Do NOT edit `design-review.js`.
+  It screenshots public routes at desktop and mobile widths, adds crops of the
+  content images, and a design director (a vision model) critiques hierarchy,
+  balance, conversion focus, page length, business specificity and exact
+  image-to-label matching — judgments a linter can't make. If it says `POLISH`,
+  apply the concrete fixes it lists (CSS/templates) and run it again; do at most
+  two polish passes, then stop. If it prints that it's skipping (no vision
+  model), rely on audit.js. Do NOT edit `design-review.js`.
 
   **The local render is what ships.** Fly serves the same baked-in static files
   and the app seeds its own DB, so localhost is faithful to production — there's
@@ -357,8 +395,8 @@ get `alt=""`), and `<title>`s that read `Specific thing · Site name` rather tha
 
 ## Build, test, deploy
 
-    make run        # local dev on :8080 (compiles app.ts first)
-    make test       # builds + type-checks app.ts, then go test
+    make run        # local dev on :8080 (optimizes images + compiles app.ts)
+    make test       # images + app.ts build/typecheck + go test
     fly deploy --remote-only --ha=false --app "$FLY_APP" --access-token "$FLY_DEPLOY_TOKEN"
 
 `--ha=false` is required: the app uses SQLite on a single machine — two

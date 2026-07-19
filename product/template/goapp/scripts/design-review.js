@@ -27,47 +27,76 @@ const LLM = (process.env.LLM_BASE_URL || '').replace(/\/$/, '');
 const MODEL = process.env.LLM_MODEL;
 
 const SYSTEM = `You are the design director doing a visual review of a website your studio is about to hand to a paying customer. You are looking at real screenshots of its pages.
-Judge like a human looking at a screen, not a linter: visual hierarchy, balance and alignment, spacing rhythm, whether the palette and type feel intentional and specific to this business, and whether anything looks broken, cramped, flush against an edge, misaligned, unreadable, or like a generic AI-generated template.
+Judge like a human looking at desktop AND mobile screens, not a linter:
+- visual hierarchy, balance, alignment, spacing rhythm, and whether palette/type/layout feel intentional and specific to this business;
+- whether the first two screenfuls communicate who/what/where, one primary action, and a real reason to trust or choose the business;
+- whether the page is unnecessarily long, repetitive, dominated by a catalogue, or padded with generic cards/process/FAQ content;
+- whether navigation, forms, footer and responsive reflow look complete rather than merely functional;
+- image correctness: every labelled product/project image must visibly match its nearby label. Reject adjacent substitutions (a cookie labelled croissant), garbled or misspelled text, unwanted labels/logos, unsafe technical diagrams, unsupported standards/certification claims, and inconsistent image art direction. A raster logo with suspicious lettering is a visible defect.
 Reply in EXACTLY one of these two forms:
 SHIP
-(nothing else — the site looks intentionally designed by a person)
+(nothing else — both viewport sizes look intentionally designed, conversion is clear, and every sampled image matches its labelled subject)
 or:
 POLISH
 1. <one concrete, visually verifiable fix, phrased as an instruction to the builder, e.g. "The hero headline and the search card are both centred and the same weight — make the headline larger and left-align the section so it has a clear focal point.">
 2. <next fix>
-(3 issues maximum — only things a paying customer would notice; no nitpicks, no code, no restating the brief. Every issue must be visible in the screenshots.)`;
+(3 issues maximum — prioritize wrong/malformed imagery, broken mobile composition and unclear conversion before cosmetic polish. Only things a paying customer would notice; no nitpicks, no code. Every issue must be visible in the screenshots.)`;
 
 async function screenshots() {
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-  const shots = [];
-  const shoot = async () => shots.push(await page.screenshot({ fullPage: true, type: 'jpeg', quality: 72 }));
+  const shots = [], samples = [];
   try {
-    await page.goto(BASE, { waitUntil: 'networkidle', timeout: 20000 });
-    await shoot();
-    const hrefs = await page.$$eval('a[href]', (as) => as.map((a) => a.getAttribute('href')));
-    const routes = [...new Set(hrefs)]
-      .filter((h) => h && h.startsWith('/') && !/\.(css|js|png|jpe?g|svg|ico|webp|gif)$/i.test(h))
-      .filter((h) => !/^\/(static|logout|admin)(\/|$)/.test(h))
-      .slice(0, 3);
-    for (const r of routes) {
+    const discover = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await discover.goto(BASE, { waitUntil: 'networkidle', timeout: 20000 });
+    const hrefs = await discover.$$eval('a[href]', (as) => as.map((a) => a.getAttribute('href')));
+    const routes = ['/', ...new Set(hrefs)]
+      .filter((h, i, all) => all.indexOf(h) === i)
+      .filter((h) => h && h.startsWith('/') && !/\.(css|js|png|jpe?g|svg|ico|webp|avif|gif)$/i.test(h))
+      .filter((h) => !/^\/(static|logout|admin|app|login|signup)(\/|$)/.test(h))
+      .slice(0, 4);
+
+    // Individual image crops preserve enough detail for semantic/OCR review;
+    // full-page screenshots alone can make a wrong product look plausible.
+    const imgs = discover.locator('main img:visible');
+    for (let i = 0; i < Math.min(await imgs.count(), 6); i++) {
+      const img = imgs.nth(i);
       try {
-        await page.goto(BASE + r, { waitUntil: 'networkidle', timeout: 20000 });
-        await shoot();
+        const meta = await img.evaluate((el) => {
+          const near = el.closest('article, li, figure, section');
+          return { alt: el.getAttribute('alt') || '', context: (near?.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 180) };
+        });
+        samples.push({ label: `image sample ${i + 1}; nearby text: ${meta.context || '(none)'}; alt: ${meta.alt || '(empty)'}`, bytes: await img.screenshot({ type: 'jpeg', quality: 82 }) });
       } catch {}
+    }
+    await discover.close();
+
+    for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: 'mobile', width: 390, height: 844 }]) {
+      const page = await browser.newPage({ viewport });
+      for (const route of routes) {
+        try {
+          await page.goto(BASE + route, { waitUntil: 'networkidle', timeout: 20000 });
+          shots.push({ label: `${route} — ${viewport.name} ${viewport.width}×${viewport.height}`, bytes: await page.screenshot({ fullPage: true, type: 'jpeg', quality: 74 }) });
+        } catch {}
+      }
+      await page.close();
     }
   } finally {
     await browser.close();
   }
-  return shots;
+  return { shots, samples };
 }
 
-async function critique(shots) {
+async function critique(review) {
   const parts = [{ type: 'text', text: 'Review these page screenshots and reply with SHIP, or POLISH and the fixes.' }];
-  for (const png of shots.slice(0, 4)) {
-    parts.push({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + png.toString('base64') } });
+  for (const shot of review.shots.slice(0, 8)) {
+    parts.push({ type: 'text', text: shot.label });
+    parts.push({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + shot.bytes.toString('base64') } });
   }
-  const body = { model: MODEL, max_tokens: 1500, messages: [
+  for (const sample of review.samples.slice(0, 6)) {
+    parts.push({ type: 'text', text: sample.label });
+    parts.push({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + sample.bytes.toString('base64') } });
+  }
+  const body = { model: MODEL, max_tokens: 2000, messages: [
     { role: 'system', content: SYSTEM },
     { role: 'user', content: parts },
   ] };
@@ -90,18 +119,18 @@ async function main() {
     console.log('design review: no vision model configured — rely on scripts/audit.js.');
     return;
   }
-  let shots;
-  try { shots = await screenshots(); } catch (e) {
+  let review;
+  try { review = await screenshots(); } catch (e) {
     console.log('design review: could not screenshot the site (' + e.message + ') — is ./scripts/serve.sh running? Skipping.');
     return;
   }
-  if (!shots.length) { console.log('design review: no pages captured — skipping.'); return; }
+  if (!review.shots.length) { console.log('design review: no pages captured — skipping.'); return; }
   let verdict;
-  try { verdict = await critique(shots); } catch (e) {
+  try { verdict = await critique(review); } catch (e) {
     console.log('design review: vision model unavailable (' + e.message + ') — rely on scripts/audit.js.');
     return;
   }
-  console.log('\n=== visual design review — ' + shots.length + ' page(s), by the design model ===\n');
+  console.log('\n=== visual design review — ' + review.shots.length + ' viewport/page shot(s) + ' + review.samples.length + ' image sample(s) ===\n');
   console.log(verdict + '\n');
   // Also persist the verdict so the orchestrator can surface it to the operator
   // (the agent sees stdout, but the build log only records the command, not its

@@ -29,8 +29,10 @@ func (s *Server) handleContact(w http.ResponseWriter, r *http.Request) {
 	email := strings.TrimSpace(r.FormValue("email"))
 	body := strings.TrimSpace(r.FormValue("message"))
 	if name == "" || body == "" || len(name) > 200 || len(email) > 200 || len(body) > maxFieldLen {
-		s.render(w, http.StatusBadRequest, "landing", View{Title: "Welcome",
-			Flash: "Please fill in your name and a message."})
+		v := s.view(r, "Welcome", nil)
+		v.Description = "Welcome to " + s.siteName + "."
+		v.Flash = "Please fill in your name and a message."
+		s.render(w, http.StatusBadRequest, "landing", v)
 		return
 	}
 	_, err := s.db.ExecContext(r.Context(),
@@ -41,8 +43,10 @@ func (s *Server) handleContact(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	s.render(w, http.StatusOK, "landing", View{Title: "Welcome",
-		Flash: "Thanks — your message has been sent!"})
+	v := s.view(r, "Welcome", nil)
+	v.Description = "Welcome to " + s.siteName + "."
+	v.Flash = "Thanks — your message has been sent!"
+	s.render(w, http.StatusOK, "landing", v)
 }
 
 func (s *Server) handleSignupForm(w http.ResponseWriter, r *http.Request) {
@@ -53,8 +57,9 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	email := strings.TrimSpace(r.FormValue("email"))
 	password := r.FormValue("password")
 	if !strings.Contains(email, "@") || len(password) < 8 || len(email) > 200 {
-		s.render(w, http.StatusBadRequest, "signup", View{Title: "Create account",
-			Flash: "Enter a valid email and a password of at least 8 characters."})
+		v := s.view(r, "Create account", nil)
+		v.Flash = "Enter a valid email and a password of at least 8 characters."
+		s.render(w, http.StatusBadRequest, "signup", v)
 		return
 	}
 	// The first account becomes the site owner. When OWNER_EMAIL is set (Forge
@@ -67,8 +72,9 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if count == 0 && !strings.EqualFold(email, s.ownerEmail) {
-			s.render(w, http.StatusForbidden, "signup", View{Title: "Create account",
-				Flash: "The first account is reserved for the site owner — sign up with the email address the site was ordered with."})
+			v := s.view(r, "Create account", nil)
+			v.Flash = "The first account is reserved for the site owner — sign up with the email address the site was ordered with."
+			s.render(w, http.StatusForbidden, "signup", v)
 			return
 		}
 	}
@@ -80,8 +86,9 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	u, err := auth.CreateUser(r.Context(), s.db, email, hash)
 	if err != nil {
 		if errors.Is(err, auth.ErrEmailTaken) {
-			s.render(w, http.StatusConflict, "signup", View{Title: "Create account",
-				Flash: "That email is already registered."})
+			v := s.view(r, "Create account", nil)
+			v.Flash = "That email is already registered."
+			s.render(w, http.StatusConflict, "signup", v)
 			return
 		}
 		s.log.Error("create user", "err", err)
@@ -103,8 +110,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 	u, err := auth.UserByEmail(r.Context(), s.db, email)
 	if err != nil || !auth.CheckPassword(u.PasswordHash, password) {
-		s.render(w, http.StatusUnauthorized, "login", View{Title: "Log in",
-			Flash: "Wrong email or password."})
+		v := s.view(r, "Log in", nil)
+		v.Flash = "Wrong email or password."
+		s.render(w, http.StatusUnauthorized, "login", v)
 		return
 	}
 	if !s.startSession(w, r, u.ID) {

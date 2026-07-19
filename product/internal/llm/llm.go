@@ -109,10 +109,30 @@ Decisions to default to (override only with a clear reason):
 
 Return markdown with these sections:
 ## Summary — one paragraph of what we will build.
+## Site archetype — choose ONE information-architecture starting point and name
+   it: local_service, local_retail, professional, portfolio, booking, or
+   campaign. Explain in one sentence why it fits. This is a composition aid,
+   not a visual theme:
+   - local_service: hero → real trust facts → services → process → real work → enquiry
+   - local_retail: hero → featured offer → hours/location → story → order/visit
+   - professional: hero → client problem/outcome → expertise → approach → proof → contact
+   - portfolio: hero/work → selected projects → method → person/team → contact
+   - booking: hero → services/prices → availability → reassurance → booking
+   - campaign: hero → core proposition → evidence → details → single conversion
+   Adapt the sequence to the brief and omit blocks with no real content. Never
+   manufacture testimonials, statistics, credentials, awards or opening hours
+   merely to fill the archetype.
 ## Pages — EVERY page/route. For each: its path, its purpose, and the exact
    sections/content in order (hero, the specific blocks, lists, forms, CTAs,
    footer). Name the nav links. Be specific enough that two builders would
-   produce the same page structure.
+   produce the same page structure. On the home page, state what the first two
+   screenfuls communicate: who/what/where, one visually primary action, and one
+   REAL reason to trust or choose the business. Keep navigation to roughly five
+   choices plus the primary action. Do not automatically add "three steps",
+   an FAQ, statistics or generic feature cards; each section must answer a real
+   visitor question and earn its space. End every public path with a useful next
+   step and specify a complete footer (identity, practical details, navigation,
+   legal links if relevant, and a discreet owner login).
 ## Data model — the exact SQLite tables and their columns + types for anything
    the site stores (bookings, enquiries, member data beyond auth, …), and which
    page reads/writes each. Only what the plan needs. Users/auth and the contact
@@ -134,7 +154,9 @@ Return markdown with these sections:
      Never the browser default; don't reflex to Inter/Roboto.
    - Layout & hero: the hero is the thesis — open with the most characteristic
      thing about this business, not a stock "big number + gradient" block; then
-     sketch the section rhythm below it.
+     sketch the section rhythm below it. Name the content width, image treatment,
+     grid behavior and mobile reflow. Use one primary CTA style; secondary links
+     must not compete with it.
    - Signature: ONE element this site is remembered by — spend the boldness there
      and keep everything else quiet and disciplined.
    Steer AWAY from the AI-generated tells unless the customer asked for them:
@@ -151,6 +173,11 @@ Return markdown with these sections:
    specific direction worth executing.
 ## Content & assets — the real copy/photos/logo the customer must provide, plus
    sensible, on-brand placeholder copy to ship meanwhile (never lorem ipsum).
+   Ask for concrete proof appropriate to the business (real certifications,
+   reviews, work examples, service area, hours, prices) but never invent it.
+   Define each image slot narrowly: exact subject, intended placement/aspect,
+   whether text is forbidden, and any safety/accuracy constraints. Product and
+   project images must describe the exact named item, not a general category.
 ## Out of scope — a short list of things NOT to build, to keep the build tight.
 
 After all the markdown above, emit a fenced code block tagged json containing a
@@ -160,10 +187,12 @@ and content-upload slots, so write its text for a non-technical customer, in the
 customer's language. Exact shape:
 
 ` + "```json" + `
-{"pages":[{"slug":"start","paths":["index","home","landing"],"names":{"en":"the home page","sv":"Startsidan","ru":"главная страница"},"included":"Hero, om oss, utvalda produkter och kontakt"}],
+{"archetype":"local_retail","pages":[{"slug":"start","paths":["index","home","landing"],"names":{"en":"the home page","sv":"Startsidan","ru":"главная страница"},"included":"Hero, om oss, utvalda produkter och kontakt"}],
  "not_included":["Onlinebetalning","Kundinloggning"],
  "content_needed":[{"slug":"logo","names":{"en":"Logo","sv":"Logotyp","ru":"Логотип"},"required":true,"kind":"file","generatable":true},{"slug":"team","names":{"en":"The team","sv":"Teamet","ru":"Команда"},"required":false,"kind":"roster"},{"slug":"contact_email","names":{"en":"Contact email","sv":"Kontaktmejl","ru":"Контактный email"},"required":true,"kind":"text"}]}
 ` + "```" + `
+- archetype: exactly one of local_service, local_retail, professional,
+  portfolio, booking or campaign; it must match the markdown section.
 - slug: short lowercase ascii id, stable.
 - paths: 2-4 lowercase substrings that will appear in the file names or routes
   the builder creates for this page (e.g. "maskiner","machines","catalog") —
@@ -218,9 +247,10 @@ has described a website they want. Two jobs:
 
 2. design_options: 2-3 distinct visual directions FOR THIS SPECIFIC SITE that
    the customer will choose between (they may also state their own). Each has
-   a short evocative name and one sentence covering mood, colors and
-   typography. Make them genuinely different from each other, and fitting for
-   the business. Always provide these.
+   a short evocative name and one sentence covering mood, colors, typography,
+   layout and one possible signature element. Make them genuinely different
+   from each other in composition as well as palette, and fitting for the
+   business. Always provide these.
 
 Write questions and design options in the customer's language.
 Respond with STRICT JSON and nothing else, exactly this shape:
@@ -248,6 +278,14 @@ How to build:
   - Give every site a real landing with hierarchy — a clear hero (headline +
     subhead + one primary action) and a few well-composed sections, NOT just a
     form dropped on a page.
+  - Follow the plan's Site archetype as the information-architecture starting
+    point, then adapt it to the actual content. The first two screenfuls must say
+    who/what/where, offer one visually primary action, and show one REAL reason
+    to trust or choose the business. Do not fabricate proof. Do not add generic
+    three-step processes, FAQ blocks, statistics or cards just to fill space.
+  - Keep the home page purposeful: feature a small selection and link to the
+    complete catalogue/portfolio rather than reproducing a very long listing.
+    Every section must answer a visitor question; cut repetitive filler.
   - Carry the chosen palette, type and mood THROUGHOUT (page background,
     headings, body, accents, buttons, cards) — not one accent colour on an
     otherwise default page. Choose type with character (a distinctive heading
@@ -256,6 +294,8 @@ How to build:
     and appetising; a law firm, composed and solid) via colour, type, spacing
     and small tasteful details. Spacing should be generous but PURPOSEFUL, not
     empty voids. Consistent radii, real hover/focus states, clear rhythm.
+  - Replace the starter favicon.svg with a simple, project-specific SVG mark
+    that remains recognizable at 16px; do not put a tiny raster wordmark in it.
   It must look intentionally designed by a person, not scaffolded. (This is
   correctness, not the gold-plating warned about later — that is about extra
   features, never about design quality on the pages the plan calls for.)
@@ -263,7 +303,16 @@ How to build:
   instruction lists what each file is in the customer's own words — place each
   file where that description says it belongs (a logo in the header, a hero
   photo in the hero). Copy the ones you use into the site. Only use
-  placeholders if assets/ is empty.
+  placeholders if assets/ is empty. Match every image to its exact labelled
+  subject — a croissant image must visibly be a croissant, not a generic pastry.
+  Never accept garbled AI text, a misspelled wordmark, unsupported technical or
+  certification claims, or a diagram where the slot calls for a real photo.
+- Put public PNG/JPEG originals under internal/web/static and let make test
+  run scripts/optimize-images.js. It creates WebP variants and the template's
+  asset helper serve them automatically. On every hero/content <img>, include
+  width + height, meaningful alt text, srcset via assetSrcSet with an
+  honest sizes value, eager/high priority only above the fold, and loading=lazy
+  below it. Use an SVG/small image for logos; never ship a megabyte logo.
 
 Verify EVERY user path in a real browser ON THIS BUILD MACHINE before you deploy
 — this local browser check is a hard gate: do NOT run the fly deploy command
@@ -431,7 +480,7 @@ func (Fake) Plan(_ context.Context, brief string) (PlanResult, error) {
 		"## Data & assets\n- Real photos\n- Copy / wording\n- Logo (optional)\n\n" +
 		"## Open questions\n- Brochure only, or online ordering?\n\n" +
 		"_(dev-mode plan — set ANTHROPIC_API_KEY for real planning)_\n\n" +
-		"```json\n" + `{"pages":[` +
+		"```json\n" + `{"archetype":"local_service","pages":[` +
 		`{"slug":"start","paths":["index","home","landing"],"names":{"en":"the home page","sv":"Startsidan","ru":"главная страница"},"included":"Hero, kort presentation och kontaktknapp"},` +
 		`{"slug":"om","paths":["om","about"],"names":{"en":"the about page","sv":"Om oss","ru":"страница «О нас»"},"included":"Er berättelse och bilder"},` +
 		`{"slug":"kontakt","paths":["kontakt","contact"],"names":{"en":"the contact page","sv":"Kontakt","ru":"контакты"},"included":"Kontaktformulär och karta"}],` +
@@ -478,17 +527,22 @@ const CritiqueSystemPrompt = `You are the design director doing the final visual
 studio is about to hand to a paying customer. You are looking at screenshots of
 the DEPLOYED site, plus the design direction it was built to.
 
-Judge like a human looking at a screen, not a linter: visual hierarchy, balance
-and alignment, spacing rhythm, whether the palette and type feel intentional
-and specific to this business, whether anything looks broken, cramped, flush
-against an edge, misaligned, unreadable, or like a generic AI-generated
+Judge like a human looking at desktop and mobile screens, not a linter: visual
+hierarchy, balance and alignment, spacing rhythm, conversion clarity, whether
+the palette/type/layout feel intentional and specific to this business, whether
+the page is unnecessarily long or repetitive, and whether anything looks
+broken, cramped, misaligned, unreadable, or like a generic AI-generated
 template. Compare against the stated direction — is it realised, or did the
-build drift into a default look?
+build drift into a default look? Inspect imagery as content: every product or
+project image must match its nearby label; garbled/misspelled text, accidental
+logos, wrong products, unsafe technical details and unsupported certification
+claims require POLISH.
 
 Reply in EXACTLY one of these two forms:
 
 SHIP
-(nothing else — the site looks intentionally designed and true to the direction)
+(nothing else — both viewport sizes look intentional, conversion is clear,
+and every sampled image matches its labelled subject)
 
 or:
 
@@ -497,6 +551,7 @@ POLISH
    builder, e.g. "The footer's three columns are misaligned with the page
    container — align their left edge with the content grid.">
 2. <next fix>
-(3 issues maximum — only things a reasonable customer would notice; no nitpicks,
-no code, no rewriting the design direction. If you list an issue it must be
-visible in the screenshots.)`
+(3 issues maximum — prioritize wrong/malformed imagery, broken mobile
+composition and unclear conversion before cosmetic polish. Only things a
+reasonable customer would notice; no nitpicks, no code, no rewriting the
+design direction. If you list an issue it must be visible in the screenshots.)`

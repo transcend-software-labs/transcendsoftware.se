@@ -168,12 +168,13 @@
           <button class="btn btn-sm" type="submit">{{$.T "prj.assets.upload"}}</button>
         </form>
         {{if and $.Data.ImageGen .CanGenerate}}
-          {{if $.Data.GenExhausted}}
-          <p class="muted small gen-exhausted">{{$.T "prj.gen.limit_note"}}</p>
-          {{else}}
           {{$cands := index $.Data.Candidates $slug}}
           {{$chosen := index $.Data.GenSlots $slug}}
-          <button type="button" class="btn btn-sm btn-ghost-accent gen-open" data-dialog-open="genm-{{$slug}}"><span class="gen-spark">✦</span> {{if $cands}}{{$.T "prj.gen.review"}}{{else if $chosen}}{{$.T "prj.gen.refine"}}{{else}}{{$.T "prj.gen.button"}}{{end}}</button>
+          {{$genstatus := index $.Data.GenStatus $slug}}
+          {{if and $.Data.GenExhausted (not $cands) (ne $genstatus "running")}}
+          <p class="muted small gen-exhausted">{{$.T "prj.gen.limit_note"}}</p>
+          {{else}}
+          <button type="button" class="btn btn-sm btn-ghost-accent gen-open" data-dialog-open="genm-{{$slug}}"><span class="gen-spark">✦</span> {{if eq $genstatus "running"}}{{$.T "prj.gen.creating"}}{{else if $cands}}{{$.T "prj.gen.review"}}{{else if $chosen}}{{$.T "prj.gen.refine"}}{{else}}{{$.T "prj.gen.button"}}{{end}}</button>
           <dialog id="genm-{{$slug}}" class="gen-modal">
             <div class="gen-modal-head">
               <h3>{{$.T "prj.gen.modal_title"}}</h3>
@@ -182,8 +183,12 @@
             <div class="gen-modal-content">
               <div class="gen-spin" id="gen-spin-{{$slug}}"><span class="spinner"></span> {{$.T "prj.gen.loading"}}</div>
               <div id="gen-body-{{$slug}}" class="gen-modal-body">
-                {{if $cands}}
+                {{if eq $genstatus "running"}}
+                  {{template "gen_running" (dict "Lang" $.Lang "CSRF" $.CSRF "Data" (dict "PID" $pid "Slug" $slug))}}
+                {{else if $cands}}
                   {{template "gen_candidates" (dict "Lang" $.Lang "CSRF" $.CSRF "Data" (dict "PID" $pid "Slug" $slug "Prompt" (index $.Data.GenPrompts $slug) "Candidates" $cands))}}
+                {{else if eq $genstatus "failed"}}
+                  {{template "gen_prompt" (dict "Lang" $.Lang "CSRF" $.CSRF "Data" (dict "PID" $pid "Slug" $slug "Prompt" (index $.Data.GenPrompts $slug) "Err" ($.T "prj.gen.failed")))}}
                 {{else if $chosen}}
                   {{template "gen_improve" (dict "Lang" $.Lang "CSRF" $.CSRF "Data" (dict "PID" $pid "Slug" $slug))}}
                 {{else}}

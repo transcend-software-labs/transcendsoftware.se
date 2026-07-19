@@ -50,7 +50,7 @@ func TestLandingExamplesRenderRealResponsivePairs(t *testing.T) {
 	examples := []landingExample{
 		{Name: "North Bakery", Category: "Local business", Summary: "Ordering and opening hours made easy to find.",
 			DesktopImage: "/static/examples/north-desktop.webp", MobileImage: "/static/examples/north-mobile.webp",
-			DesktopAlt: "North Bakery homepage on desktop", MobileAlt: "North Bakery homepage on a phone", URL: "https://north.example"},
+			DesktopAlt: "North Bakery homepage on desktop", MobileAlt: "North Bakery homepage on a phone", URL: "https://north.example", AIImages: true},
 		{Name: "Harbor Studio", Category: "Creative studio", Summary: "A portfolio focused on recent work.", DesktopImage: "/static/examples/harbor-desktop.webp", DesktopAlt: "Harbor Studio portfolio"},
 		{Name: "Linden Care", Category: "Professional service", Summary: "Services and contact options presented clearly.", DesktopImage: "/static/examples/linden-desktop.webp", DesktopAlt: "Linden Care homepage"},
 	}
@@ -63,7 +63,7 @@ func TestLandingExamplesRenderRealResponsivePairs(t *testing.T) {
 		`class="example-grid examples-3"`, `class="example-desktop"`, `class="example-mobile"`,
 		`src="/static/examples/north-desktop.webp"`, `src="/static/examples/north-mobile.webp"`,
 		`alt="North Bakery homepage on desktop"`, `loading="lazy"`, `href="https://north.example"`,
-		"Real websites, built from a brief", "Visit the live site",
+		"Real websites, built from a brief", "AI images created in Forge", "Visit the live site",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("landing showcase missing %q", want)
@@ -78,6 +78,39 @@ func TestLocalizedExampleTextFallsBackToEnglish(t *testing.T) {
 	}
 	if got := localizedExampleText(values, "ru"); got != "Bakery" {
 		t.Fatalf("missing translation should use English, got %q", got)
+	}
+}
+
+func TestLandingPromotesAIImageGenerationInEveryLocale(t *testing.T) {
+	tmpl, err := template.New("").Funcs(templateFuncs()).ParseFS(templatesFS, "templates/*.html")
+	if err != nil {
+		t.Fatalf("parse templates: %v", err)
+	}
+	tests := map[string]struct {
+		image string
+		flow  string
+		model string
+	}{
+		"en": {"Generate high-quality AI images", "three options at a time", "latest leading LLMs"},
+		"sv": {"Skapa högkvalitativa bilder med AI", "tre förslag åt gången", "senaste ledande LLM-modellerna"},
+		"ru": {"Создавайте качественные изображения", "три варианта за раз", "новейшие ведущие LLM"},
+	}
+	for lang, want := range tests {
+		t.Run(lang, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := tmpl.ExecuteTemplate(&buf, "landing", View{Lang: lang, Data: landingView{}}); err != nil {
+				t.Fatalf("render landing: %v", err)
+			}
+			out := buf.String()
+			for _, message := range []string{want.image, want.flow, want.model} {
+				if !strings.Contains(out, message) {
+					t.Errorf("landing missing AI capability message %q", message)
+				}
+			}
+			if !strings.Contains(out, `class="image-callout"`) {
+				t.Error("AI image capability must have a dedicated landing-page callout")
+			}
+		})
 	}
 }
 

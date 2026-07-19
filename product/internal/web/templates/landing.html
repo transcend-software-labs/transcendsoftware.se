@@ -16,6 +16,26 @@
   </ol>
 </section>
 
+<section class="image-callout" aria-labelledby="image-heading">
+  <div class="image-copy">
+    <span class="badge badge-accent">{{.T "landing.images.badge"}}</span>
+    <h2 id="image-heading">{{.T "landing.images.h2"}}</h2>
+    <p>{{.T "landing.images.text"}}</p>
+  </div>
+  <ul class="image-points">
+    <li>{{.T "landing.images.point1"}}</li>
+    <li>{{.T "landing.images.point2"}}</li>
+    <li>{{.T "landing.images.point3"}}</li>
+  </ul>
+  <div class="model-note">
+    <div>
+      <span class="badge">{{.T "landing.models.badge"}}</span>
+      <h3>{{.T "landing.models.h3"}}</h3>
+    </div>
+    <p>{{.T "landing.models.text"}}</p>
+  </div>
+</section>
+
 {{with .Data}}{{if .DomainBuy}}
 <section class="domain-callout" aria-labelledby="domain-heading">
   <div class="domain-copy">
@@ -44,7 +64,10 @@
         {{if .MobileImage}}<img class="example-mobile" src="{{.MobileImage}}" width="390" height="844" alt="{{.MobileAlt}}" loading="lazy" decoding="async">{{end}}
       </div>
       <div class="example-copy">
-        <span class="badge badge-accent">{{.Category}}</span>
+        <div class="example-badges">
+          <span class="badge badge-accent">{{.Category}}</span>
+          {{if .AIImages}}<span class="badge">{{$.T "landing.examples.ai_images"}}</span>{{end}}
+        </div>
         <h3>{{.Name}}</h3>
         <p>{{.Summary}}</p>
         {{if .URL}}<a class="example-link" href="{{.URL}}" target="_blank" rel="noopener">{{$.T "landing.examples.view"}}</a>{{end}}

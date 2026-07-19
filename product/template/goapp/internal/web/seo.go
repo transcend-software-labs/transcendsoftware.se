@@ -28,11 +28,15 @@ var publicPages = []string{"/"}
 func absURL(r *http.Request, path string) string {
 	scheme := "https"
 	if p := r.Header.Get("X-Forwarded-Proto"); p != "" {
-		scheme = p // behind Fly's proxy the app itself speaks plain http
+		scheme = strings.TrimSpace(strings.Split(p, ",")[0]) // behind Fly's proxy the app itself speaks plain http
 	} else if strings.HasPrefix(r.Host, "localhost") || strings.HasPrefix(r.Host, "127.0.0.1") {
 		scheme = "http"
 	}
-	return scheme + "://" + r.Host + path
+	host := r.Host
+	if h := r.Header.Get("X-Forwarded-Host"); h != "" {
+		host = strings.TrimSpace(strings.Split(h, ",")[0])
+	}
+	return scheme + "://" + host + path
 }
 
 // siteJSONLD is the site-level structured data every page carries: schema.org

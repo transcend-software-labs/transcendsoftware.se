@@ -1,10 +1,11 @@
 {{define "dashboard"}}{{template "head" .}}
-<section class="page-head">
-  <h1>Your account</h1>
-  <p class="muted">Signed in as {{.User.Email}}</p>
-</section>
-
-<section class="panel">
-  <p>You're logged in.</p>
-</section>
+<div class="container">
+  <section class="page-head">
+    <h1>Your account</h1>
+    <p class="muted">Signed in as {{.User.Email}}</p>
+  </section>
+  <section class="panel">
+    <p>You’re logged in.</p>
+  </section>
+</div>
 {{template "foot" .}}{{end}}

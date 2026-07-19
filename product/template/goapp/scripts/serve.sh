@@ -20,6 +20,10 @@ pkill -9 -f "$APP" 2>/dev/null || true   # SIGKILL: throwaway test process, no g
 sleep 0.5                                # let the kernel release the port
 rm -rf "$DATA" && mkdir -p "$DATA"
 
+if ! node scripts/optimize-images.js; then
+  echo "IMAGE OPTIMIZATION FAILED — fix the image above, then re-run ./scripts/serve.sh"
+  exit 1
+fi
 if ! go run ./tools/buildjs; then
   echo "JS BUILD FAILED — fix the error in web/src/app.ts above, then re-run ./scripts/serve.sh"
   exit 1
@@ -34,7 +38,11 @@ if ! go build -o "$APP" .; then
   exit 1
 fi
 
-DATA_DIR="$DATA" PORT="$PORT" OWNER_EMAIL=owner@test.local setsid "$APP" >/tmp/forge-app.log 2>&1 </dev/null &
+if command -v setsid >/dev/null 2>&1; then
+  DATA_DIR="$DATA" PORT="$PORT" OWNER_EMAIL=owner@test.local setsid "$APP" >/tmp/forge-app.log 2>&1 </dev/null &
+else
+  nohup env DATA_DIR="$DATA" PORT="$PORT" OWNER_EMAIL=owner@test.local "$APP" >/tmp/forge-app.log 2>&1 </dev/null &
+fi
 
 for i in $(seq 1 40); do
   if curl -sf -m 2 "http://localhost:$PORT/healthz" >/dev/null 2>&1; then

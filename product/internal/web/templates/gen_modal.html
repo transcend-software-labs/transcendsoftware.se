@@ -16,6 +16,15 @@
 </form>
 {{end}}
 
+{{define "gen_running"}}
+{{- $pid := .Data.PID}}{{$slug := .Data.Slug}}
+<div class="gen-running" role="status" aria-live="polite"
+     hx-get="/projects/{{$pid}}/content/generation?slot={{$slug}}" hx-trigger="load delay:2s, every 3s" hx-swap="outerHTML">
+  <span class="spinner"></span>
+  <div><p>{{tr $.Lang "prj.gen.loading"}}</p><p class="muted small">{{tr $.Lang "prj.gen.background"}}</p></div>
+</div>
+{{end}}
+
 {{define "gen_improve"}}
 {{- $pid := .Data.PID}}{{$slug := .Data.Slug}}
 {{if .Data.Err}}<p class="gen-error">{{.Data.Err}}</p>{{end}}

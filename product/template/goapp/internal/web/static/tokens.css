@@ -21,6 +21,7 @@
   --accent: #1a56db;      /* primary action color */
   --accent-ink: #ffffff;  /* text ON --accent (buttons) — keep ≥4.5:1 */
   --border: #e3e3e0;
+  --error: #9f1c1c;
 
   /* Nav — solid by default so the header is never invisible over a dark hero.
      For an overlay/transparent nav, set these deliberately AND make sure the
@@ -34,6 +35,19 @@
   --font-body: system-ui, -apple-system, "Segoe UI", sans-serif;
   --leading: 1.6;
 
+  /* Fluid type scale. Projects may tune the endpoints, but every public page
+     should use the scale rather than accumulating one-off font sizes. */
+  --text-sm: clamp(.875rem, .84rem + .14vw, .95rem);
+  --text-base: clamp(1rem, .96rem + .16vw, 1.08rem);
+  --text-lead: clamp(1.1rem, 1.01rem + .35vw, 1.3rem);
+  --text-h3: clamp(1.2rem, 1.08rem + .45vw, 1.5rem);
+  --text-h2: clamp(1.75rem, 1.42rem + 1.2vw, 2.5rem);
+  --text-h1: clamp(2.5rem, 1.9rem + 2.5vw, 4.75rem);
+  --leading-tight: 1.08;
+  --leading-heading: 1.18;
+  --measure-copy: 68ch;
+  --measure-lead: 58ch;
+
   /* Spacing scale — THE source of every padding/margin/gap in the site. */
   --space-1: .25rem;
   --space-2: .5rem;
@@ -46,9 +60,19 @@
 
   /* Layout rhythm — sections and the footer inset/breathe via these, so
      content can never sit flush against the viewport edge. */
-  --container-max: 44rem;             /* widen for landing-page layouts */
+  --container-narrow: 32rem;
+  --container-copy: 46rem;
+  --container-wide: 74rem;
+  --container-max: var(--container-wide);
   --container-pad: var(--space-5);    /* horizontal inset, every section+footer */
   --section-pad-y: var(--space-7);    /* vertical rhythm between sections */
+
+  /* Interaction + media. Keep the focus color visible on both the page and
+     accent surfaces; audit.js checks the rendered result. */
+  --focus: var(--accent);
+  --focus-offset: var(--bg);
+  --control-min: 2.75rem;
+  --media-radius: var(--radius);
 
   /* Shape */
   --radius: 10px;

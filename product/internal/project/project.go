@@ -85,8 +85,8 @@ type DesignOption struct {
 	Description string `json:"description"` // one sentence: mood, colors, typography
 }
 
-// Screenshot is a captured page of a deployed site: its URL path and the
-// object-storage key of the PNG.
+// Screenshot is a captured page/viewport of a deployed site: its labelled URL
+// path (for example "/ · mobile") and the object-storage key of the PNG.
 type Screenshot struct {
 	Path string `json:"path"` // e.g. "/", "/kontakt"
 	Key  string `json:"key"`  // object-storage key of the PNG
@@ -98,6 +98,7 @@ type Screenshot struct {
 // parsing prose. Empty (no pages) means the planner didn't produce one — the UI
 // degrades to not showing these sections rather than breaking.
 type PlanSpec struct {
+	Archetype     string        `json:"archetype,omitempty"` // local_service|local_retail|professional|portfolio|booking|campaign
 	Pages         []PlanPage    `json:"pages"`
 	NotIncluded   []string      `json:"not_included"`   // plain-language things NOT built, for "Ingår inte"
 	ContentNeeded []ContentItem `json:"content_needed"` // what we need from the customer
@@ -188,12 +189,17 @@ type RosterEntry struct {
 	PhotoKey string `json:"photo_key,omitempty"`
 }
 
-// ImageCandidates is a pending set of AI-generated images for a slot, awaiting
-// the customer's pick. Prompt is what produced them; Keys are their
-// object-storage keys.
+// ImageCandidates tracks one AI-image job for a slot. While Status is
+// "running", JobID prevents a late result from replacing a newer request.
+// Once complete, Status is "ready" and Keys are the candidates awaiting the
+// customer's pick. The zero Status remains a ready set for rows written before
+// background generation was introduced.
 type ImageCandidates struct {
-	Prompt string   `json:"prompt"`
-	Keys   []string `json:"keys"`
+	Prompt    string    `json:"prompt"`
+	Keys      []string  `json:"keys"`
+	Status    string    `json:"status,omitempty"`
+	JobID     string    `json:"job_id,omitempty"`
+	StartedAt time.Time `json:"started_at,omitempty"`
 }
 
 // Name returns the page's display name in lang, falling back to English then

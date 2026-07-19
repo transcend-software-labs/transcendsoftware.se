@@ -175,6 +175,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /projects/{id}/content", s.requireUser(s.handleContentAnswer))
 	mux.HandleFunc("POST /projects/{id}/roster", s.requireUser(s.handleRoster))
 	mux.HandleFunc("POST /projects/{id}/content/generate", s.requireUser(s.handleGenerateImage))
+	mux.HandleFunc("GET /projects/{id}/content/generation", s.requireUser(s.handleImageGenerationStatus))
 	mux.HandleFunc("POST /projects/{id}/content/pick", s.requireUser(s.handlePickImage))
 	mux.HandleFunc("POST /projects/{id}/content/improve", s.requireUser(s.handleImproveImage))
 	mux.HandleFunc("POST /projects/{id}/reiterate", s.requireUser(s.handleReiterate))
