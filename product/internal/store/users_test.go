@@ -12,6 +12,10 @@ import (
 // runUserStores runs fn against both the in-memory store and a real Postgres —
 // account rules are a place the two implementations have diverged before (the
 // case-sensitive UNIQUE vs. the case-insensitive lookups), so both must agree.
+//
+// Note: in CI the Postgres is a SHARED database reused across every test in the
+// package (PG_TEST_URL), so rows persist between tests — each test here must use
+// its own unique emails/ids to stay isolation-independent.
 func runUserStores(t *testing.T, fn func(t *testing.T, st Store)) {
 	t.Run("memory", func(t *testing.T) { fn(t, NewMemory()) })
 	t.Run("postgres", func(t *testing.T) {
@@ -30,33 +34,33 @@ func TestVerifyAndClearPassword(t *testing.T) {
 	runUserStores(t, func(t *testing.T, st Store) {
 		ctx := context.Background()
 		if err := st.CreateUser(ctx, &user.User{
-			ID: "attacker", Email: "victim@example.com", PasswordHash: "attacker-hash",
+			ID: "vcp-attacker", Email: "vcp-victim@utest.example", PasswordHash: "attacker-hash",
 			Verified: false, CreatedAt: time.Now().UTC(),
 		}); err != nil {
 			t.Fatalf("create unverified: %v", err)
 		}
 		if err := st.CreateUser(ctx, &user.User{
-			ID: "legit", Email: "real@example.com", PasswordHash: "real-hash",
+			ID: "vcp-legit", Email: "vcp-real@utest.example", PasswordHash: "real-hash",
 			Verified: true, CreatedAt: time.Now().UTC(),
 		}); err != nil {
 			t.Fatalf("create verified: %v", err)
 		}
 
 		// A social/magic login adopts the unverified address (case-insensitively).
-		if err := st.VerifyAndClearPassword(ctx, "Victim@example.com"); err != nil {
+		if err := st.VerifyAndClearPassword(ctx, "VCP-Victim@utest.example"); err != nil {
 			t.Fatalf("neutralise: %v", err)
 		}
-		got, _ := st.UserByEmail(ctx, "victim@example.com")
+		got, _ := st.UserByEmail(ctx, "vcp-victim@utest.example")
 		if !got.Verified || got.PasswordHash != "" {
 			t.Errorf("unverified account must be verified with password cleared, got verified=%v hash=%q",
 				got.Verified, got.PasswordHash)
 		}
 
 		// A verified password user who later uses a magic link keeps their password.
-		if err := st.VerifyAndClearPassword(ctx, "real@example.com"); err != nil {
+		if err := st.VerifyAndClearPassword(ctx, "vcp-real@utest.example"); err != nil {
 			t.Fatalf("neutralise verified: %v", err)
 		}
-		if got, _ := st.UserByEmail(ctx, "real@example.com"); got.PasswordHash != "real-hash" {
+		if got, _ := st.UserByEmail(ctx, "vcp-real@utest.example"); got.PasswordHash != "real-hash" {
 			t.Errorf("verified account's password must be preserved, got %q", got.PasswordHash)
 		}
 	})
@@ -70,12 +74,12 @@ func TestCreateUser_RejectsCaseVariantDuplicate(t *testing.T) {
 	runUserStores(t, func(t *testing.T, st Store) {
 		ctx := context.Background()
 		if err := st.CreateUser(ctx, &user.User{
-			ID: "a", Email: "victim@example.com", CreatedAt: time.Now().UTC(),
+			ID: "dup-a", Email: "dup-victim@utest.example", CreatedAt: time.Now().UTC(),
 		}); err != nil {
 			t.Fatalf("first create: %v", err)
 		}
 		err := st.CreateUser(ctx, &user.User{
-			ID: "b", Email: "Victim@example.com", CreatedAt: time.Now().UTC(),
+			ID: "dup-b", Email: "Dup-Victim@utest.example", CreatedAt: time.Now().UTC(),
 		})
 		if err != ErrEmailTaken {
 			t.Errorf("case-variant duplicate must be rejected as ErrEmailTaken, got %v", err)
