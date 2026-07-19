@@ -77,6 +77,7 @@ func TestSEO_ForgeHead(t *testing.T) {
 		`<link rel="canonical" href="https://forge.example/">`,
 		`<meta property="og:url" content="https://forge.example/">`,
 		`<meta property="og:image" content="https://forge.example/static/og.png">`,
+		`<link rel="alternate" hreflang="sv" href="https://forge.example/?lang=sv">`,
 		`<meta name="twitter:card" content="summary_large_image">`,
 		`application/ld+json`,
 		`"@type":"Service"`,                   // the landing gets the richer graph…
@@ -97,11 +98,34 @@ func TestSEO_ForgeHead(t *testing.T) {
 	}
 }
 
+func TestSEO_LocalizedPublicPageHasStableCanonical(t *testing.T) {
+	ts := newSEOServer(t)
+	resp, err := http.Get(ts.URL + "/?lang=sv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	out := string(body)
+	for _, want := range []string{
+		`<html lang="sv">`,
+		`<link rel="canonical" href="https://forge.example/?lang=sv">`,
+		`<meta property="og:url" content="https://forge.example/?lang=sv">`,
+		`<link rel="alternate" hreflang="en" href="https://forge.example/">`,
+		`<link rel="alternate" hreflang="x-default" href="https://forge.example/">`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("localized landing missing %q", want)
+		}
+	}
+}
+
 func TestSEO_ForgeCrawlPair(t *testing.T) {
 	ts := newSEOServer(t)
 
 	sm := getBody(t, http.DefaultClient, ts.URL+"/sitemap.xml")
-	for _, want := range []string{"<urlset", "<loc>https://forge.example/</loc>", "<loc>https://forge.example/terms</loc>"} {
+	for _, want := range []string{"<urlset", "<loc>https://forge.example/</loc>", "<loc>https://forge.example/terms</loc>",
+		"<loc>https://forge.example/?lang=sv</loc>", `hreflang="ru" href="https://forge.example/privacy?lang=ru"`} {
 		if !strings.Contains(sm, want) {
 			t.Errorf("sitemap.xml missing %q, got:\n%s", want, sm)
 		}
@@ -109,7 +133,7 @@ func TestSEO_ForgeCrawlPair(t *testing.T) {
 
 	rb := getBody(t, http.DefaultClient, ts.URL+"/robots.txt")
 	for _, want := range []string{"User-agent: *", "Disallow: /dashboard", "Disallow: /admin",
-		"Sitemap: https://forge.example/sitemap.xml"} {
+		"Disallow: /start", "Sitemap: https://forge.example/sitemap.xml"} {
 		if !strings.Contains(rb, want) {
 			t.Errorf("robots.txt missing %q, got:\n%s", want, rb)
 		}

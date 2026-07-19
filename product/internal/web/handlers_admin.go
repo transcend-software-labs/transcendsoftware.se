@@ -12,20 +12,23 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/orchestrator"
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
+	"github.com/transcend-software-labs/rasmus-ai/internal/store"
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
 )
 
 // adminView is the data for the operator dashboard.
 type adminView struct {
-	Access    []accessReviewItem // first projects waiting for customer approval
-	Escalated []*project.Project
-	Accepted  []reviewItem  // accepted by the customer, awaiting delivery review
-	Waiting   []waitingItem // customer's turn (answering questions / approving the plan)
-	Failed    []waitingItem // failed builds — operator can retry / change models
-	Active    []activeBuild
-	Previews  []reviewItem // live preview apps (cost money; can be destroyed)
-	Stats     buildStats
-	Recent    []recentBuild // recent builds with cost/timing
+	Access      []accessReviewItem // first projects waiting for customer approval
+	Escalated   []*project.Project
+	Accepted    []reviewItem  // accepted by the customer, awaiting delivery review
+	Waiting     []waitingItem // customer's turn (answering questions / approving the plan)
+	Failed      []waitingItem // failed builds — operator can retry / change models
+	Active      []activeBuild
+	Previews    []reviewItem // live preview apps (cost money; can be destroyed)
+	Stats       buildStats
+	Recent      []recentBuild // recent builds with cost/timing
+	Marketing7  store.MarketingFunnel
+	Marketing30 store.MarketingFunnel
 }
 
 type accessReviewItem struct {
@@ -231,6 +234,21 @@ type activeBuild struct {
 // handleAdmin shows escalated projects and the builds currently in flight.
 func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.User) {
 	ctx := r.Context()
+	now := time.Now().UTC()
+	startOfDay := func(t time.Time) time.Time {
+		y, m, d := t.Date()
+		return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	}
+	marketing7, err := s.store.MarketingFunnel(ctx, startOfDay(now.AddDate(0, 0, -6)))
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	marketing30, err := s.store.MarketingFunnel(ctx, startOfDay(now.AddDate(0, 0, -29)))
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	escalated, err := s.store.EscalatedProjects(ctx)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -319,7 +337,7 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 
 	v := s.view(r, "Operator review", adminView{
 		Access: access, Escalated: escalated, Accepted: accepted, Waiting: waiting, Failed: failed, Active: active, Previews: previews,
-		Stats: computeStats(recent, rate), Recent: builds,
+		Stats: computeStats(recent, rate), Recent: builds, Marketing7: marketing7, Marketing30: marketing30,
 	})
 	v.Lang = "en" // operator pages are English regardless of the customer-facing selector
 	if r.URL.Query().Get("err") == "unpaid" {

@@ -8,6 +8,7 @@
   <meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false}'>
   <meta name="description" content="{{.T "meta.desc"}}">
   {{if .Canonical}}<link rel="canonical" href="{{.Canonical}}">{{end}}
+  {{range .Alternates}}<link rel="alternate" hreflang="{{.Lang}}" href="{{.URL}}">{{end}}
   <meta property="og:site_name" content="Transcend Forge">
   <meta property="og:title" content="{{.Title}} — Transcend Forge">
   <meta property="og:description" content="{{.T "meta.desc"}}">
@@ -46,7 +47,7 @@
       <form method="post" action="/logout" class="inline"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button class="linklike">{{.T "nav.logout"}}</button></form>
     {{else}}
       <a href="/login">{{.T "nav.login"}}</a>
-      <a href="/signup" class="btn btn-sm">{{.T "nav.get_started"}}</a>
+      <a href="{{if .StartURL}}{{.StartURL}}{{else}}/start{{end}}" class="btn btn-sm">{{.T "nav.get_started"}}</a>
     {{end}}
   </nav>
 </header>

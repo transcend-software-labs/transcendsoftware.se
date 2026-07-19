@@ -38,9 +38,9 @@ jobs:
       run:
         working-directory: product
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: product/go.mod
           cache-dependency-path: product/go.sum

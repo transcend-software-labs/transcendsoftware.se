@@ -255,6 +255,32 @@ h3 {
 .domain-points li::before { content: "\2713"; position: absolute; left: 0; color: var(--accent); font-weight: 600; }
 .domain-existing { grid-column: 1 / -1; padding-top: var(--sp-4); border-top: 1px solid var(--accent-border); }
 
+/* Real Forge work. Hidden at the template level until examples exist; when
+   populated, the first of three gets the strongest visual weight and the next
+   two sit side by side. Each card pairs a desktop fold with a phone inset. */
+.examples { margin-top: var(--sp-7); border-top: 1px solid var(--border); padding-top: var(--sp-6); }
+.examples > .lead { margin-bottom: var(--sp-5); }
+.example-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-5); }
+.examples-1 { grid-template-columns: 1fr; }
+.examples-3 .example-card:first-child { grid-column: 1 / -1; }
+.example-card {
+  min-width: 0; overflow: hidden; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+}
+.example-visual { position: relative; padding: var(--sp-3); background: var(--surface-2); }
+.example-desktop {
+  display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: cover; object-position: top;
+  border: 1px solid var(--border-2); border-radius: calc(var(--radius) - 2px); background: var(--bg-2);
+}
+.example-mobile {
+  position: absolute; right: var(--sp-4); bottom: var(--sp-4); width: 24%; height: auto; aspect-ratio: 390 / 844;
+  object-fit: cover; object-position: top; border: 2px solid var(--bg); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.example-copy { padding: var(--sp-5); }
+.example-copy h3 { margin: var(--sp-3) 0 var(--sp-2); color: var(--text); }
+.example-copy p { color: var(--muted); margin-bottom: var(--sp-3); }
+.example-link { font-size: var(--fs-md); }
+
 /* Credibility strip */
 .about { margin-top: var(--sp-7); border-top: 1px solid var(--border); padding-top: var(--sp-6); }
 .about p { color: var(--muted); max-width: 58ch; margin-bottom: var(--sp-5); }
@@ -936,6 +962,10 @@ label.ack-later { display: flex; flex-direction: row; align-items: flex-start; g
    reflow, 44px touch targets, and the content/AI-prompt form stacking. */
 @media (max-width: 720px) {
   .domain-callout { grid-template-columns: 1fr; padding: var(--sp-5); }
+  .example-grid { grid-template-columns: 1fr; }
+  .examples-3 .example-card:first-child { grid-column: auto; }
+  .example-copy { padding: var(--sp-4); }
+  .example-mobile { width: 27%; right: var(--sp-3); bottom: var(--sp-3); }
 
   .nav-burger {
     display: flex; flex-direction: column; justify-content: center; gap: 5px;

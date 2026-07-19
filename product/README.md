@@ -25,6 +25,9 @@ What works today:
   server-side sessions, **CSRF-protected** forms, throttled email endpoints)
 - **First-project approval**: a new customer’s first brief waits in `/admin`
   before any AI work starts; approval permanently unlocks their future projects
+- **Privacy-friendly marketing funnel**: anonymous daily landing/start/signup
+  totals and UTM labels appear in `/admin`; no analytics script, tracking cookie,
+  IP address, device identifier or account-level attribution is stored
 - Start a project → orchestrator runs **intake (clarifying questions) → plan →
   safety gate → build**
 - **Live build streaming**: the dashboard shows the agent's tool activity as it

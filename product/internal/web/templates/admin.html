@@ -33,6 +33,31 @@
 </section>
 
 <section class="panel">
+  <h2>Marketing funnel</h2>
+  <p class="muted small">Public steps are anonymous daily totals without tracking cookies. Customer stages count distinct accounts created in the window.</p>
+  <div class="table-scroll">
+    <table class="table table-nowrap">
+      <thead><tr><th>Window</th><th>Landing</th><th>Started</th><th>Signup page</th><th>Accounts</th><th>Briefs</th><th>Approved</th><th>Previews</th><th>Paid</th></tr></thead>
+      <tbody>
+        {{$m := .Data.Marketing7}}<tr><td>7 days</td><td>{{$m.LandingViews}}</td><td>{{$m.Starts}}</td><td>{{$m.SignupViews}}</td><td>{{$m.Signups}}</td><td>{{$m.Briefs}}</td><td>{{$m.Approved}}</td><td>{{$m.Previews}}</td><td>{{$m.Paid}}</td></tr>
+        {{$m = .Data.Marketing30}}<tr><td>30 days</td><td>{{$m.LandingViews}}</td><td>{{$m.Starts}}</td><td>{{$m.SignupViews}}</td><td>{{$m.Signups}}</td><td>{{$m.Briefs}}</td><td>{{$m.Approved}}</td><td>{{$m.Previews}}</td><td>{{$m.Paid}}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  {{if .Data.Marketing30.Sources}}
+  <h3>Top sources · 30 days</h3>
+  <div class="table-scroll">
+    <table class="table table-nowrap">
+      <thead><tr><th>Source</th><th>Medium</th><th>Campaign</th><th>Landing</th><th>Started</th><th>Signup page</th></tr></thead>
+      <tbody>{{range .Data.Marketing30.Sources}}
+        <tr><td>{{if .Source}}{{.Source}}{{else}}Direct / unattributed{{end}}</td><td>{{if .Medium}}{{.Medium}}{{else}}—{{end}}</td><td>{{if .Campaign}}{{.Campaign}}{{else}}—{{end}}</td><td>{{.LandingViews}}</td><td>{{.Starts}}</td><td>{{.SignupViews}}</td></tr>
+      {{end}}</tbody>
+    </table>
+  </div>
+  {{end}}
+</section>
+
+<section class="panel">
   <h2>Last 24 hours</h2>
   {{with .Data.Stats}}
   <ul class="stat-row">

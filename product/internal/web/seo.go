@@ -18,11 +18,51 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/transcend-software-labs/rasmus-ai/internal/web/i18n"
 )
 
 // publicPages are the crawlable URLs listed in /sitemap.xml. Everything else
 // is either auth-gated or an auth page — nothing worth indexing.
 var publicPages = []string{"/", "/terms", "/privacy"}
+
+func isPublicPage(path string) bool {
+	for _, page := range publicPages {
+		if path == page {
+			return true
+		}
+	}
+	return false
+}
+
+type alternateLink struct {
+	Lang string
+	URL  string
+}
+
+// localizedPublicURL gives every translated public page a stable crawlable URL
+// while preserving the short English canonical. Query URLs are intentional:
+// they fit the existing zero-JS language selector without duplicating routes.
+func localizedPublicURL(origin, path, lang string) string {
+	base := origin + path
+	if lang == "" || lang == i18n.Default {
+		return base
+	}
+	return base + "?lang=" + lang
+}
+
+func (s *Server) alternateLinks(r *http.Request) []alternateLink {
+	if !isPublicPage(r.URL.Path) {
+		return nil
+	}
+	origin := s.origin(r)
+	links := make([]alternateLink, 0, len(i18n.Langs)+1)
+	for _, lang := range i18n.Langs {
+		links = append(links, alternateLink{Lang: lang.Code, URL: localizedPublicURL(origin, r.URL.Path, lang.Code)})
+	}
+	links = append(links, alternateLink{Lang: "x-default", URL: localizedPublicURL(origin, r.URL.Path, i18n.Default)})
+	return links
+}
 
 // origin is the site's canonical origin: BaseURL when configured (so pages
 // served via the fly.dev host still canonicalize to the real domain), else
@@ -91,9 +131,18 @@ func (s *Server) handleSitemap(w http.ResponseWriter, r *http.Request) {
 	origin := s.origin(r)
 	var b strings.Builder
 	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
-	b.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
+	b.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">` + "\n")
 	for _, p := range publicPages {
-		b.WriteString("  <url><loc>" + html.EscapeString(origin+p) + "</loc></url>\n")
+		for _, locale := range i18n.Langs {
+			b.WriteString("  <url><loc>" + html.EscapeString(localizedPublicURL(origin, p, locale.Code)) + "</loc>\n")
+			for _, alternate := range i18n.Langs {
+				b.WriteString(`    <xhtml:link rel="alternate" hreflang="` + alternate.Code + `" href="` +
+					html.EscapeString(localizedPublicURL(origin, p, alternate.Code)) + `"/>` + "\n")
+			}
+			b.WriteString(`    <xhtml:link rel="alternate" hreflang="x-default" href="` +
+				html.EscapeString(localizedPublicURL(origin, p, i18n.Default)) + `"/>` + "\n")
+			b.WriteString("  </url>\n")
+		}
 	}
 	b.WriteString("</urlset>\n")
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
@@ -114,6 +163,7 @@ func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
 		"Disallow: /auth",
 		"Disallow: /login",
 		"Disallow: /signup",
+		"Disallow: /start",
 		"Disallow: /verify",
 		"",
 		"Sitemap: " + s.origin(r) + "/sitemap.xml",

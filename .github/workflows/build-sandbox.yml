@@ -52,7 +52,7 @@ jobs:
     env:
       FLY_SANDBOX_TOKEN: ${{ secrets.FLY_SANDBOX_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Check auth is configured
         if: ${{ env.FLY_SANDBOX_TOKEN == '' }}

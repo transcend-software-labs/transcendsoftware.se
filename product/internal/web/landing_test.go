@@ -22,6 +22,9 @@ func TestLandingPricing(t *testing.T) {
 		t.Fatalf("render landing: %v", err)
 	}
 	out := buf.String()
+	if strings.Contains(out, `class="examples"`) {
+		t.Error("empty showcase must not render invented placeholders")
+	}
 	for _, want := range []string{
 		"299 kr",                         // the live Stripe price
 		"/month",                         // the per-interval suffix
@@ -36,6 +39,45 @@ func TestLandingPricing(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("landing pricing missing %q", want)
 		}
+	}
+}
+
+func TestLandingExamplesRenderRealResponsivePairs(t *testing.T) {
+	tmpl, err := template.New("").Funcs(templateFuncs()).ParseFS(templatesFS, "templates/*.html")
+	if err != nil {
+		t.Fatalf("parse templates: %v", err)
+	}
+	examples := []landingExample{
+		{Name: "North Bakery", Category: "Local business", Summary: "Ordering and opening hours made easy to find.",
+			DesktopImage: "/static/examples/north-desktop.webp", MobileImage: "/static/examples/north-mobile.webp",
+			DesktopAlt: "North Bakery homepage on desktop", MobileAlt: "North Bakery homepage on a phone", URL: "https://north.example"},
+		{Name: "Harbor Studio", Category: "Creative studio", Summary: "A portfolio focused on recent work.", DesktopImage: "/static/examples/harbor-desktop.webp", DesktopAlt: "Harbor Studio portfolio"},
+		{Name: "Linden Care", Category: "Professional service", Summary: "Services and contact options presented clearly.", DesktopImage: "/static/examples/linden-desktop.webp", DesktopAlt: "Linden Care homepage"},
+	}
+	var buf bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&buf, "landing", View{Lang: "en", StartURL: "/start", Data: landingView{Examples: examples}}); err != nil {
+		t.Fatalf("render landing examples: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		`class="example-grid examples-3"`, `class="example-desktop"`, `class="example-mobile"`,
+		`src="/static/examples/north-desktop.webp"`, `src="/static/examples/north-mobile.webp"`,
+		`alt="North Bakery homepage on desktop"`, `loading="lazy"`, `href="https://north.example"`,
+		"Real websites, built from a brief", "Visit the live site",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("landing showcase missing %q", want)
+		}
+	}
+}
+
+func TestLocalizedExampleTextFallsBackToEnglish(t *testing.T) {
+	values := map[string]string{"en": "Bakery", "sv": "Bageri"}
+	if got := localizedExampleText(values, "sv"); got != "Bageri" {
+		t.Fatalf("Swedish example copy = %q", got)
+	}
+	if got := localizedExampleText(values, "ru"); got != "Bakery" {
+		t.Fatalf("missing translation should use English, got %q", got)
 	}
 }
 

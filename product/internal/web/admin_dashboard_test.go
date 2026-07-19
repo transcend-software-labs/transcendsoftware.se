@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/project"
+	"github.com/transcend-software-labs/rasmus-ai/internal/store"
 )
 
 // TestAdminDashboardFailedSection: a failed project is surfaced on /admin with a
@@ -46,5 +47,27 @@ func TestAdminDashboardFailedSection(t *testing.T) {
 	}
 	if strings.Contains(empty.String(), "<h2>Failed</h2>") {
 		t.Errorf("Failed section should be hidden when there are no failures")
+	}
+}
+
+func TestAdminDashboardMarketingFunnel(t *testing.T) {
+	tmpl, err := template.New("").Funcs(templateFuncs()).ParseFS(templatesFS, "templates/*.html")
+	if err != nil {
+		t.Fatalf("parse templates: %v", err)
+	}
+	view := adminView{
+		Marketing7: store.MarketingFunnel{LandingViews: 90, Starts: 24, SignupViews: 20, Signups: 12, Briefs: 8, Approved: 6, Previews: 4, Paid: 2},
+		Marketing30: store.MarketingFunnel{LandingViews: 300, Starts: 70, SignupViews: 60, Signups: 40, Briefs: 30, Approved: 25, Previews: 18, Paid: 9,
+			Sources: []store.MarketingSource{{Source: "linkedin", Medium: "social", Campaign: "launch", LandingViews: 120, Starts: 35, SignupViews: 30}}},
+	}
+	var buf bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&buf, "admin", View{Lang: "en", IsAdmin: true, CSRF: "x", Data: view}); err != nil {
+		t.Fatalf("render admin: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{"Marketing funnel", "7 days", "30 days", "Top sources", "linkedin", "launch"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("admin marketing funnel missing %q", want)
+		}
 	}
 }

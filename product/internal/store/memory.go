@@ -22,6 +22,7 @@ type Memory struct {
 	iterations  map[string]*project.Iteration
 	assets      map[string]*project.Asset
 	withdrawals map[string]WithdrawalRequest
+	marketing   map[marketingDailyKey]int
 }
 
 // NewMemory returns an empty in-memory store.
@@ -34,6 +35,7 @@ func NewMemory() *Memory {
 		iterations:  make(map[string]*project.Iteration),
 		assets:      make(map[string]*project.Asset),
 		withdrawals: make(map[string]WithdrawalRequest),
+		marketing:   make(map[marketingDailyKey]int),
 	}
 }
 

@@ -2,7 +2,7 @@
 <section class="hero">
   <h1>{{.T "landing.h1a"}}<br>{{.T "landing.h1b"}}</h1>
   <p class="lead">{{.T "landing.lead1"}}<strong>{{.T "landing.lead_strong"}}</strong>{{.T "landing.lead2"}}</p>
-  <a class="btn btn-lg" href="/signup">{{.T "landing.cta"}}</a>
+  <a class="btn btn-lg" href="{{.StartURL}}">{{.T "landing.cta"}}</a>
   <p class="muted small">{{with .Data}}{{if .DomainBuy}}{{$.T "landing.sub_domain"}}{{else}}{{$.T "landing.sub"}}{{end}}{{else}}{{.T "landing.sub"}}{{end}}</p>
 </section>
 
@@ -29,6 +29,29 @@
     <li>{{$.T "landing.domain.point3"}}</li>
   </ul>
   <p class="domain-existing muted small">{{$.T "landing.domain.existing"}}</p>
+</section>
+{{end}}{{end}}
+
+{{with .Data}}{{if .Examples}}
+<section class="examples" aria-labelledby="examples-heading">
+  <h2 id="examples-heading">{{$.T "landing.examples.h2"}}</h2>
+  <p class="lead">{{$.T "landing.examples.lead"}}</p>
+  <div class="example-grid examples-{{len .Examples}}">
+    {{range .Examples}}
+    <article class="example-card">
+      <div class="example-visual">
+        <img class="example-desktop" src="{{.DesktopImage}}" width="1440" height="900" alt="{{.DesktopAlt}}" loading="lazy" decoding="async">
+        {{if .MobileImage}}<img class="example-mobile" src="{{.MobileImage}}" width="390" height="844" alt="{{.MobileAlt}}" loading="lazy" decoding="async">{{end}}
+      </div>
+      <div class="example-copy">
+        <span class="badge badge-accent">{{.Category}}</span>
+        <h3>{{.Name}}</h3>
+        <p>{{.Summary}}</p>
+        {{if .URL}}<a class="example-link" href="{{.URL}}" target="_blank" rel="noopener">{{$.T "landing.examples.view"}}</a>{{end}}
+      </div>
+    </article>
+    {{end}}
+  </div>
 </section>
 {{end}}{{end}}
 
@@ -66,7 +89,7 @@
     </div>
     {{end}}
   </div>
-  <a class="btn btn-lg" href="/signup">{{$.T "landing.cta"}}</a>
+  <a class="btn btn-lg" href="{{$.StartURL}}">{{$.T "landing.cta"}}</a>
 </section>
 {{end}}
 {{template "foot" .}}{{end}}

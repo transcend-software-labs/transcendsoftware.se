@@ -139,6 +139,7 @@ func (s *Server) Handler() http.Handler {
 	})
 
 	mux.HandleFunc("GET /{$}", s.handleLanding)
+	mux.HandleFunc("GET /start", s.handleStart)
 
 	// SEO: crawlable page list + crawl rules for the Forge site itself (see
 	// seo.go). Preview hosts never get here — previewProxy branches on Host
@@ -239,6 +240,10 @@ func langSelector(next http.Handler) http.Handler {
 			if i18n.Supported(l) {
 				http.SetCookie(w, &http.Cookie{Name: langCookie, Value: l, Path: "/",
 					MaxAge: 365 * 24 * 3600, SameSite: http.SameSiteLaxMode})
+				if isPublicPage(r.URL.Path) {
+					next.ServeHTTP(w, r)
+					return
+				}
 			}
 			q := r.URL.Query()
 			q.Del("lang")
@@ -296,6 +301,8 @@ type View struct {
 	MagicLink  bool             // advertise passwordless email login
 	Unverified bool             // logged in but email not yet confirmed → show the verify banner
 	Nonce      string           // per-response CSP nonce for the inline JSON-LD and helper script
+	StartURL   string           // tracked public signup entry; landing preserves campaign labels
+	Alternates []alternateLink  // translated public-page URLs for search engines
 }
 
 // T translates a catalog key into the view's language (templates: {{.T "nav.login"}}).
@@ -337,6 +344,9 @@ const langCookie = "forge_lang"
 // lang resolves the UI language: explicit choice (cookie) wins, then the
 // browser's Accept-Language, then English.
 func (s *Server) lang(r *http.Request) string {
+	if l := r.URL.Query().Get("lang"); i18n.Supported(l) {
+		return l
+	}
 	if c, err := r.Cookie(langCookie); err == nil && i18n.Supported(c.Value) {
 		return c.Value
 	}
@@ -350,10 +360,15 @@ func (s *Server) t(r *http.Request, key string) string { return i18n.T(s.lang(r)
 func (s *Server) view(r *http.Request, title string, data any) View {
 	u := s.currentUser(r)
 	origin := s.origin(r)
+	lang := s.lang(r)
+	canonical := origin + r.URL.Path
+	if isPublicPage(r.URL.Path) {
+		canonical = localizedPublicURL(origin, r.URL.Path, lang)
+	}
 	return View{Title: title, User: u, IsAdmin: s.isAdmin(u), CSRF: s.csrfToken(r), Lang: s.lang(r),
 		Data: data, Providers: s.oauth.Enabled(), MagicLink: s.cfg.MagicLinkEnabled,
-		Canonical: origin + r.URL.Path, OGImage: origin + "/static/og.png", JSONLD: s.siteJSONLD(r),
-		Unverified: u != nil && !u.Verified, Nonce: nonceFrom(r.Context())}
+		Canonical: canonical, OGImage: origin + "/static/og.png", JSONLD: s.siteJSONLD(r), Alternates: s.alternateLinks(r),
+		Unverified: u != nil && !u.Verified, Nonce: nonceFrom(r.Context()), StartURL: "/start"}
 }
 
 // mutateProject applies one web-owned field change to the latest row. Customer

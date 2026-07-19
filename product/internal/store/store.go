@@ -21,6 +21,47 @@ type WithdrawalRequest struct {
 	CreatedAt time.Time
 }
 
+// MarketingEvent is one anonymous acquisition step. Persistence aggregates it
+// by UTC day and campaign dimensions; it never stores a visitor identifier.
+type MarketingEvent struct {
+	Kind       string
+	Source     string
+	Medium     string
+	Campaign   string
+	OccurredAt time.Time
+}
+
+const (
+	MarketingLandingView = "landing_view"
+	MarketingStart       = "start"
+	MarketingSignupView  = "signup_view"
+)
+
+// MarketingSource summarizes anonymous public-funnel activity for one campaign
+// tuple. Empty dimensions mean direct or unattributed traffic.
+type MarketingSource struct {
+	Source       string
+	Medium       string
+	Campaign     string
+	LandingViews int
+	Starts       int
+	SignupViews  int
+}
+
+// MarketingFunnel combines anonymous public-page counters with distinct
+// customer progress from the product's existing account/project records.
+type MarketingFunnel struct {
+	LandingViews int
+	Starts       int
+	SignupViews  int
+	Signups      int
+	Briefs       int
+	Approved     int
+	Previews     int
+	Paid         int
+	Sources      []MarketingSource
+}
+
 // Store is the persistence boundary for the whole product.
 type Store interface {
 	// Health verifies the persistence dependency used by readiness checks.
@@ -104,6 +145,12 @@ type Store interface {
 
 	// Consumer requests
 	RecordWithdrawalRequest(ctx context.Context, request WithdrawalRequest) error
+
+	// Anonymous acquisition metrics. Public events are stored only as daily
+	// aggregate counters; MarketingFunnel joins those totals with distinct
+	// customer progress already present in users/projects.
+	RecordMarketingEvent(ctx context.Context, event MarketingEvent) error
+	MarketingFunnel(ctx context.Context, since time.Time) (MarketingFunnel, error)
 
 	// Close releases resources (no-op for the in-memory store).
 	Close() error

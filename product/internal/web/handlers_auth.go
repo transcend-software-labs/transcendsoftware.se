@@ -22,6 +22,7 @@ type landingView struct {
 	IncludedChanges int
 	OverageStr      string
 	DomainBuy       bool
+	Examples        []landingExample
 }
 
 func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
@@ -29,14 +30,17 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		return
 	}
+	s.recordMarketing(r, store.MarketingLandingView)
 	priceStr, priceAmt, priceCur := s.monthlyPrice(r)
 	lv := landingView{
 		PriceStr:        priceStr,
 		IncludedChanges: s.orch.ChangesPerMonth(),
 		OverageStr:      formatPrice(int64(s.orch.OverageOre()), "sek"),
 		DomainBuy:       s.orch.DomainBuyEnabled(),
+		Examples:        landingExamples(s.lang(r)),
 	}
 	v := s.view(r, s.t(r, "title.landing"), lv)
+	v.StartURL = withCampaign("/start", r)
 	v.JSONLD = s.landingJSONLD(r, priceAmt, priceCur) // Service graph, with an Offer when the price is known
 	s.render(w, http.StatusOK, "landing", v)
 }
@@ -89,6 +93,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSignupForm(w http.ResponseWriter, r *http.Request) {
+	if s.currentUser(r) == nil {
+		s.recordMarketing(r, store.MarketingSignupView)
+	}
 	s.render(w, http.StatusOK, "signup", s.view(r, s.t(r, "signup.h1"), nil))
 }
 
