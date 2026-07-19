@@ -40,6 +40,8 @@ type fakeCF struct {
 	registered   []string
 	expiry       time.Time // DomainExpiry result (zero = unknown)
 	autoRenewOff []string  // domains SetAutoRenew(false) was called on
+	autoRenewOn  []string  // domains SetAutoRenew(true) was called on
+	autoRenewErr error     // SetAutoRenew failure to simulate
 }
 
 func (f *fakeCF) SearchDomains(context.Context, string, int) ([]registrar.Offer, error) {
@@ -75,7 +77,12 @@ func (f *fakeCF) DomainExpiry(context.Context, string) (time.Time, error) {
 	return f.expiry, nil
 }
 func (f *fakeCF) SetAutoRenew(_ context.Context, name string, on bool) error {
-	if !on {
+	if f.autoRenewErr != nil {
+		return f.autoRenewErr
+	}
+	if on {
+		f.autoRenewOn = append(f.autoRenewOn, name)
+	} else {
 		f.autoRenewOff = append(f.autoRenewOff, name)
 	}
 	return nil

@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -110,5 +111,126 @@ func TestSubscriptionEnded(t *testing.T) {
 	}
 	if !sentTo(rec, "rasmus@example.com", "cancelled") {
 		t.Errorf("no cancellation email; sent: %+v", rec.all())
+	}
+}
+
+// seedPurchasedDomain attaches a live, Forge-bought domain to the seeded project.
+func seedPurchasedDomain(t *testing.T, st store.Store, kind string) {
+	t.Helper()
+	ctx := context.Background()
+	p, err := st.ProjectByID(ctx, "p1")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	p.DomainName = "acme.se"
+	p.DomainKind = kind
+	p.DomainStatus = project.DomainActive
+	p.DomainPaidThrough = time.Date(2027, 3, 4, 0, 0, 0, 0, time.UTC)
+	if err := st.UpdateProject(ctx, p); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+}
+
+// Churn must stop us paying the registrar: a bought domain auto-renews on OUR
+// card, so cancelling has to switch that off. The domain itself stays attached —
+// the customer paid through the year and may come back before it lapses.
+func TestSubscriptionEnded_StopsPayingForPurchasedDomain(t *testing.T) {
+	st := store.NewMemory()
+	orch := newTestOrch(st)
+	cf := &fakeCF{}
+	orch.SetDomains(cf, &fakeBiller{}, 100)
+	orch.SetNotifications(&recordingNotifier{}, "rasmus@example.com", "https://forge.example")
+	seedSubTestProject(t, st, "sv")
+	ctx := context.Background()
+
+	if err := orch.SubscriptionStarted("p1", "cus_1", "sub_1"); err != nil {
+		t.Fatalf("started: %v", err)
+	}
+	seedPurchasedDomain(t, st, project.DomainKindPurchased)
+	if err := orch.SubscriptionEnded("p1", "sub_1"); err != nil {
+		t.Fatalf("ended: %v", err)
+	}
+
+	if len(cf.autoRenewOff) != 1 || cf.autoRenewOff[0] != "acme.se" {
+		t.Errorf("cancellation must stop registrar auto-renew, got %v", cf.autoRenewOff)
+	}
+	got, _ := st.ProjectByID(ctx, "p1")
+	if got.DomainName != "acme.se" {
+		t.Error("the domain stays attached until it lapses; only renewal stops")
+	}
+}
+
+// A domain the customer owns elsewhere is not ours to touch, whatever happens
+// to their subscription.
+func TestSubscriptionEnded_LeavesBYODAlone(t *testing.T) {
+	st := store.NewMemory()
+	orch := newTestOrch(st)
+	cf := &fakeCF{}
+	orch.SetDomains(cf, &fakeBiller{}, 100)
+	orch.SetNotifications(&recordingNotifier{}, "rasmus@example.com", "https://forge.example")
+	seedSubTestProject(t, st, "sv")
+
+	if err := orch.SubscriptionStarted("p1", "cus_1", "sub_1"); err != nil {
+		t.Fatalf("started: %v", err)
+	}
+	seedPurchasedDomain(t, st, project.DomainKindBYOD)
+	if err := orch.SubscriptionEnded("p1", "sub_1"); err != nil {
+		t.Fatalf("ended: %v", err)
+	}
+
+	if len(cf.autoRenewOff) != 0 {
+		t.Errorf("BYOD domains live at the customer's registrar, got %v", cf.autoRenewOff)
+	}
+}
+
+// A registrar outage must not break the billing event: the project still un-pays
+// and the operator still hears about it.
+func TestSubscriptionEnded_SurvivesRegistrarFailure(t *testing.T) {
+	st := store.NewMemory()
+	orch := newTestOrch(st)
+	rec := &recordingNotifier{}
+	orch.SetDomains(&fakeCF{autoRenewErr: errors.New("registrar down")}, &fakeBiller{}, 100)
+	orch.SetNotifications(rec, "rasmus@example.com", "https://forge.example")
+	seedSubTestProject(t, st, "sv")
+
+	if err := orch.SubscriptionStarted("p1", "cus_1", "sub_1"); err != nil {
+		t.Fatalf("started: %v", err)
+	}
+	seedPurchasedDomain(t, st, project.DomainKindPurchased)
+	if err := orch.SubscriptionEnded("p1", "sub_1"); err != nil {
+		t.Fatalf("ended: %v", err)
+	}
+
+	if got, _ := st.ProjectByID(context.Background(), "p1"); got.Paid {
+		t.Error("a registrar failure must not block un-paying")
+	}
+	if !sentTo(rec, "rasmus@example.com", "cancelled") {
+		t.Errorf("no cancellation email; sent %+v", rec.all())
+	}
+}
+
+// Coming back before the domain lapses has to switch renewal back on, or the
+// site would go dark a year later with the customer paying.
+func TestSubscriptionStarted_ResumesRenewalForReturningCustomer(t *testing.T) {
+	st := store.NewMemory()
+	orch := newTestOrch(st)
+	cf := &fakeCF{}
+	orch.SetDomains(cf, &fakeBiller{}, 100)
+	orch.SetNotifications(&recordingNotifier{}, "rasmus@example.com", "https://forge.example")
+	seedSubTestProject(t, st, "sv")
+
+	if err := orch.SubscriptionStarted("p1", "cus_1", "sub_1"); err != nil {
+		t.Fatalf("started: %v", err)
+	}
+	seedPurchasedDomain(t, st, project.DomainKindPurchased)
+	if err := orch.SubscriptionEnded("p1", "sub_1"); err != nil {
+		t.Fatalf("ended: %v", err)
+	}
+	if err := orch.SubscriptionStarted("p1", "cus_1", "sub_2"); err != nil {
+		t.Fatalf("resubscribe: %v", err)
+	}
+
+	if len(cf.autoRenewOn) != 1 || cf.autoRenewOn[0] != "acme.se" {
+		t.Errorf("resubscribing must resume registrar auto-renew, got %v", cf.autoRenewOn)
 	}
 }

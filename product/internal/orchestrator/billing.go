@@ -30,6 +30,12 @@ func (o *Orchestrator) SubscriptionStarted(projectID, customerID, subID string) 
 	if err := o.MarkPaid(projectID, "stripe"); err != nil {
 		return err
 	}
+	// A returning customer: their purchased domain had auto-renew switched off
+	// when they cancelled, so switch it back on — otherwise it would silently
+	// lapse at the end of the year they'd already paid for. No-op for a first
+	// subscription (no domain attached yet; the bundled one is provisioned
+	// below with auto-renew already on).
+	o.setDomainAutoRenew(ctx, p, true)
 	if wasPaid {
 		return nil // already paid (comp) — don't re-announce
 	}
@@ -56,10 +62,10 @@ func (o *Orchestrator) SubscriptionStarted(projectID, customerID, subID string) 
 }
 
 // SubscriptionEnded reflects a cancelled/expired Stripe subscription: clears the
-// paid flag and alerts the operator. Guarded on the stored subscription id so a
-// stale delete (after the customer already re-subscribed) can't un-pay a live
-// subscription. Site suspension on cancel is future work — this only flips the
-// flag and tells Rasmus.
+// paid flag, stops paying to renew a purchased domain, and alerts the operator.
+// Guarded on the stored subscription id so a stale delete (after the customer
+// already re-subscribed) can't un-pay a live subscription. Site suspension on
+// cancel is future work — this only flips the flag and tells Rasmus.
 func (o *Orchestrator) SubscriptionEnded(projectID, subID string) error {
 	ctx := context.Background()
 	p, err := o.store.ProjectByID(ctx, projectID)
@@ -73,10 +79,42 @@ func (o *Orchestrator) SubscriptionEnded(projectID, subID string) error {
 	if err := o.MarkUnpaid(projectID); err != nil {
 		return err
 	}
+	// A purchased domain auto-renews at the registrar and bills US, so leaving it
+	// on means paying yearly for a customer we no longer charge. Turn it off: the
+	// domain stays live through the year they already paid for, then lapses. The
+	// domain is NOT detached — a customer who returns before then keeps it (and
+	// SubscriptionStarted switches auto-renew back on).
+	note := ""
+	if o.setDomainAutoRenew(ctx, p, false) {
+		lapses := "an unknown date"
+		if !p.DomainPaidThrough.IsZero() {
+			lapses = p.DomainPaidThrough.Format("2 Jan 2006")
+		}
+		note = fmt.Sprintf("\n\nAuto-renew for %s is now OFF — we stop paying for it. "+
+			"It stays live until %s and then lapses. If they resubscribe before "+
+			"then it resumes automatically; to keep or transfer it instead, act "+
+			"before that date.", p.DomainName, lapses)
+	}
 	o.notifyOperator(ctx, "Forge: subscription cancelled",
-		fmt.Sprintf("The subscription for %q (status: %s) has ended — no longer marked paid:\n\n%s",
-			p.Name, status, o.baseURLOr("/admin/projects/"+p.ID)))
+		fmt.Sprintf("The subscription for %q (status: %s) has ended — no longer marked paid:\n\n%s%s",
+			p.Name, status, o.baseURLOr("/admin/projects/"+p.ID), note))
 	return nil
+}
+
+// setDomainAutoRenew toggles registrar auto-renew for a project's PURCHASED
+// domain, reporting whether it acted. BYOD domains live at the customer's own
+// registrar — we never touch those. Best-effort: a registrar hiccup is logged,
+// never fatal to the billing event that triggered it.
+func (o *Orchestrator) setDomainAutoRenew(ctx context.Context, p *project.Project, on bool) bool {
+	if o.domains == nil || p.DomainName == "" || p.DomainKind != project.DomainKindPurchased {
+		return false
+	}
+	if err := o.domains.SetAutoRenew(ctx, p.DomainName, on); err != nil {
+		o.log.Error("set domain auto-renew", "project", p.ID, "domain", p.DomainName, "on", on, "err", err)
+		return false
+	}
+	o.log.Info("domain auto-renew set", "project", p.ID, "domain", p.DomainName, "on", on)
+	return true
 }
 
 // SubscriptionPaymentFailed alerts the operator only; Stripe's own retries and
