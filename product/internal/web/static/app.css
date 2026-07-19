@@ -986,6 +986,21 @@ label.ack-later { display: flex; flex-direction: row; align-items: flex-start; g
   .slot-file-name { min-width: 0; }
   .roster-member .roster-fields { flex-direction: column; }
   .roster-member .roster-fields input { min-width: 0; }
+
+  /* Domain results: the price now carries BOTH the first-year and the renewal
+     price ("99 kr first year, then 149 kr/yr"), which no longer fits beside the
+     domain name on a phone. Stack the card — name, then price on its own row
+     (wrapping: nowrap runs the long string off a narrow viewport), then a
+     full-width Buy. Stretching the button keeps every card the same shape
+     whatever the price length, and matches how the other mobile actions
+     behave (.admin-actions, .inline-actions). */
+  .domain-price { white-space: normal; }
+  .domain-hits li .domain-hit-name,
+  .domain-hits li .domain-price { flex: 0 0 100%; min-width: 0; overflow-wrap: anywhere; }
+  .domain-hits li form { width: 100%; }
+  .domain-hits li form .btn { width: 100%; }
+  .dc-pick { flex-wrap: wrap; }
+  .dc-pick .domain-price { flex: 0 0 100%; margin-left: 0; }
 }
 
 /* ── Voice: where JetBrains Mono lives ──────────────────────────────────────
