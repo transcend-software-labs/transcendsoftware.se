@@ -89,7 +89,10 @@ func (s *Server) handleSignupForm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
-	email := strings.TrimSpace(r.FormValue("email"))
+	// Store lowercased: the users table's UNIQUE(email) is case-sensitive, so
+	// without this "Victim@x.com" would slip past a "victim@x.com" row (every
+	// lookup uses lower(email)) and create a colliding duplicate account.
+	email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
 	password := r.FormValue("password")
 
 	if !strings.Contains(email, "@") || len(password) < 8 {

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -395,7 +396,7 @@ func (s *Server) requireUser(next authedHandler) http.HandlerFunc {
 
 // isAdmin reports whether u is the configured operator.
 func (s *Server) isAdmin(u *user.User) bool {
-	return u != nil && s.cfg.AdminEmail != "" && u.Email == s.cfg.AdminEmail
+	return u != nil && s.cfg.AdminEmail != "" && strings.EqualFold(u.Email, s.cfg.AdminEmail)
 }
 
 func (s *Server) requireAdmin(next authedHandler) http.HandlerFunc {

@@ -19,6 +19,12 @@ type Store interface {
 	UserByID(ctx context.Context, id string) (*user.User, error)
 	// MarkUserVerified confirms a password-signup account's email.
 	MarkUserVerified(ctx context.Context, email string) error
+	// VerifyAndClearPassword marks an account verified and drops its password,
+	// but only while it is still unverified. Called when a social/magic login
+	// adopts a pre-existing account: a password set on an unverified address was
+	// set by someone who never proved they own it, so it must not grant login.
+	// A no-op on already-verified accounts.
+	VerifyAndClearPassword(ctx context.Context, email string) error
 
 	// Sessions (cookie tokens are stored hashed; see user.Session)
 	CreateSession(ctx context.Context, s *user.Session) error

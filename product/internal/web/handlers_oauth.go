@@ -32,6 +32,17 @@ func hashToken(t string) string {
 func (s *Server) findOrCreateUser(r *http.Request, email string) (*user.User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if u, err := s.store.UserByEmail(r.Context(), email); err == nil {
+		// This login proves control of the address. If the account is still
+		// unverified, any password on it was set by someone who never proved
+		// ownership — a pre-hijack: attacker password-signs-up as the victim,
+		// waits for the victim to log in via Google/magic link, then logs in with
+		// the password they set. Wipe that password and verify the account now.
+		if !u.Verified {
+			if err := s.store.VerifyAndClearPassword(r.Context(), email); err != nil {
+				return nil, err
+			}
+			u.Verified, u.PasswordHash = true, ""
+		}
 		return u, nil
 	}
 	// Social login and magic links both prove the address is reachable, so these

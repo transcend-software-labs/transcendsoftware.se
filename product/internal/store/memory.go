@@ -110,6 +110,18 @@ func (m *Memory) MarkUserVerified(_ context.Context, email string) error {
 	return nil
 }
 
+func (m *Memory) VerifyAndClearPassword(_ context.Context, email string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, u := range m.users {
+		if strings.EqualFold(u.Email, email) && !u.Verified {
+			u.Verified = true
+			u.PasswordHash = ""
+		}
+	}
+	return nil
+}
+
 func (m *Memory) CreateSession(_ context.Context, s *user.Session) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

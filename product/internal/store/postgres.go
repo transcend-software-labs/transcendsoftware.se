@@ -174,6 +174,15 @@ func (p *Postgres) MarkUserVerified(ctx context.Context, email string) error {
 	return err
 }
 
+// VerifyAndClearPassword verifies the account and wipes its password in one
+// statement, guarded on verified = false so a verified password user who later
+// uses a magic link keeps their password. See the interface doc for why.
+func (p *Postgres) VerifyAndClearPassword(ctx context.Context, email string) error {
+	_, err := p.pool.Exec(ctx,
+		`UPDATE users SET verified = true, password_hash = '' WHERE lower(email) = lower($1) AND verified = false`, email)
+	return err
+}
+
 func (p *Postgres) CreateSession(ctx context.Context, s *user.Session) error {
 	_, err := p.pool.Exec(ctx,
 		`INSERT INTO sessions (token_hash, user_id, csrf, expires_at, created_at)
