@@ -2,12 +2,73 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestComplete_ResponsesProtocol(t *testing.T) {
+	var gotPath string
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &gotBody)
+		_, _ = w.Write([]byte(`{"output":[{"content":[{"type":"output_text","text":"NAME: Zen site\nA complete plan"}]}]}`))
+	}))
+	defer srv.Close()
+
+	c := NewOpenAICompat(srv.URL, "zen-key", "gpt-5.6-sol").WithEffort("high").WithProtocol("responses")
+	res, err := c.Plan(context.Background(), "build a site")
+	if err != nil {
+		t.Fatalf("responses plan: %v", err)
+	}
+	if gotPath != "/responses" {
+		t.Errorf("path = %q, want /responses", gotPath)
+	}
+	if gotBody["model"] != "gpt-5.6-sol" || gotBody["instructions"] == "" || gotBody["input"] != "build a site" {
+		t.Errorf("unexpected responses request: %#v", gotBody)
+	}
+	reasoning, _ := gotBody["reasoning"].(map[string]any)
+	if reasoning["effort"] != "high" {
+		t.Errorf("reasoning = %#v, want high effort", reasoning)
+	}
+	if res.Name != "Zen site" || res.Plan != "A complete plan" {
+		t.Errorf("unexpected plan: %+v", res)
+	}
+}
+
+func TestAnthropicAt_MessagesGateway(t *testing.T) {
+	var gotPath, gotAPIKey, gotBearer string
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAPIKey = r.Header.Get("x-api-key")
+		gotBearer = r.Header.Get("authorization")
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &gotBody)
+		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"NAME: Zen Claude\nA complete plan"}]}`))
+	}))
+	defer srv.Close()
+
+	res, err := NewAnthropicAt(srv.URL, "zen-key", "claude-sonnet-5", "max").Plan(context.Background(), "build a site")
+	if err != nil {
+		t.Fatalf("messages plan: %v", err)
+	}
+	if gotPath != "/messages" || gotAPIKey != "zen-key" || gotBearer != "Bearer zen-key" {
+		t.Errorf("request path/auth = %q, %q, %q", gotPath, gotAPIKey, gotBearer)
+	}
+	if gotBody["model"] != "claude-sonnet-5" {
+		t.Errorf("unexpected messages request: %#v", gotBody)
+	}
+	if res.Name != "Zen Claude" || res.Plan != "A complete plan" {
+		t.Errorf("unexpected plan: %+v", res)
+	}
+}
 
 // retryTestClient returns a client pointed at url with a near-zero retry delay.
 func retryTestClient(url string) *OpenAICompat {

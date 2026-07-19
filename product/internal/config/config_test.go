@@ -158,6 +158,30 @@ func TestModelProfileGateways(t *testing.T) {
 	if byKey["kimi"].BaseURL != "" {
 		t.Error("kimi should use the default go gateway (no base override)")
 	}
+
+	// These presets are the exact IDs and API shapes published in OpenCode's
+	// Zen catalog. All use the main gateway, even when the older profile set is
+	// configured with the separate Go gateway as its default.
+	zenMain := map[string]struct {
+		model    string
+		protocol string
+	}{
+		"gpt56sol":      {"gpt-5.6-sol", "responses"},
+		"gpt56terra":    {"gpt-5.6-terra", "responses"},
+		"gpt56luna":     {"gpt-5.6-luna", "responses"},
+		"grok-build-01": {"grok-build-0.1", ""},
+		"sonnet5-zen":   {"claude-sonnet-5", "messages"},
+	}
+	for key, want := range zenMain {
+		p, ok := byKey[key]
+		if !ok {
+			t.Errorf("missing Zen profile %s", key)
+			continue
+		}
+		if p.Provider != ProviderZen || p.BaseURL != zenMainGateway || p.Model != want.model || p.Protocol != want.protocol {
+			t.Errorf("%s = %+v, want model=%s protocol=%s on main Zen gateway", key, p, want.model, want.protocol)
+		}
+	}
 }
 
 func TestModelProfileCost(t *testing.T) {

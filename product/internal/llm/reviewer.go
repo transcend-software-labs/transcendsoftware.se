@@ -13,11 +13,14 @@ type Reviewer interface {
 // NewPlanner: "anthropic" gets the native Messages API, anything else the
 // OpenAI-compatible path. Kept a plain-string signature for the same
 // no-import-cycle reason.
-func NewReviewer(provider, baseURL, apiKey, model, effort string) Reviewer {
+func NewReviewer(provider, baseURL, apiKey, model, effort, protocol string) Reviewer {
 	if provider == "anthropic" {
 		return NewAnthropic(apiKey, model, effort)
 	}
-	return NewOpenAICompat(baseURL, apiKey, model).WithEffort(effort)
+	if protocol == "messages" {
+		return NewAnthropicAt(baseURL, apiKey, model, effort)
+	}
+	return NewOpenAICompat(baseURL, apiKey, model).WithEffort(effort).WithProtocol(protocol)
 }
 
 // ReviewerSystemPrompt frames the review as a delivery gate, not a style

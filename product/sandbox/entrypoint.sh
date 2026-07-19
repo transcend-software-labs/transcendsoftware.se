@@ -126,6 +126,50 @@ elif [ -n "${LLM_API_KEY:-}" ]; then
 }
 JSON
   else
+  case "${LLM_PROTOCOL:-}" in
+  responses)
+    # Zen's GPT family is served through the Responses API. The generic
+    # openai-compatible package only speaks chat/completions, so select the
+    # native OpenAI AI SDK package while keeping Zen's base URL and key.
+    log "configuring opencode: responses provider for ${base} model ${model} (auto-approve all tools)"
+    cat > /root/.config/opencode/opencode.json <<JSON
+{
+  "\$schema": "https://opencode.ai/config.json",
+  ${perm},
+  "provider": {
+    "zen-responses": {
+      "npm": "@ai-sdk/openai",
+      "name": "OpenCode Zen (Responses)",
+      "options": { "baseURL": "${base}", "apiKey": "{env:LLM_API_KEY}" },
+      "models": { "${model}": ${ropts} }
+    }
+  },
+  "model": "zen-responses/${model}"
+}
+JSON
+    ;;
+  messages)
+    # Zen's Claude family uses the Anthropic Messages API. Do not force the
+    # old opencode reasoning option here; current Claude models use adaptive
+    # thinking and will apply their own default safely.
+    log "configuring opencode: messages provider for ${base} model ${model} (auto-approve all tools)"
+    cat > /root/.config/opencode/opencode.json <<JSON
+{
+  "\$schema": "https://opencode.ai/config.json",
+  ${perm},
+  "provider": {
+    "zen-messages": {
+      "npm": "@ai-sdk/anthropic",
+      "name": "OpenCode Zen (Messages)",
+      "options": { "baseURL": "${base}", "apiKey": "{env:LLM_API_KEY}" },
+      "models": { "${model}": {} }
+    }
+  },
+  "model": "zen-messages/${model}"
+}
+JSON
+    ;;
+  *)
   case "$base" in
   *api.openai.com*)
     # Direct OpenAI: use opencode's NATIVE openai provider, not the generic
@@ -167,6 +211,8 @@ JSON
   "model": "moonshot/${model}"
 }
 JSON
+    ;;
+  esac
     ;;
   esac
   fi

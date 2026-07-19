@@ -32,6 +32,11 @@ func TestNewProjectModelPicker(t *testing.T) {
 		"— Forge default —", // the track-the-global-default option
 		"Claude Fable 5",
 		"DeepSeek V4 Pro",
+		"GPT 5.6 Sol (Zen)",
+		"GPT 5.6 Terra (Zen)",
+		"GPT 5.6 Luna (Zen)",
+		"Grok Build 0.1 (Zen)",
+		"Claude Sonnet 5 (Zen)",
 		`value="glm" selected`, // an explicit override preselects its model
 		`value="kimi" selected`,
 	} {

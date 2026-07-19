@@ -40,6 +40,10 @@ type ModelProfile struct {
 	Effort   string // reasoning effort: "", low, medium, high, xhigh, max
 	InPerM   float64
 	OutPerM  float64
+	// Protocol is the API shape used by the planner/reviewer and the sandbox's
+	// opencode provider. Empty means OpenAI-compatible chat/completions; Zen's
+	// GPT models use responses and its Claude models use Anthropic messages.
+	Protocol string
 	// BaseURL overrides the gateway for a zen profile ("" → the default
 	// OpenCode Zen Go gateway). Grok lives on the MAIN zen gateway (/zen/v1),
 	// not the "opencode go" one (/go/v1) that hosts kimi/glm/minimax — sending
@@ -72,6 +76,14 @@ func allProfiles() []ModelProfile {
 		{Key: "kimi-k3-moonshot", Label: "Kimi K3 (Moonshot)", Provider: ProviderMoonshot, Model: envOr("MODEL_KIMI_K3_MOONSHOT", "kimi-k3"), InPerM: 3, OutPerM: 15},
 		{Key: "glm", Label: "GLM 5.2", Provider: ProviderZen, Model: envOr("MODEL_GLM", "glm-5.2"), InPerM: 0.6, OutPerM: 2.2},
 		{Key: "grok", Label: "Grok 4.5", Provider: ProviderZen, Model: envOr("MODEL_GROK", "grok-4.5"), Effort: "high", InPerM: 2, OutPerM: 6, BaseURL: envOr("MODEL_GROK_BASE", zenMainGateway)},
+		// OpenCode Zen main-gateway profiles. The gateway exposes different wire
+		// protocols per model family, hence the explicit Protocol rather than
+		// treating the entire catalog as chat/completions-compatible.
+		{Key: "gpt56sol", Label: "GPT 5.6 Sol (Zen)", Provider: ProviderZen, Model: envOr("MODEL_GPT56_SOL", "gpt-5.6-sol"), Effort: "high", InPerM: 5, OutPerM: 30, BaseURL: zenMainGateway, Protocol: "responses"},
+		{Key: "gpt56terra", Label: "GPT 5.6 Terra (Zen)", Provider: ProviderZen, Model: envOr("MODEL_GPT56_TERRA", "gpt-5.6-terra"), Effort: "high", InPerM: 2.5, OutPerM: 15, BaseURL: zenMainGateway, Protocol: "responses"},
+		{Key: "gpt56luna", Label: "GPT 5.6 Luna (Zen)", Provider: ProviderZen, Model: envOr("MODEL_GPT56_LUNA", "gpt-5.6-luna"), Effort: "high", InPerM: 1, OutPerM: 6, BaseURL: zenMainGateway, Protocol: "responses"},
+		{Key: "grok-build-01", Label: "Grok Build 0.1 (Zen)", Provider: ProviderZen, Model: envOr("MODEL_GROK_BUILD_01", "grok-build-0.1"), Effort: "high", InPerM: 1, OutPerM: 2, BaseURL: zenMainGateway},
+		{Key: "sonnet5-zen", Label: "Claude Sonnet 5 (Zen)", Provider: ProviderZen, Model: envOr("MODEL_SONNET5_ZEN", "claude-sonnet-5"), Effort: "max", InPerM: 2, OutPerM: 10, BaseURL: zenMainGateway, Protocol: "messages"},
 		{Key: "minimax", Label: "MiniMax M3", Provider: ProviderZen, Model: envOr("MODEL_MINIMAX", "minimax-m3"), Effort: "high", InPerM: 0.5, OutPerM: 2, NativeGo: true},
 		{Key: "deepseek", Label: "DeepSeek V4 Pro", Provider: ProviderZen, Model: envOr("MODEL_DEEPSEEK", "deepseek-v4-pro"), Effort: "high", InPerM: 0.6, OutPerM: 2.5, NativeGo: true},
 		{Key: "deepseek-flash", Label: "DeepSeek V4 Flash", Provider: ProviderZen, Model: envOr("MODEL_DEEPSEEK_FLASH", "deepseek-v4-flash"), Effort: "high", InPerM: 0.3, OutPerM: 1.2, NativeGo: true},

@@ -24,6 +24,7 @@ type OpenAICompat struct {
 	baseURL         string
 	apiKey          string
 	model           string
+	protocol        string // "" = chat/completions; "responses" = Responses API
 	temperature     float64
 	reasoningEffort string // "" = model default
 	http            *http.Client
@@ -35,6 +36,12 @@ type OpenAICompat struct {
 // don't support it) and returns the client for chaining.
 func (o *OpenAICompat) WithEffort(effort string) *OpenAICompat {
 	o.reasoningEffort = effort
+	return o
+}
+
+// WithProtocol selects a non-chat API exposed by a compatible gateway.
+func (o *OpenAICompat) WithProtocol(protocol string) *OpenAICompat {
+	o.protocol = protocol
 	return o
 }
 
@@ -84,6 +91,32 @@ type ocResponse struct {
 	} `json:"error"`
 }
 
+type responsesRequest struct {
+	Model           string              `json:"model"`
+	Instructions    string              `json:"instructions"`
+	Input           string              `json:"input"`
+	MaxOutputTokens int                 `json:"max_output_tokens"`
+	Reasoning       *responsesReasoning `json:"reasoning,omitempty"`
+}
+
+type responsesReasoning struct {
+	Effort string `json:"effort"`
+}
+
+type responsesResponse struct {
+	OutputText string `json:"output_text"`
+	Output     []struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	} `json:"output"`
+	Error *struct {
+		Message string `json:"message"`
+		Type    string `json:"type"`
+	} `json:"error"`
+}
+
 // complete calls the model, retrying transient failures (network blips, 429s,
 // 5xx, empty responses) up to maxAttempts. Permanent failures (4xx other than
 // 429, auth) are returned immediately — retrying them just wastes time.
@@ -110,6 +143,9 @@ func (o *OpenAICompat) complete(ctx context.Context, system, user string, maxTok
 // completeOnce performs a single request. The bool reports whether the failure
 // is worth retrying.
 func (o *OpenAICompat) completeOnce(ctx context.Context, system, user string, maxTokens int) (string, bool, error) {
+	if o.protocol == "responses" {
+		return o.completeResponsesOnce(ctx, system, user, maxTokens)
+	}
 	r := ocRequest{
 		Model: o.model,
 		Messages: []ocMessage{
@@ -165,6 +201,66 @@ func (o *OpenAICompat) completeOnce(ctx context.Context, system, user string, ma
 			fmt.Errorf("llm: empty response (status %d)", resp.StatusCode)
 	}
 	return parsed.Choices[0].Message.Content, false, nil
+}
+
+// completeResponsesOnce uses the OpenAI Responses API shape. OpenCode Zen's
+// GPT 5.6 family is only exposed on /responses, not /chat/completions.
+func (o *OpenAICompat) completeResponsesOnce(ctx context.Context, system, user string, maxTokens int) (string, bool, error) {
+	r := responsesRequest{
+		Model: o.model, Instructions: system, Input: user,
+		// The cap includes hidden reasoning. Keep the existing GPT headroom so a
+		// deep planning call does not finish before emitting visible text.
+		MaxOutputTokens: maxTokens * 4,
+	}
+	if o.reasoningEffort != "" {
+		r.Reasoning = &responsesReasoning{Effort: o.reasoningEffort}
+	}
+	body, err := json.Marshal(r)
+	if err != nil {
+		return "", false, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.baseURL+"/responses", bytes.NewReader(body))
+	if err != nil {
+		return "", false, err
+	}
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("authorization", "Bearer "+o.apiKey)
+
+	resp, err := o.http.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			return "", false, ctx.Err()
+		}
+		return "", true, fmt.Errorf("llm: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	retryableStatus := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+
+	var parsed responsesResponse
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return "", retryableStatus, fmt.Errorf("llm: decode response (status %d): %w", resp.StatusCode, err)
+	}
+	if parsed.Error != nil {
+		return "", retryableStatus, fmt.Errorf("llm: %s: %s", parsed.Error.Type, parsed.Error.Message)
+	}
+	content := parsed.OutputText
+	if content == "" {
+		var sb strings.Builder
+		for _, item := range parsed.Output {
+			for _, part := range item.Content {
+				if part.Type == "output_text" {
+					sb.WriteString(part.Text)
+				}
+			}
+		}
+		content = sb.String()
+	}
+	if content == "" {
+		return "", retryableStatus || resp.StatusCode == http.StatusOK,
+			fmt.Errorf("llm: empty response (status %d)", resp.StatusCode)
+	}
+	return content, false, nil
 }
 
 // Questions implements Intake.

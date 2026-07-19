@@ -42,7 +42,7 @@ func (o *Orchestrator) plannerFor(p *project.Project) (llm.Planner, string) {
 	if !ok {
 		return o.planner, o.plannerModel
 	}
-	return llm.NewPlanner(string(rm.Provider), rm.BaseURL, rm.APIKey, rm.Model, rm.Effort), modelLabel(rm.Model, rm.Effort)
+	return llm.NewPlanner(string(rm.Provider), rm.BaseURL, rm.APIKey, rm.Model, rm.Effort, rm.Protocol), modelLabel(rm.Model, rm.Effort)
 }
 
 // intakeFor returns the intake client for a project, honoring its
@@ -53,7 +53,7 @@ func (o *Orchestrator) intakeFor(p *project.Project) llm.Intake {
 	if !ok {
 		return o.intake
 	}
-	return llm.NewIntake(string(rm.Provider), rm.BaseURL, rm.APIKey, rm.Model, rm.Effort)
+	return llm.NewIntake(string(rm.Provider), rm.BaseURL, rm.APIKey, rm.Model, rm.Effort, rm.Protocol)
 }
 
 // implFor returns the implementation model override + a display label. A zero
@@ -65,7 +65,7 @@ func (o *Orchestrator) implFor(p *project.Project) (builder.ModelSpec, string) {
 	}
 	return builder.ModelSpec{
 		Provider: string(rm.Provider), BaseURL: rm.BaseURL, APIKey: rm.APIKey,
-		Model: rm.Model, Effort: rm.Effort, NativeGo: rm.NativeGo,
+		Model: rm.Model, Effort: rm.Effort, Protocol: rm.Protocol, NativeGo: rm.NativeGo,
 	}, modelLabel(rm.Model, rm.Effort)
 }
 
@@ -79,7 +79,7 @@ func (o *Orchestrator) reviewerFor(p *project.Project) (llm.Reviewer, string) {
 	if !ok {
 		return o.reviewer, o.plannerModel
 	}
-	return llm.NewReviewer(string(rm.Provider), rm.BaseURL, rm.APIKey, rm.Model, rm.Effort), modelLabel(rm.Model, rm.Effort)
+	return llm.NewReviewer(string(rm.Provider), rm.BaseURL, rm.APIKey, rm.Model, rm.Effort, rm.Protocol), modelLabel(rm.Model, rm.Effort)
 }
 
 type profileKind int

@@ -103,14 +103,16 @@ const AgentGrok = "grok"
 type agentRunner func(ctx context.Context, instruction string) (opencode.Result, error)
 
 // ModelSpec is a per-build implementation-model override. Provider is
-// "anthropic" (native, opencode's anthropic provider) or "zen"/other
-// (OpenAI-compatible gateway). Empty Provider → the builder's default.
+// "anthropic" (native, opencode's anthropic provider) or "zen"/other gateway.
+// Protocol selects the gateway API shape; empty means chat/completions.
+// Empty Provider → the builder's default.
 type ModelSpec struct {
 	Provider string
 	BaseURL  string
 	APIKey   string
 	Model    string
 	Effort   string
+	Protocol string
 	NativeGo bool // route the impl via opencode's native "opencode-go" provider
 }
 
@@ -254,6 +256,9 @@ func (b *Sandbox) Build(ctx context.Context, req Request, hooks Hooks) (Result, 
 		env["LLM_API_KEY"] = req.Model.APIKey
 		env["LLM_BASE_URL"] = req.Model.BaseURL
 		env["LLM_MODEL"] = req.Model.Model
+		if req.Model.Protocol != "" {
+			env["LLM_PROTOCOL"] = req.Model.Protocol
+		}
 		if req.Model.Effort != "" {
 			env["LLM_EFFORT"] = req.Model.Effort
 		}

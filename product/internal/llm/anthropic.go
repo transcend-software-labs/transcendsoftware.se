@@ -18,24 +18,33 @@ const DefaultModel = "claude-sonnet-4-6"
 
 // Anthropic implements Planner and SafetyGate against the Anthropic Messages API.
 type Anthropic struct {
-	apiKey string
-	model  string
-	effort string // reasoning effort (low..max) via output_config; "" = model default
-	http   *http.Client
+	baseURL string
+	apiKey  string
+	model   string
+	effort  string // reasoning effort (low..max) via output_config; "" = model default
+	http    *http.Client
 }
 
 // NewAnthropic returns a real planner/gate. model may be empty for DefaultModel;
 // effort ("" | low | medium | high | xhigh | max) sets the reasoning depth on
 // the 4.6+/5 models (adaptive thinking; never budget_tokens).
 func NewAnthropic(apiKey, model, effort string) *Anthropic {
+	return NewAnthropicAt("https://api.anthropic.com/v1", apiKey, model, effort)
+}
+
+// NewAnthropicAt returns a Messages API client using a compatible gateway.
+// OpenCode Zen exposes Claude models at <baseURL>/messages with the same
+// request/response shape as Anthropic's native endpoint.
+func NewAnthropicAt(baseURL, apiKey, model, effort string) *Anthropic {
 	if model == "" {
 		model = DefaultModel
 	}
 	return &Anthropic{
-		apiKey: apiKey,
-		model:  model,
-		effort: effort,
-		http:   &http.Client{Timeout: 300 * time.Second},
+		baseURL: strings.TrimRight(baseURL, "/"),
+		apiKey:  apiKey,
+		model:   model,
+		effort:  effort,
+		http:    &http.Client{Timeout: 300 * time.Second},
 	}
 }
 
@@ -87,12 +96,17 @@ func (a *Anthropic) complete(ctx context.Context, system, user string, maxTokens
 		return "", err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		"https://api.anthropic.com/v1/messages", bytes.NewReader(body))
+		a.baseURL+"/messages", bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("x-api-key", a.apiKey)
+	// Zen accepts the provider SDK's API-key authentication; the bearer header
+	// also makes the same client work with compatible gateways that use OAuth2.
+	if !strings.Contains(a.baseURL, "api.anthropic.com") {
+		req.Header.Set("authorization", "Bearer "+a.apiKey)
+	}
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	resp, err := a.http.Do(req)
