@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/transcend-software-labs/rasmus-ai/internal/billing"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/namecom"
 	"github.com/transcend-software-labs/rasmus-ai/internal/registrar"
@@ -40,8 +41,15 @@ func main() {
 	if !cfg.NameComEnabled() {
 		fatal("NAME_DOT_COM_USERNAME and NAME_DOT_COM_API_KEY must be set")
 	}
-	fmt.Printf("== domainctl: name.com @ %s, user %s ==\n", cfg.NameComAPIURL, cfg.NameComUsername)
-	c := namecom.New(cfg.NameComAPIURL, cfg.NameComUsername, cfg.NameComAPIKey, cfg.SekPerUSD, cfg.DomainMarkupPct)
+	// Prices need Stripe's FX rate; without STRIPE_SECRET_KEY offers print
+	// unpriced (registration/DNS diagnosis doesn't need them).
+	var rate namecom.RateFunc
+	if cfg.StripeSecretKey != "" {
+		bill := billing.New("https://api.stripe.com", cfg.StripeSecretKey)
+		rate = func(ctx context.Context) (float64, error) { return bill.FXRate(ctx, "usd", "sek") }
+	}
+	fmt.Printf("== domainctl: name.com @ %s, user %s (fx via stripe: %v) ==\n", cfg.NameComAPIURL, cfg.NameComUsername, rate != nil)
+	c := namecom.New(cfg.NameComAPIURL, cfg.NameComUsername, cfg.NameComAPIKey, rate, cfg.DomainMarkupPct)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
@@ -93,7 +101,12 @@ func main() {
 		fmt.Printf("   availability ERROR: %v\n", err)
 	}
 	for _, o := range offers {
-		fmt.Printf("   %s registrable=%v price=%.2f %s (1y)\n", o.Name, o.Registrable, o.Price, o.Currency)
+		if o.Price > 0 {
+			fmt.Printf("   %s registrable=%v price=%.2f %s first year, renewal %.2f %s/yr\n",
+				o.Name, o.Registrable, o.Price, o.Currency, o.Renewal, o.Currency)
+		} else {
+			fmt.Printf("   %s registrable=%v (unpriced — set STRIPE_SECRET_KEY for SEK prices)\n", o.Name, o.Registrable)
+		}
 	}
 
 	if st == registrar.StateSucceeded {

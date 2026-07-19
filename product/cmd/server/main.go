@@ -171,12 +171,18 @@ func main() {
 	}
 	// Domain registrar: name.com (the single provider). bill may be nil
 	// (Stripe off) — then purchased domains are comped and the operator is
-	// alerted. Pass an untyped nil so the interface is truly nil.
+	// alerted. Pass an untyped nil so the interface is truly nil. Pricing uses
+	// Stripe's live USD→SEK rate; without Stripe there is no rate source, so
+	// offers stay unpriced and buying is off (DomainBuyEnabled is too).
 	var domainReg orchestrator.DomainRegistrar
 	var domainCap float64
 	if cfg.NameComEnabled() {
-		log.Info("domains: name.com enabled", "base", cfg.NameComAPIURL, "buy", cfg.DomainBuyEnabled())
-		domainReg = namecom.New(cfg.NameComAPIURL, cfg.NameComUsername, cfg.NameComAPIKey, cfg.SekPerUSD, cfg.DomainMarkupPct)
+		var rate namecom.RateFunc
+		if bill != nil {
+			rate = func(ctx context.Context) (float64, error) { return bill.FXRate(ctx, "usd", "sek") }
+		}
+		log.Info("domains: name.com enabled", "base", cfg.NameComAPIURL, "buy", cfg.DomainBuyEnabled(), "fx", bill != nil)
+		domainReg = namecom.New(cfg.NameComAPIURL, cfg.NameComUsername, cfg.NameComAPIKey, rate, cfg.DomainMarkupPct)
 		domainCap = cfg.MaxDomainSEK
 	}
 	if domainReg != nil {

@@ -134,7 +134,7 @@ func TestDomainAtCheckout_RealPostgres_MockedNameCom(t *testing.T) {
 	orch, _ := newTestOrchWithVerifier(pg, NoopVerifier{})
 	orch.SetNotifications(&recordingNotifier{}, "rasmus@example.com", "https://forge.example")
 	// Real name.com client, real store, cap 300 SEK.
-	orch.SetDomains(namecom.New(mock.URL, "forge-test", "tok", 10, 0), &fakeBiller{}, 300)
+	orch.SetDomains(namecom.New(mock.URL, "forge-test", "tok", namecom.FixedRate(10), 0), &fakeBiller{}, 300)
 
 	seedPGProject(t, pg, "u-checkout", "p-checkout")
 
@@ -195,7 +195,7 @@ func TestSetDomainIntent_TooPricey_RealPostgres(t *testing.T) {
 	defer mock.Close()
 
 	orch, _ := newTestOrchWithVerifier(pg, NoopVerifier{})
-	orch.SetDomains(namecom.New(mock.URL, "forge-test", "tok", 10, 0), &fakeBiller{}, 50) // cap below price
+	orch.SetDomains(namecom.New(mock.URL, "forge-test", "tok", namecom.FixedRate(10), 0), &fakeBiller{}, 50) // cap below price
 
 	seedPGProject(t, pg, "u-pricey", "p-pricey")
 

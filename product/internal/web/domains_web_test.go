@@ -44,7 +44,7 @@ func newDomainServer(t *testing.T, cfURL string) (*httptest.Server, store.Store)
 	assets := storage.NewMemory()
 	orch := orchestrator.New(st, fake, fake, fake, b, machines, assets, broker, orchestrator.NoopVerifier{}, log)
 	bill := billing.New(stripe.URL, "sk_test_x")
-	orch.SetDomains(namecom.New(cfURL, "forge-test", "tok", 10, 0), bill, 100)
+	orch.SetDomains(namecom.New(cfURL, "forge-test", "tok", namecom.FixedRate(10), 0), bill, 100)
 	cfg := config.Config{AdminEmail: "admin@example.com", BaseURL: "https://forge.example"}
 	sessions := auth.NewSessions(st, time.Hour)
 	srv, err := web.NewServer(cfg, st, sessions, orch, broker, assets, log)

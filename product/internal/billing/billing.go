@@ -34,6 +34,9 @@ type Client struct {
 	priceMu sync.Mutex
 	priceAt time.Time
 	price   map[string]Price // id → last fetched price (cached ~1h)
+
+	fxMu sync.Mutex
+	fx   map[string]fxEntry // "usd→sek" → last fetched rate
 }
 
 // New returns a client. baseURL is https://api.stripe.com in prod (a fake
@@ -43,7 +46,68 @@ func New(baseURL, key string) *Client {
 		baseURL: strings.TrimRight(baseURL, "/"), key: key,
 		http:  &http.Client{Timeout: 15 * time.Second},
 		price: map[string]Price{},
+		fx:    map[string]fxEntry{},
 	}
+}
+
+// fxEntry is one cached exchange rate.
+type fxEntry struct {
+	rate float64
+	at   time.Time
+}
+
+// stripeFXPreviewVersion pins the FX Quotes API, which is only served under a
+// preview API version (public preview; header required on every call).
+const stripeFXPreviewVersion = "2025-07-30.preview"
+
+// FXRate returns how many units of `to` one unit of `from` buys, from Stripe's
+// FX Quotes API — so domain pricing follows Stripe's live rates instead of a
+// hand-maintained constant. Cached for an hour; on a refresh failure the last
+// good rate serves indefinitely (a stale real rate beats no rate). With no
+// cached rate at all the error surfaces — callers must refuse to price rather
+// than invent a number.
+func (c *Client) FXRate(ctx context.Context, from, to string) (float64, error) {
+	from, to = strings.ToLower(from), strings.ToLower(to)
+	key := from + "→" + to
+	c.fxMu.Lock()
+	defer c.fxMu.Unlock()
+	if e, ok := c.fx[key]; ok && time.Since(e.at) < time.Hour {
+		return e.rate, nil
+	}
+	form := url.Values{}
+	form.Set("to_currency", to)
+	form.Set("from_currencies[]", from)
+	form.Set("lock_duration", "none") // a live quote; nothing is being locked in
+	var out struct {
+		Rates map[string]struct {
+			ExchangeRate float64 `json:"exchange_rate"`
+			RateDetails  struct {
+				BaseRate float64 `json:"base_rate"`
+			} `json:"rate_details"`
+		} `json:"rates"`
+	}
+	if err := c.postVersioned(ctx, "/v1/fx_quotes", stripeFXPreviewVersion, form, &out); err != nil {
+		if e, ok := c.fx[key]; ok {
+			return e.rate, nil // stale but real
+		}
+		return 0, fmt.Errorf("fx rate %s: %w", key, err)
+	}
+	r := out.Rates[from]
+	// Prefer the mid-market base rate; the top-level exchange_rate bakes in
+	// Stripe's conversion fee for money movement we aren't doing. Either is
+	// well within the domain markup — this just picks the neutral figure.
+	rate := r.RateDetails.BaseRate
+	if rate == 0 {
+		rate = r.ExchangeRate
+	}
+	if rate <= 0 {
+		if e, ok := c.fx[key]; ok {
+			return e.rate, nil
+		}
+		return 0, fmt.Errorf("fx rate %s: quote carried no rate", key)
+	}
+	c.fx[key] = fxEntry{rate: rate, at: time.Now()}
+	return rate, nil
 }
 
 // LineItem is one Checkout line. Either a recurring plan (Price = a Stripe price
@@ -257,12 +321,22 @@ func (c *Client) RefundSubscriptionCharge(ctx context.Context, subscriptionID st
 }
 
 func (c *Client) post(ctx context.Context, path string, form url.Values, out any) error {
+	return c.postVersioned(ctx, path, "", form, out)
+}
+
+// postVersioned is post with an optional Stripe-Version header ("" = account
+// default) — for the few endpoints whose shape or availability is
+// version-bound (see stripeBasilVersion, stripeFXPreviewVersion).
+func (c *Client) postVersioned(ctx context.Context, path, apiVersion string, form url.Values, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, strings.NewReader(form.Encode()))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("content-type", "application/x-www-form-urlencoded")
 	req.Header.Set("authorization", "Bearer "+c.key)
+	if apiVersion != "" {
+		req.Header.Set("Stripe-Version", apiVersion)
+	}
 	return c.do(req, out)
 }
 

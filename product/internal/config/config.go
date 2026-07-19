@@ -133,7 +133,6 @@ type Config struct {
 	NameComUsername string
 	NameComAPIKey   string
 	NameComAPIURL   string
-	SekPerUSD       float64 // USD→SEK conversion for domain prices (default 10.5)
 	DomainMarkupPct float64 // Forge's margin on domain prices, percent (default 10)
 
 	MaxDomainSEK float64 // buy cap, in SEK: max we offer AND max we bill (default 300)
@@ -242,7 +241,6 @@ func Load() Config {
 
 		NameComUsername: os.Getenv("NAME_DOT_COM_USERNAME"),
 		NameComAPIKey:   os.Getenv("NAME_DOT_COM_API_KEY"),
-		SekPerUSD:       envFloatOr("SEK_PER_USD", 10.5),
 		DomainMarkupPct: envFloatOr("DOMAIN_MARKUP_PCT", 10),
 
 		MaxDomainSEK: envFloatOr("MAX_DOMAIN_SEK", 300),

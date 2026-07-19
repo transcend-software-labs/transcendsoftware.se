@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCreateCheckoutSession_OneTimeDomainItem(t *testing.T) {
@@ -283,5 +284,64 @@ func TestRefund_NoPaymentResolvable(t *testing.T) {
 	}
 	if s.gotRefundForm != "" {
 		t.Error("no refund should be attempted when no payment resolves")
+	}
+}
+
+// TestFXRate covers the live-rate source that replaced the hand-maintained
+// SEK_PER_USD constant: the FX Quotes preview call, the 1h cache, stale
+// serving on refresh failure, and a hard error when no rate was ever fetched
+// (callers then refuse to price instead of inventing a rate).
+func TestFXRate(t *testing.T) {
+	hits := 0
+	var gotVersion, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		gotVersion = r.Header.Get("Stripe-Version")
+		_ = r.ParseForm()
+		gotBody = r.Form.Encode()
+		if hits > 1 {
+			http.Error(w, `{"error":{"type":"api_error","message":"down"}}`, 500)
+			return
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"fxq_1","to_currency":"sek","rates":{"usd":{"exchange_rate":10.21,"rate_details":{"base_rate":10.42,"fx_fee_rate":0.02}}}}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "sk_test_x")
+	rate, err := c.FXRate(context.Background(), "USD", "SEK")
+	if err != nil {
+		t.Fatalf("fx rate: %v", err)
+	}
+	if rate != 10.42 { // mid-market base_rate preferred over the fee-laden rate
+		t.Fatalf("rate = %v, want 10.42", rate)
+	}
+	if gotVersion == "" || !strings.Contains(gotVersion, "preview") {
+		t.Errorf("FX Quotes needs the preview Stripe-Version header, got %q", gotVersion)
+	}
+	for _, want := range []string{"to_currency=sek", "from_currencies%5B%5D=usd", "lock_duration=none"} {
+		if !strings.Contains(gotBody, want) {
+			t.Errorf("fx quote body missing %q\nbody: %s", want, gotBody)
+		}
+	}
+
+	// Cached: no second hit within the hour.
+	if r2, err := c.FXRate(context.Background(), "usd", "sek"); err != nil || r2 != 10.42 || hits != 1 {
+		t.Fatalf("expected cache hit: rate=%v err=%v hits=%d", r2, err, hits)
+	}
+	// Stale degrade: expire the cache, the refresh fails, the old rate serves.
+	c.fxMu.Lock()
+	e := c.fx["usd→sek"]
+	e.at = e.at.Add(-2 * time.Hour)
+	c.fx["usd→sek"] = e
+	c.fxMu.Unlock()
+	if r3, err := c.FXRate(context.Background(), "usd", "sek"); err != nil || r3 != 10.42 {
+		t.Fatalf("stale rate should serve on refresh failure: rate=%v err=%v", r3, err)
+	}
+
+	// A cold client with a failing server must error — never invent a rate.
+	cold := New(srv.URL, "sk_test_x")
+	if _, err := cold.FXRate(context.Background(), "usd", "sek"); err == nil {
+		t.Fatal("no cached rate + failing fetch must surface an error")
 	}
 }

@@ -16,11 +16,14 @@
 //     No add-then-register dance, no pending polling in the common case.
 //   - DNS records are keyed by the domain name ("zone id" = the name, like
 //     GleSYS); record hosts are zone-relative ("" or "@" for the apex).
-//   - Prices are USD. They are converted to SEK here, at the configured rate,
-//     AND marked up by the configured percentage — the Offer carries Forge's
-//     SELLING prices, so everything downstream (the buy cap, the captured
-//     cost/renewal öre, the Stripe lines) charges the customer the marked-up
-//     amount while name.com charges us cost.
+//   - Prices are USD. They are converted to SEK at a LIVE rate (Stripe's FX
+//     Quotes, injected as a RateFunc — no hand-maintained constant) and marked
+//     up by the configured percentage — the Offer carries Forge's SELLING
+//     prices, so everything downstream (the buy cap, the captured cost/renewal
+//     öre, the Stripe lines) charges the customer the marked-up amount while
+//     name.com charges us cost. When no rate is available at all, offers come
+//     back UNPRICED (Price 0) — Buyable() then refuses them, so nothing is
+//     ever sold at an invented rate.
 //   - Contacts are optional on registration — the account's default contacts
 //     apply, so no per-registrant config plumbing is needed.
 package namecom
@@ -46,36 +49,48 @@ const (
 	DevBaseURL  = "https://api.dev.name.com"
 )
 
+// RateFunc returns how many SEK one USD buys right now (Stripe FX in prod;
+// fixed values in tests). An error means "no trustworthy rate" — offers are
+// then left unpriced rather than priced by guesswork.
+type RateFunc func(ctx context.Context) (float64, error)
+
 // Client talks to the name.com Core API (JSON in/out, Basic auth).
 type Client struct {
 	http      *http.Client
 	baseURL   string
 	username  string
 	token     string
-	sekPerUSD float64 // USD→SEK conversion for offers/prices (name.com bills USD)
-	markupPct float64 // Forge's margin on top of cost, in percent (10 = +10%)
+	rate      RateFunc // live USD→SEK rate for pricing offers
+	markupPct float64  // Forge's margin on top of cost, in percent (10 = +10%)
 }
 
 // New returns a client. baseURL is ProdBaseURL or DevBaseURL (or an httptest
-// server in tests); sekPerUSD converts name.com's USD prices into the SEK the
-// rest of the pipeline works in; markupPct is Forge's margin on top of cost
+// server in tests); rate supplies the live USD→SEK conversion (nil = no rate
+// source, offers stay unpriced); markupPct is Forge's margin on top of cost
 // (10 = sell for 110% of what name.com charges us), applied to both the
 // first-year and the renewal price.
-func New(baseURL, username, token string, sekPerUSD, markupPct float64) *Client {
-	if sekPerUSD <= 0 {
-		sekPerUSD = 10.5
-	}
+func New(baseURL, username, token string, rate RateFunc, markupPct float64) *Client {
 	if markupPct < 0 {
 		markupPct = 0
+	}
+	if rate == nil {
+		rate = func(context.Context) (float64, error) {
+			return 0, fmt.Errorf("namecom: no exchange-rate source configured")
+		}
 	}
 	return &Client{
 		http:      &http.Client{Timeout: 30 * time.Second},
 		baseURL:   strings.TrimRight(baseURL, "/"),
 		username:  username,
 		token:     token,
-		sekPerUSD: sekPerUSD,
+		rate:      rate,
 		markupPct: markupPct,
 	}
+}
+
+// FixedRate is a RateFunc for tests and offline tooling.
+func FixedRate(sekPerUSD float64) RateFunc {
+	return func(context.Context) (float64, error) { return sekPerUSD, nil }
 }
 
 // apiError is a non-2xx name.com response, keeping the HTTP status so callers
@@ -155,18 +170,19 @@ type searchResult struct {
 	PurchaseType  string  `json:"purchaseType"`
 }
 
-// offer maps a name.com result to the provider-neutral Offer. Only plain
-// registrations count as registrable: premium and aftermarket/expiring/
-// backorder acquisitions have volatile pricing and non-instant fulfillment —
-// per name.com's own reseller recommendation we don't sell those.
-func (c *Client) offer(r searchResult) registrar.Offer {
+// offer maps a name.com result to the provider-neutral Offer, priced at
+// usdToSEK (0 = no rate available → left unpriced, which Buyable() refuses).
+// Only plain registrations count as registrable: premium and aftermarket/
+// expiring/backorder acquisitions have volatile pricing and non-instant
+// fulfillment — per name.com's own reseller recommendation we don't sell those.
+func (c *Client) offer(r searchResult, usdToSEK float64) registrar.Offer {
 	registration := r.PurchaseType == "" || strings.EqualFold(r.PurchaseType, "registration")
 	o := registrar.Offer{
 		Name:        strings.ToLower(r.DomainName),
 		Registrable: r.Purchasable && registration && !r.Premium,
 	}
-	if o.Registrable {
-		sell := c.sekPerUSD * (1 + c.markupPct/100)
+	if o.Registrable && usdToSEK > 0 {
+		sell := usdToSEK * (1 + c.markupPct/100)
 		o.Price = r.PurchasePrice * sell
 		o.Renewal = r.RenewalPrice * sell
 		if o.Renewal == 0 {
@@ -175,6 +191,17 @@ func (c *Client) offer(r searchResult) registrar.Offer {
 		o.Currency = "SEK"
 	}
 	return o
+}
+
+// sellRate resolves the current USD→SEK rate, 0 when unavailable — pricing
+// degrades to unpriced/unbuyable offers instead of failing discovery outright
+// (BYOD and diagnosis flows don't need prices).
+func (c *Client) sellRate(ctx context.Context) float64 {
+	rate, err := c.rate(ctx)
+	if err != nil || rate <= 0 {
+		return 0
+	}
+	return rate
 }
 
 // SearchDomains suggests registrable domains for a query (the UI search box).
@@ -186,9 +213,10 @@ func (c *Client) SearchDomains(ctx context.Context, query string, limit int) ([]
 	if err := c.do(ctx, http.MethodPost, "/core/v1/domains:search", req, &out); err != nil {
 		return nil, fmt.Errorf("namecom: search %q: %w", query, err)
 	}
+	rate := c.sellRate(ctx)
 	offers := make([]registrar.Offer, 0, len(out.Results))
 	for _, r := range out.Results {
-		if o := c.offer(r); o.Registrable {
+		if o := c.offer(r, rate); o.Registrable {
 			offers = append(offers, o)
 			if limit > 0 && len(offers) >= limit {
 				break
@@ -208,9 +236,10 @@ func (c *Client) CheckDomains(ctx context.Context, names []string) ([]registrar.
 	if err := c.do(ctx, http.MethodPost, "/core/v1/domains:checkAvailability", req, &out); err != nil {
 		return nil, fmt.Errorf("namecom: check %v: %w", names, err)
 	}
+	rate := c.sellRate(ctx)
 	offers := make([]registrar.Offer, 0, len(out.Results))
 	for _, r := range out.Results {
-		offers = append(offers, c.offer(r))
+		offers = append(offers, c.offer(r, rate))
 	}
 	return offers, nil
 }

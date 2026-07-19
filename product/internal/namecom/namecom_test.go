@@ -21,7 +21,7 @@ func newMockClientMarkup(t *testing.T, h http.HandlerFunc, markupPct float64) *C
 	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return New(srv.URL, "forge-test", "tok", 10, markupPct) // 10 SEK/USD for round numbers
+	return New(srv.URL, "forge-test", "tok", FixedRate(10), markupPct) // 10 SEK/USD for round numbers
 }
 
 func TestCheckDomains_MapsOffersAndConvertsCurrency(t *testing.T) {
@@ -83,6 +83,31 @@ func TestCheckDomains_MarkupApplies(t *testing.T) {
 	// 10 USD × 10 SEK/USD × 1.10 = 110 SEK; 15 → 165 SEK.
 	if o := offers[0]; o.Price != 110 || o.Renewal != 165 {
 		t.Fatalf("markup not applied: price=%v renewal=%v (want 110/165)", o.Price, o.Renewal)
+	}
+}
+
+// TestCheckDomains_NoRateMeansUnpriced: with no trustworthy exchange rate the
+// offers come back unpriced — Buyable() refuses them, so nothing is ever sold
+// at an invented rate (Rasmus's rule: no hand-maintained FX anywhere).
+func TestCheckDomains_NoRateMeansUnpriced(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"results":[
+			{"domainName":"acme.se","sld":"acme","tld":"se","purchasable":true,"purchaseType":"registration","purchasePrice":10,"renewalPrice":15}
+		]}`)
+	}))
+	t.Cleanup(srv.Close)
+	c := New(srv.URL, "forge-test", "tok", nil, 10) // nil RateFunc = no rate source
+
+	offers, err := c.CheckDomains(context.Background(), []string{"acme.se"})
+	if err != nil {
+		t.Fatalf("discovery must not fail outright without a rate: %v", err)
+	}
+	o := offers[0]
+	if !o.Registrable || o.Price != 0 || o.Renewal != 0 {
+		t.Fatalf("no rate → registrable but unpriced, got %+v", o)
+	}
+	if o.Buyable(300) {
+		t.Fatal("an unpriced offer must never be buyable")
 	}
 }
 
