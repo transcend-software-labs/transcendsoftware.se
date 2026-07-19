@@ -144,6 +144,17 @@ func (a *Anthropic) Questions(ctx context.Context, brief, lang string) (IntakeRe
 	return parseIntakeJSON(out)
 }
 
+// Concepts implements the concrete hero-concept gate using the same model and
+// selected planner profile as intake.
+func (a *Anthropic) Concepts(ctx context.Context, brief, design, lang string) (ConceptResult, error) {
+	user := "Customer brief:\n" + brief + "\n\nChosen design direction:\n" + design
+	out, err := a.complete(ctx, ConceptSystemPrompt+conceptLangDirective(lang), user, 3000)
+	if err != nil {
+		return ConceptResult{}, err
+	}
+	return parseConceptJSON(out)
+}
+
 // Plan implements Planner.
 func (a *Anthropic) Plan(ctx context.Context, brief string) (PlanResult, error) {
 	out, err := a.complete(ctx, PlannerSystemPrompt, brief, 2000)

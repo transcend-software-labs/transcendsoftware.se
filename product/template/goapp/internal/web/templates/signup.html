@@ -4,8 +4,8 @@
     <div class="panel">
       <h1>Create owner account</h1>
       <form method="post" action="/signup" class="stack">
-        <label>Email <input type="email" name="email" required autocomplete="email" spellcheck="false"></label>
-        <label>Password <input type="password" name="password" required minlength="8" autocomplete="new-password">
+        <label><span class="field-label">Email <span class="required-mark" aria-hidden="true">*</span></span><input type="email" name="email" required autocomplete="email" spellcheck="false"></label>
+        <label><span class="field-label">Password <span class="required-mark" aria-hidden="true">*</span></span><input type="password" name="password" required minlength="8" autocomplete="new-password">
           <span class="field-hint">At least 8 characters.</span></label>
         <button class="btn" type="submit">Create account</button>
       </form>

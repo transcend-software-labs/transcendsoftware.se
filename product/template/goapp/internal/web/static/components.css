@@ -180,12 +180,85 @@ img { display: block; }
 
 /* --- Forms ---------------------------------------------------------------- */
 .stack { display: flex; flex-direction: column; gap: var(--space-4); }
-label { display: flex; flex-direction: column; gap: var(--space-1); font-weight: 500; }
+label { font-weight: 500; }
 input, textarea, select {
   font: inherit; min-height: var(--control-min); padding: var(--space-2) var(--space-3); border: 1px solid var(--border);
   border-radius: var(--radius-sm); background: var(--bg); color: var(--text);
 }
 .form-field { display: flex; flex-direction: column; gap: var(--space-1); }
+.field-label {
+  display: inline-flex; align-items: baseline; gap: .2em;
+  width: fit-content; max-width: 100%;
+}
+:where(.req, .required-mark, .required-indicator, [data-required-marker]) {
+  display: inline; width: auto; margin: 0; color: var(--error);
+  line-height: 1; align-self: baseline; justify-self: start;
+}
+
+/* A wrapped field label is a two-row grid: label text + required marker share
+   row one, and the control/hint occupy full-width rows below. This deliberately
+   handles both the recommended .field-label wrapper and generated markup such
+   as `Name <span class="req">*</span><input …>` — the star can never become a
+   full-width flex row between the name and its control. */
+:where(
+  label:has(> input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])),
+  label:has(> textarea),
+  label:has(> select)
+) {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: .2em;
+  row-gap: var(--space-1);
+}
+:where(
+  label:has(> input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])),
+  label:has(> textarea),
+  label:has(> select)
+) > :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+  textarea, select, .field-label, .field-hint, .field-error, .hint
+) {
+  grid-column: 1 / -1;
+}
+:where(
+  label:has(> input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])),
+  label:has(> textarea),
+  label:has(> select)
+) > :where(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), textarea, select) {
+  width: 100%;
+}
+
+/* Checkbox/radio is one atomic choice row. The label is the ≥44px hit target;
+   the native control stays compact and aligned with the first text line. */
+:where(label:has(> input[type="checkbox"]), label:has(> input[type="radio"]), .choice-label) {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  align-items: start;
+  column-gap: var(--space-2);
+  row-gap: var(--space-1);
+  min-height: var(--control-min);
+  padding-block: var(--space-2);
+  font-weight: 400;
+  cursor: pointer;
+}
+:where(label:has(> input[type="checkbox"]), label:has(> input[type="radio"]), .choice-label) > :where(input[type="checkbox"], input[type="radio"]) {
+  grid-column: 1;
+  grid-row: 1;
+  width: 1.125rem;
+  height: 1.125rem;
+  min-height: 0;
+  margin: .2em 0 0;
+  padding: 0;
+  place-self: start;
+  accent-color: var(--accent);
+}
+:where(label:has(> input[type="checkbox"]), label:has(> input[type="radio"]), .choice-label) > :where(.field-hint, .field-error, .hint) {
+  grid-column: 2;
+}
+.choice-group { display: grid; gap: var(--space-1); }
+fieldset { min-inline-size: 0; margin: 0; padding: 0; border: 0; }
+legend { margin-bottom: var(--space-1); font-weight: 600; }
 .field-hint { color: var(--muted); font-size: var(--text-sm); font-weight: 400; }
 .field-error { color: var(--error); font-size: var(--text-sm); font-weight: 600; }
 

@@ -114,7 +114,7 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request, u *
 
 func deletableProject(p *project.Project) bool {
 	switch p.Status {
-	case project.StatusPendingAccessApproval, project.StatusNeedsInput, project.StatusAwaitingApproval, project.StatusEscalated,
+	case project.StatusPendingAccessApproval, project.StatusNeedsInput, project.StatusNeedsConcept, project.StatusAwaitingApproval, project.StatusEscalated,
 		project.StatusRejected, project.StatusPreviewReady, project.StatusAccepted,
 		project.StatusDelivered, project.StatusFailed, project.StatusExpired:
 		return true
@@ -231,8 +231,8 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request, u *
 	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 }
 
-// handleAnswer records the customer's answers to the clarifying questions and
-// kicks off planning.
+// handleAnswer records the customer's answers and broad visual direction, then
+// starts the two-concept pass that precedes planning.
 func (s *Server) handleAnswer(w http.ResponseWriter, r *http.Request, u *user.User) {
 	p, ok := s.ownedProject(w, r, u)
 	if !ok {
@@ -245,7 +245,7 @@ func (s *Server) handleAnswer(w http.ResponseWriter, r *http.Request, u *user.Us
 	// Require answers when questions were asked; design-only submissions are
 	// fine when intake had no questions.
 	if p.Status != project.StatusNeedsInput || len(answers) > maxBriefLen ||
-		(len(p.Questions) > 0 && answers == "") || (answers == "" && design == "") {
+		(len(p.Questions) > 0 && answers == "") || (len(p.DesignOptions) > 0 && design == "") {
 		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 		return
 	}
@@ -293,13 +293,33 @@ func resolveDesign(p *project.Project, choice, custom string) string {
 	}
 	for _, o := range p.DesignOptions {
 		if o.Name == choice {
-			return o.Name + " — " + o.Description
+			return o.Brief()
 		}
 	}
 	if choice == "__custom" {
 		return custom
 	}
 	return ""
+}
+
+// handleConceptChoice binds one of the two visual hero mockups before the
+// planner writes the full site specification.
+func (s *Server) handleConceptChoice(w http.ResponseWriter, r *http.Request, u *user.User) {
+	p, ok := s.ownedProject(w, r, u)
+	if !ok {
+		return
+	}
+	conceptID := strings.TrimSpace(r.FormValue("concept_id"))
+	if p.Status != project.StatusNeedsConcept || (conceptID != "concept-a" && conceptID != "concept-b") {
+		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+		return
+	}
+	if err := s.orch.SelectConcept(p.ID, conceptID); err != nil {
+		s.log.Error("select hero concept", "project", p.ID, "err", err)
+		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 }
 
 // quotaBlock reports why a new build must not start right now ("" = go ahead):
@@ -318,7 +338,7 @@ func (s *Server) quotaBlock(r *http.Request, u *user.User) string {
 			recent++
 		}
 		switch p.Status {
-		case project.StatusPendingAccessApproval, project.StatusClarifying, project.StatusPlanning,
+		case project.StatusPendingAccessApproval, project.StatusClarifying, project.StatusConcepting, project.StatusPlanning,
 			project.StatusScreening, project.StatusBuilding:
 			return s.t(r, "flash.one_at_a_time")
 		}
@@ -341,23 +361,25 @@ func (s *Server) quotaBlock(r *http.Request, u *user.User) string {
 }
 
 type projectView struct {
-	Project      *project.Project
-	Iterations   []*project.Iteration
-	Assets       []*project.Asset            // general (un-slotted) uploads
-	Shots        []reviewShot                // presigned page screenshots of the current build
-	Status       statusView                  // the live status box (also re-rendered by the poll)
-	FilledSlots  map[string]bool             // content-slot slug → provided (file/text/roster)
-	Rosters      map[string][]rosterMember   // roster slug → its people (presigned photos)
-	SlotAssets   map[string][]slotAssetView  // file/files slug → its uploaded assets (presigned)
-	Candidates   map[string][]candidateImage // slot → pending AI-image candidates awaiting pick
-	MissingReq   []string                    // localized names of required, unprovided content (for the approve gate)
-	ImageGen     bool                        // "Generate with AI" is available
-	GenSlots     map[string]bool             // slug → has a chosen AI-generated image (offer "improve")
-	GenPrompts   map[string]string           // slug → the auto-seeded prompt (shown, editable)
-	GenStatus    map[string]string           // slug → background generation state
-	GenExhausted bool                        // the project has hit its AI-generation cap
-	GenNotice    string                      // localized notice for a failed/blocked generation attempt
-	CanDelete    bool                        // settled unpaid project; no active pipeline can be orphaned
+	Project       *project.Project
+	DesignOptions []designOptionView
+	HeroConcepts  []heroConceptView
+	Iterations    []*project.Iteration
+	Assets        []*project.Asset            // general (un-slotted) uploads
+	Shots         []reviewShot                // presigned page screenshots of the current build
+	Status        statusView                  // the live status box (also re-rendered by the poll)
+	FilledSlots   map[string]bool             // content-slot slug → provided (file/text/roster)
+	Rosters       map[string][]rosterMember   // roster slug → its people (presigned photos)
+	SlotAssets    map[string][]slotAssetView  // file/files slug → its uploaded assets (presigned)
+	Candidates    map[string][]candidateImage // slot → pending AI-image candidates awaiting pick
+	MissingReq    []string                    // localized names of required, unprovided content (for the approve gate)
+	ImageGen      bool                        // "Generate with AI" is available
+	GenSlots      map[string]bool             // slug → has a chosen AI-generated image (offer "improve")
+	GenPrompts    map[string]string           // slug → the auto-seeded prompt (shown, editable)
+	GenStatus     map[string]string           // slug → background generation state
+	GenExhausted  bool                        // the project has hit its AI-generation cap
+	GenNotice     string                      // localized notice for a failed/blocked generation attempt
+	CanDelete     bool                        // settled unpaid project; no active pipeline can be orphaned
 
 	CanSubscribe    bool   // show the subscribe panel (billing on, unpaid, preview/accepted)
 	SubActive       bool   // paid via stripe — show "active" + manage-subscription
@@ -387,6 +409,97 @@ type projectView struct {
 	DomainRecords  []project.DomainRecord // DNS records to show (pending_dns/verifying)
 	DomainFlash    string                 // in-panel feedback after an action (rendered inside #domain-panel)
 	DomainFlashErr bool                   // the flash reports a failure (render it red, not as neutral progress)
+}
+
+// designOptionView/heroConceptView carry only validated colors and enum-derived
+// classes into inline CSS. The model never gets to inject arbitrary HTML/CSS
+// into Forge's control plane.
+type designOptionView struct {
+	project.DesignOption
+	PaletteClass string
+	LayoutClass  string
+	FontClass    string
+}
+
+type heroConceptView struct {
+	project.HeroConcept
+	PaletteClass string
+	LayoutClass  string
+	FontClass    string
+}
+
+var previewHex = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
+func previewPaletteVars(palette []string) string {
+	fallback := []string{"#F5F1E8", "#171713", "#D4FF3F", "#FFFFFF", "#8277FF"}
+	colors := append([]string(nil), fallback...)
+	for i, color := range palette {
+		if i == len(colors) {
+			break
+		}
+		if previewHex.MatchString(color) {
+			colors[i] = strings.ToUpper(color)
+		}
+	}
+	return fmt.Sprintf("--pv-bg:%s;--pv-ink:%s;--pv-accent:%s;--pv-surface:%s;--pv-accent-2:%s", colors[0], colors[1], colors[2], colors[3], colors[4])
+}
+
+func previewLayoutClass(layout string) string {
+	switch layout {
+	case "split", "editorial", "immersive", "framed", "asymmetric":
+		return "preview-layout-" + layout
+	default:
+		return "preview-layout-split"
+	}
+}
+
+func previewFontClass(font string) string {
+	font = strings.ToLower(font)
+	switch {
+	case strings.Contains(font, "serif"), strings.Contains(font, "fraunces"), strings.Contains(font, "playfair"), strings.Contains(font, "cormorant"):
+		return "preview-type-serif"
+	case strings.Contains(font, "condensed"), strings.Contains(font, "narrow"):
+		return "preview-type-condensed"
+	default:
+		return "preview-type-sans"
+	}
+}
+
+func designOptionViews(options []project.DesignOption) []designOptionView {
+	out := make([]designOptionView, 0, len(options))
+	for i, option := range options {
+		out = append(out, designOptionView{DesignOption: option, PaletteClass: fmt.Sprintf("palette-option-%d", i), LayoutClass: previewLayoutClass(option.HeroLayout), FontClass: previewFontClass(option.DisplayFont)})
+	}
+	return out
+}
+
+func heroConceptViews(concepts []project.HeroConcept) []heroConceptView {
+	out := make([]heroConceptView, 0, len(concepts))
+	for i, concept := range concepts {
+		out = append(out, heroConceptView{HeroConcept: concept, PaletteClass: fmt.Sprintf("palette-concept-%d", i), LayoutClass: previewLayoutClass(concept.Layout), FontClass: previewFontClass(concept.DisplayFont)})
+	}
+	return out
+}
+
+// handleProjectPaletteCSS serves validated model colors as a same-origin
+// stylesheet. Forge's control-plane CSP intentionally rejects inline styles;
+// this keeps that boundary strict while allowing each project to show honest
+// visual style tiles and concept mockups instead of generic placeholders.
+func (s *Server) handleProjectPaletteCSS(w http.ResponseWriter, r *http.Request, u *user.User) {
+	p, ok := s.ownedProject(w, r, u)
+	if !ok {
+		return
+	}
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	w.Header().Set("Cache-Control", "private, no-store")
+	var css strings.Builder
+	for i, option := range p.DesignOptions {
+		fmt.Fprintf(&css, ".palette-option-%d{%s}\n", i, previewPaletteVars(option.Palette))
+	}
+	for i, concept := range p.HeroConcepts() {
+		fmt.Fprintf(&css, ".palette-concept-%d{%s}\n", i, previewPaletteVars(concept.Palette))
+	}
+	_, _ = io.WriteString(w, css.String())
 }
 
 // rosterMember is one team person for the template, with a presigned photo URL.
@@ -520,7 +633,7 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 	}
 
 	pv := projectView{
-		Project: p, Iterations: its, Assets: general,
+		Project: p, DesignOptions: designOptionViews(p.DesignOptions), HeroConcepts: heroConceptViews(p.HeroConcepts()), Iterations: its, Assets: general,
 		Shots: s.withScreenshots(ctx, p).Shots, Status: s.statusOf(r, p),
 		FilledSlots: filled, Rosters: rosters, SlotAssets: slotAssets, Candidates: candidates,
 		MissingReq: missing, ImageGen: s.imagegen != nil, GenSlots: genSlots, GenPrompts: genPrompts, GenStatus: genStatus,
@@ -578,6 +691,7 @@ func (s *Server) handleProject(w http.ResponseWriter, r *http.Request, u *user.U
 		}
 	}
 	v := s.view(r, p.Name, pv)
+	v.ExtraStylesheet = "/projects/" + p.ID + "/palette.css"
 	switch sub {
 	case "success":
 		v.Flash = i18n.T(lang, "flash.sub_success")

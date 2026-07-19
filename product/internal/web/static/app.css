@@ -114,12 +114,12 @@ input:not([type=radio], [type=checkbox]):focus-visible, textarea:focus-visible, 
 /* Card-shaped radio/checkbox rows: the ring goes on the card, not the tiny
    input — the input's own outline is suppressed so focus reads exactly once. */
 .dc-opt:has(input:focus-visible), .dc-pick:has(input:focus-visible),
-label.design-option:has(input:focus-visible) {
+label.design-option:has(input:focus-visible), label.hero-concept:has(input:focus-visible) {
   border-color: var(--accent);
   box-shadow: var(--focus-ring);
 }
 .dc-opt input:focus-visible, .dc-pick input:focus-visible,
-label.design-option input:focus-visible { outline: none; }
+label.design-option input:focus-visible, label.hero-concept input:focus-visible { outline: none; }
 
 /* Visually hidden but focusable/announcable (burger checkbox, a11y labels). */
 .sr-only {
@@ -404,7 +404,7 @@ textarea { resize: vertical; }
 }
 .badge-preview_ready, .badge-delivered { color: var(--green); border-color: var(--green); }
 .badge-rejected, .badge-failed { color: var(--red); border-color: var(--red); }
-.badge-building, .badge-planning, .badge-screening, .badge-clarifying, .badge-needs_input, .badge-pending_access_approval, .badge-escalated, .badge-accepted { color: var(--accent); border-color: var(--accent); }
+.badge-building, .badge-planning, .badge-screening, .badge-clarifying, .badge-concepting, .badge-needs_input, .badge-needs_concept, .badge-pending_access_approval, .badge-escalated, .badge-accepted { color: var(--accent); border-color: var(--accent); }
 /* Filled variants: payment state reads at a glance. */
 .badge-paid { color: var(--green); border-color: transparent; background: var(--green-fill); font-weight: 600; }
 .badge-unpaid { color: var(--red); border-color: transparent; background: var(--red-fill); font-weight: 600; }
@@ -424,7 +424,7 @@ textarea { resize: vertical; }
 .status-preview_ready, .status-delivered { border-color: var(--green); }
 .status-accepted { border-color: var(--accent); }
 .status-rejected, .status-failed { border-color: var(--red); }
-.status-pending_access_approval, .status-building, .status-planning, .status-screening, .status-clarifying { border-color: var(--accent-border); }
+.status-pending_access_approval, .status-building, .status-planning, .status-screening, .status-clarifying, .status-concepting, .status-needs_concept { border-color: var(--accent-border); }
 .reason { color: var(--muted); margin-top: .4rem; }
 
 .spinner {
@@ -683,15 +683,134 @@ details summary { cursor: pointer; }
 .terms-doc h2 { margin-top: 1.6rem; font-size: var(--fs-lg); }
 .terms-doc p { margin: .4rem 0; max-width: 62ch; }
 
-.design-options { display: flex; flex-direction: column; gap: var(--sp-2); }
-label.design-option {
-  display: flex; flex-direction: row; align-items: baseline; gap: .6rem;
-  padding: .6rem .8rem; border: 1px solid var(--border); border-radius: var(--radius);
-  cursor: pointer;
+/* Visual intake — the customer chooses with their eyes, not from adjective-only
+   radio rows. Model colors enter only as validated CSS variables. */
+.design-options {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-4); margin-top: var(--sp-4);
 }
-label.design-option:hover { border-color: var(--accent); }
-.design-option input { accent-color: var(--accent); width: auto; }
-.design-options input[type="text"] { margin-left: var(--sp-6); }
+label.design-option {
+  min-width: 0; position: relative; display: grid; grid-template-columns: 1.05fr 1fr;
+  align-items: stretch; gap: var(--sp-4); padding: var(--sp-3);
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--surface); cursor: pointer; overflow: hidden;
+  transition: border-color .15s var(--ease), transform .15s var(--ease), box-shadow .15s var(--ease);
+}
+label.design-option:hover { border-color: var(--accent); transform: translateY(-1px); }
+label.design-option:has(input:checked), label.hero-concept:has(input:checked) {
+  border-color: var(--accent); box-shadow: var(--focus-ring);
+}
+.design-option > input {
+  position: absolute; z-index: 2; top: var(--sp-4); right: var(--sp-4);
+  accent-color: var(--accent); width: 1.1rem; height: 1.1rem;
+}
+.design-tile-preview {
+  min-height: 12rem; position: relative; display: grid; grid-template-columns: 1.1fr .9fr;
+  grid-template-rows: auto 1fr; gap: .5rem; padding: .7rem; overflow: hidden;
+  border-radius: calc(var(--radius) - 2px); background: var(--pv-bg); color: var(--pv-ink);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pv-ink) 16%, transparent);
+}
+.dt-nav { grid-column: 1 / -1; display: flex; gap: .25rem; align-items: center; }
+.dt-nav i { display: block; width: .85rem; height: .12rem; background: var(--pv-ink); opacity: .55; }
+.dt-nav i:first-child { width: 1.8rem; height: .25rem; margin-right: auto; background: var(--pv-accent); opacity: 1; }
+.dt-copy { align-self: center; display: flex; flex-direction: column; gap: .4rem; }
+.dt-copy b { font-size: clamp(.75rem, 1vw, 1rem); line-height: 1.05; }
+.dt-copy em, .dt-copy small { display: block; height: .15rem; background: currentColor; opacity: .3; }
+.dt-copy em { width: 82%; }
+.dt-copy small { width: 62%; }
+.dt-copy::after { content: ""; width: 2.8rem; height: .9rem; margin-top: .25rem; border-radius: 2rem; background: var(--pv-accent); }
+.dt-art { position: relative; min-height: 7rem; overflow: hidden; background: var(--pv-surface); }
+.dt-art::before, .dt-art::after, .dt-art i { content: ""; position: absolute; display: block; }
+.dt-art::before { inset: 12% 10% 25% 18%; border-radius: 50% 35% 48% 32%; background: var(--pv-accent); }
+.dt-art::after { width: 55%; aspect-ratio: 1; right: -12%; bottom: -8%; border-radius: 50%; background: var(--pv-accent-2); opacity: .75; }
+.dt-art i { width: 58%; height: .3rem; left: 12%; bottom: 12%; background: var(--pv-ink); opacity: .35; }
+.preview-layout-editorial { grid-template-columns: 1fr; }
+.preview-layout-editorial .dt-copy { z-index: 1; max-width: 80%; }
+.preview-layout-editorial .dt-art { min-height: 4rem; }
+.preview-layout-immersive .dt-art { position: absolute; inset: 0; min-height: 0; opacity: .78; }
+.preview-layout-immersive .dt-copy, .preview-layout-immersive .dt-nav { position: relative; z-index: 1; }
+.preview-layout-framed .dt-art { margin: .3rem; border: .35rem solid var(--pv-bg); box-shadow: 0 0 0 1px var(--pv-ink); }
+.preview-layout-asymmetric { grid-template-columns: .8fr 1.2fr; }
+.preview-layout-asymmetric .dt-art { transform: translate(.45rem, .4rem) rotate(2deg); }
+.preview-type-serif .dt-copy b, .preview-type-serif .concept-hero-copy strong { font-family: Georgia, 'Times New Roman', serif; font-weight: 600; }
+.preview-type-condensed .dt-copy b, .preview-type-condensed .concept-hero-copy strong { font-family: Impact, 'Arial Narrow', sans-serif; font-weight: 500; letter-spacing: .01em; }
+.preview-type-sans .dt-copy b, .preview-type-sans .concept-hero-copy strong { font-family: var(--font-sans); font-weight: 750; }
+.design-tile-copy { min-width: 0; display: flex; flex-direction: column; gap: .45rem; padding: var(--sp-2) var(--sp-4) var(--sp-2) 0; }
+.design-tile-copy > strong { padding-right: var(--sp-5); font-size: var(--fs-lg); color: var(--text); }
+.design-tile-copy > span { color: var(--muted); font-size: var(--fs-sm); line-height: 1.45; }
+.design-swatches { display: flex; gap: .3rem; margin: .15rem 0; }
+.design-swatches i { width: 1.35rem; height: 1.35rem; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--text) 25%, transparent); }
+.design-swatches i:nth-child(1) { background: var(--pv-bg); }
+.design-swatches i:nth-child(2) { background: var(--pv-ink); }
+.design-swatches i:nth-child(3) { background: var(--pv-accent); }
+.design-swatches i:nth-child(4) { background: var(--pv-surface); }
+.design-meta { color: var(--dim) !important; }
+.design-detail b { color: var(--text); }
+label.design-custom { grid-column: 1 / -1; display: flex; align-items: center; min-height: 3.25rem; padding-left: var(--sp-4); }
+label.design-custom > input { position: static; flex: 0 0 auto; }
+.design-options input[type="text"] { grid-column: 1 / -1; width: 100%; }
+
+/* Concrete concept gate — two real responsive hero mockups rendered from safe
+   structured data before a sandbox or implementation build is started. */
+.concept-gate { overflow: hidden; }
+.concept-intro { max-width: 64ch; margin-bottom: var(--sp-5); }
+.concept-intro .badge { margin-bottom: var(--sp-3); }
+.hero-concepts { display: grid; gap: var(--sp-5); }
+label.hero-concept {
+  position: relative; display: grid; gap: var(--sp-4); padding: var(--sp-4);
+  border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface);
+  cursor: pointer; transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
+}
+label.hero-concept:hover { border-color: var(--accent); }
+.hero-concept > input {
+  position: absolute; top: var(--sp-5); right: var(--sp-5);
+  width: 1.2rem; height: 1.2rem; accent-color: var(--accent);
+}
+.hero-concept-head { display: grid; gap: .3rem; padding-right: var(--sp-7); }
+.hero-concept-head strong { font-size: var(--fs-xl); color: var(--text); }
+.hero-concept-head span { color: var(--muted); max-width: 70ch; }
+.concept-device-pair { position: relative; display: block; padding-right: 11%; }
+.concept-desktop, .concept-mobile {
+  position: relative; display: grid; overflow: hidden; background: var(--pv-bg); color: var(--pv-ink);
+  border: 1px solid color-mix(in srgb, var(--pv-ink) 20%, transparent); box-shadow: var(--shadow);
+}
+.concept-desktop { min-height: 25rem; grid-template-columns: 1.05fr .95fr; grid-template-rows: auto 1fr; padding: 1.15rem 1.35rem; }
+.concept-mobile {
+  position: absolute; z-index: 2; right: 0; bottom: -1.1rem; width: 22%; min-width: 9rem;
+  aspect-ratio: 390 / 844; grid-template-rows: auto auto 1fr; padding: .65rem;
+  border-width: 3px; border-color: var(--surface-2); border-radius: 1rem;
+}
+.concept-nav { grid-column: 1 / -1; display: flex; align-items: center; gap: .55rem; font-size: .65rem; }
+.concept-nav b { margin-right: auto; max-width: 45%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.concept-nav i { display: block; width: 1.8rem; height: .16rem; background: currentColor; opacity: .38; }
+.concept-hero-copy { align-self: center; z-index: 1; display: flex; flex-direction: column; align-items: flex-start; gap: .7rem; padding: 1.3rem 1.2rem 1.3rem 0; }
+.concept-hero-copy small { text-transform: uppercase; letter-spacing: .12em; font-size: .55rem; color: var(--pv-accent); }
+.concept-hero-copy strong { max-width: 14ch; font-size: clamp(1.55rem, 3.25vw, 3.8rem); line-height: .98; letter-spacing: -.035em; }
+.concept-hero-copy > span { max-width: 36ch; font-size: clamp(.65rem, 1vw, .9rem); opacity: .72; }
+.concept-hero-copy em { padding: .5rem .85rem; border-radius: 2rem; background: var(--pv-accent); color: var(--pv-bg); font-size: .65rem; font-style: normal; font-weight: 700; }
+.concept-visual { position: relative; min-height: 16rem; align-self: stretch; overflow: hidden; background: var(--pv-surface); }
+.concept-visual::before, .concept-visual::after, .concept-visual i { content: ""; position: absolute; display: block; }
+.concept-visual::before { inset: 9% 12% 18% 9%; border-radius: 48% 38% 52% 31%; background: var(--pv-accent); }
+.concept-visual::after { width: 55%; aspect-ratio: 1; right: -12%; bottom: -8%; border-radius: 50%; background: var(--pv-accent-2); opacity: .72; }
+.concept-visual i { width: 63%; height: .45rem; left: 12%; bottom: 11%; background: var(--pv-ink); opacity: .3; }
+.concept-mobile .concept-nav i:last-child { display: none; }
+.concept-mobile .concept-hero-copy { padding: 1rem 0 .7rem; gap: .45rem; }
+.concept-mobile .concept-hero-copy strong { font-size: 1.2rem; }
+.concept-mobile .concept-hero-copy > span { font-size: .52rem; }
+.concept-mobile .concept-hero-copy em { padding: .35rem .55rem; font-size: .5rem; }
+.concept-mobile .concept-visual { min-height: 0; }
+.concept-device-pair.preview-layout-editorial .concept-desktop { grid-template-columns: 1fr; }
+.concept-device-pair.preview-layout-editorial .concept-hero-copy { padding-right: 20%; }
+.concept-device-pair.preview-layout-editorial .concept-visual { min-height: 7rem; }
+.concept-device-pair.preview-layout-immersive .concept-desktop .concept-visual { position: absolute; inset: 0; opacity: .65; }
+.concept-device-pair.preview-layout-immersive .concept-desktop .concept-nav,
+.concept-device-pair.preview-layout-immersive .concept-desktop .concept-hero-copy { position: relative; z-index: 1; }
+.concept-device-pair.preview-layout-framed .concept-visual { margin: 1rem; border: .65rem solid var(--pv-bg); box-shadow: 0 0 0 1px var(--pv-ink); }
+.concept-device-pair.preview-layout-asymmetric .concept-desktop { grid-template-columns: .8fr 1.2fr; }
+.concept-device-pair.preview-layout-asymmetric .concept-visual { transform: translate(.7rem, .8rem) rotate(1.5deg); }
+.concept-notes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
+.concept-notes > span { padding: var(--sp-3); border-radius: var(--radius); background: var(--surface-2); color: var(--muted); font-size: var(--fs-sm); }
+.concept-notes b { color: var(--text); }
 
 .review-shots {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
@@ -999,6 +1118,17 @@ label.ack-later { display: flex; flex-direction: row; align-items: flex-start; g
   .examples-3 .example-card:first-child { grid-column: auto; }
   .example-copy { padding: var(--sp-4); }
   .example-mobile { width: 27%; right: var(--sp-3); bottom: var(--sp-3); }
+
+  .design-options { grid-template-columns: 1fr; }
+  label.design-option { grid-template-columns: 1fr; }
+  .design-tile-copy { padding: var(--sp-2); }
+  .design-tile-preview { min-height: 14rem; }
+  .concept-device-pair { padding-right: 0; padding-bottom: 6.5rem; }
+  .concept-desktop { min-height: 19rem; padding: .8rem; }
+  .concept-mobile { right: var(--sp-3); bottom: 0; width: 8.5rem; min-width: 0; }
+  .concept-hero-copy { padding: 1rem .65rem 1rem 0; }
+  .concept-hero-copy strong { font-size: clamp(1.25rem, 7vw, 2rem); }
+  .concept-notes { grid-template-columns: 1fr; }
 
   .nav-burger {
     display: flex; flex-direction: column; justify-content: center; gap: 5px;

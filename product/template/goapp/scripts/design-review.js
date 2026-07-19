@@ -32,6 +32,7 @@ Judge like a human looking at desktop AND mobile screens, not a linter:
 - whether the first two screenfuls communicate who/what/where, one primary action, and a real reason to trust or choose the business;
 - whether the page is unnecessarily long, repetitive, dominated by a catalogue, or padded with generic cards/process/FAQ content;
 - whether navigation, forms, footer and responsive reflow look complete rather than merely functional;
+- basic form craft: required markers stay beside field names, and every checkbox/radio remains aligned on the same row as its label rather than floating above or below it;
 - image correctness: every labelled product/project image must visibly match its nearby label. Reject adjacent substitutions (a cookie labelled croissant), garbled or misspelled text, unwanted labels/logos, unsafe technical diagrams, unsupported standards/certification claims, and inconsistent image art direction. A raster logo with suspicious lettering is a visible defect.
 Reply in EXACTLY one of these two forms:
 SHIP

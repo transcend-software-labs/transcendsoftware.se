@@ -230,8 +230,10 @@ func TestReap_FailsStrandedPreBuild(t *testing.T) {
 	now := time.Now().UTC()
 
 	seedWithStatus(t, st, "stranded", project.StatusPlanning, "", now.Add(-30*time.Minute))
+	seedWithStatus(t, st, "stranded-concept", project.StatusConcepting, "", now.Add(-30*time.Minute))
 	seedWithStatus(t, st, "recent", project.StatusPlanning, "", now.Add(-time.Minute))
 	seedWithStatus(t, st, "waiting", project.StatusNeedsInput, "", now.Add(-30*time.Minute))
+	seedWithStatus(t, st, "waiting-concept", project.StatusNeedsConcept, "", now.Add(-30*time.Minute))
 
 	orch.Reap(ctx, 0)
 
@@ -243,7 +245,13 @@ func TestReap_FailsStrandedPreBuild(t *testing.T) {
 	if p, _ := st.ProjectByID(ctx, "recent"); p.Status != project.StatusPlanning {
 		t.Errorf("a recently-active pre-build project must be left alone, got %q", p.Status)
 	}
+	if p, _ := st.ProjectByID(ctx, "stranded-concept"); p.Status != project.StatusFailed {
+		t.Errorf("stale concept generation should be failed, got %q", p.Status)
+	}
 	if p, _ := st.ProjectByID(ctx, "waiting"); p.Status != project.StatusNeedsInput {
 		t.Errorf("needs_input rests on the customer and must not be failed, got %q", p.Status)
+	}
+	if p, _ := st.ProjectByID(ctx, "waiting-concept"); p.Status != project.StatusNeedsConcept {
+		t.Errorf("needs_concept rests on the customer and must not be failed, got %q", p.Status)
 	}
 }

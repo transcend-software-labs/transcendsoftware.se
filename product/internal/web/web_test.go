@@ -229,12 +229,24 @@ func TestFullFlow_IntakeToPreview(t *testing.T) {
 	if !strings.Contains(string(body), "A few quick questions") {
 		t.Fatal("expected clarifying questions after create")
 	}
+	if !strings.Contains(string(body), "/projects/"+pid+"/palette.css") || strings.Contains(string(body), "style=\"--pv-") {
+		t.Fatal("visual tiles must use the same-origin palette stylesheet, not CSP-blocked inline styles")
+	}
+	cssResp, err := c.Get(srv.URL + "/projects/" + pid + "/palette.css")
+	if err != nil {
+		t.Fatalf("palette stylesheet: %v", err)
+	}
+	cssBody, _ := io.ReadAll(cssResp.Body)
+	cssResp.Body.Close()
+	if !strings.Contains(cssResp.Header.Get("Content-Type"), "text/css") || !strings.Contains(string(cssBody), ".palette-option-0{--pv-bg:#F7F8F5") {
+		t.Fatalf("palette stylesheet did not contain the validated tile colours: %s", cssBody)
+	}
 
 	// Answer them per question (one "answer" field each, in order — the fake
-	// intake asks three), picking a suggested design direction ("Clean & minimal").
+	// intake asks three), picking a suggested visual direction.
 	resp, err = c.PostForm(srv.URL+"/projects/"+pid+"/answer", url.Values{
 		"answer":        {"brochure only", "I have my own photos", "Swedish"},
-		"design_choice": {"Clean & minimal"},
+		"design_choice": {"Clear & distinctive"},
 		"csrf_token":    {tok},
 	})
 	if err != nil {
@@ -242,9 +254,32 @@ func TestFullFlow_IntakeToPreview(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	// Planning now stops at the approval gate: the customer must approve the
-	// scope card before the build spends money. Wait for it, then approve.
+	// Forge now renders two concrete responsive hero concepts before planning.
+	// Pick one, then wait for the normal plan-approval gate.
 	deadline := time.Now().Add(8 * time.Second)
+	var conceptChosen bool
+	for time.Now().Before(deadline) {
+		r, _ := c.Get(srv.URL + "/projects/" + pid)
+		pg, _ := io.ReadAll(r.Body)
+		r.Body.Close()
+		if strings.Contains(string(pg), "/concept") && strings.Contains(string(pg), "concept-a") {
+			cr, err := c.PostForm(srv.URL+"/projects/"+pid+"/concept", url.Values{
+				"concept_id": {"concept-a"}, "csrf_token": {tok},
+			})
+			if err != nil {
+				t.Fatalf("choose concept: %v", err)
+			}
+			cr.Body.Close()
+			conceptChosen = true
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !conceptChosen {
+		t.Fatal("project never reached the concept gate")
+	}
+
+	deadline = time.Now().Add(8 * time.Second)
 	var approved bool
 	for time.Now().Before(deadline) {
 		r, _ := c.Get(srv.URL + "/projects/" + pid)
@@ -292,8 +327,8 @@ func TestFullFlow_IntakeToPreview(t *testing.T) {
 	if !strings.Contains(page, "Preview ready") {
 		t.Fatal("project page does not show preview ready after build")
 	}
-	if !strings.Contains(page, "Design direction") || !strings.Contains(page, "Clean &amp; minimal") {
-		t.Fatal("project page does not show the chosen design direction")
+	if !strings.Contains(page, "Design direction") || !strings.Contains(page, "Clear &amp; distinctive") || !strings.Contains(page, "Focused split") {
+		t.Fatal("project page does not show the chosen style tile and hero concept")
 	}
 }
 

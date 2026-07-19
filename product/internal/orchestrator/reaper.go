@@ -224,11 +224,12 @@ func hadBuild(p *project.Project) bool {
 
 // isStuckPreBuild reports whether a project is in a transient state that only a
 // live goroutine drives and no iteration row backs — so if that goroutine is
-// gone, nothing recovers it. NeedsInput and AwaitingApproval are deliberately
-// excluded: those are resting states waiting on the customer, not in-flight work.
+// gone, nothing recovers it. NeedsInput, NeedsConcept and AwaitingApproval are
+// deliberately excluded: those are resting states waiting on the customer, not
+// in-flight work.
 func isStuckPreBuild(p *project.Project) bool {
 	switch p.Status {
-	case project.StatusCreated, project.StatusClarifying,
+	case project.StatusCreated, project.StatusClarifying, project.StatusConcepting,
 		project.StatusPlanning, project.StatusScreening:
 		return true
 	}

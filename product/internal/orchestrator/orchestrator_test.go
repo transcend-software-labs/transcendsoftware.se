@@ -136,9 +136,10 @@ func waitForIterations(t *testing.T, st store.Store, id string, n int) *project.
 	return nil
 }
 
-// answerIntake runs intake and answers the questions (picking a suggested
-// design), leaving the project to plan+screen. It does NOT approve — callers
-// that expect a build must approve the gate (or use startThroughIntake).
+// answerIntake runs intake, answers the questions, and chooses one of the two
+// generated hero concepts, leaving the project to plan+screen. It does NOT
+// approve — callers that expect a build must approve the gate (or use
+// startThroughIntake).
 func answerIntake(t *testing.T, o *Orchestrator, st store.Store, id string) {
 	t.Helper()
 	o.StartIntake(id)
@@ -149,8 +150,14 @@ func answerIntake(t *testing.T, o *Orchestrator, st store.Store, id string) {
 	if len(p.DesignOptions) == 0 {
 		t.Fatal("expected design suggestions from intake")
 	}
-	o.SubmitAnswers(id, "brochure only; I have photos; Swedish",
-		p.DesignOptions[0].Name+" — "+p.DesignOptions[0].Description)
+	o.SubmitAnswers(id, "brochure only; I have photos; Swedish", p.DesignOptions[0].Brief())
+	p = waitFor(t, st, id, project.StatusNeedsConcept)
+	if len(p.HeroConcepts()) != 2 {
+		t.Fatalf("expected two hero concepts, got %d", len(p.HeroConcepts()))
+	}
+	if err := o.SelectConcept(id, p.HeroConcepts()[0].ID); err != nil {
+		t.Fatalf("select concept: %v", err)
+	}
 }
 
 // startThroughIntake runs intake, answers, then approves the plan at the gate —

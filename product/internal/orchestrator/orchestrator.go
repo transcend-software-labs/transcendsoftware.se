@@ -3,10 +3,10 @@
 // build passes. Steps run asynchronously so the HTTP layer returns immediately
 // and the dashboard polls for status.
 //
-//	created → clarifying → needs_input → planning → screening
-//	                                                   ├─ allow    → building → preview_ready
-//	                                                   ├─ escalate → escalated → (operator) → building
-//	                                                   └─ reject   → rejected
+//	created → clarifying → needs_input → concepting → needs_concept → planning → screening
+//	                                                                           ├─ allow    → building → preview_ready
+//	                                                                           ├─ escalate → escalated → (operator) → building
+//	                                                                           └─ reject   → rejected
 package orchestrator
 
 import (
@@ -444,9 +444,9 @@ func (o *Orchestrator) hasActive(projectID string) bool {
 	return o.active[projectID]
 }
 
-// StartIntake generates clarifying questions + design suggestions for a
-// freshly created project. If the intake returns neither, it proceeds straight
-// to planning.
+// StartIntake generates clarifying questions + visual style tiles for a
+// freshly created project. A fallback pair keeps the visual-choice gate present
+// even if the intake model omits design options.
 func (o *Orchestrator) StartIntake(projectID string) {
 	o.async(projectID, func(ctx context.Context) error {
 		p, err := o.store.ProjectByID(ctx, projectID)
@@ -463,8 +463,8 @@ func (o *Orchestrator) StartIntake(projectID string) {
 		if err != nil {
 			return err
 		}
-		if len(res.Questions) == 0 && len(res.DesignOptions) == 0 {
-			return o.runPlanGateBuild(ctx, projectID)
+		if len(res.DesignOptions) < 2 {
+			res.DesignOptions = llm.FallbackDesignOptions()
 		}
 		p.Questions = res.Questions
 		p.DesignOptions = res.DesignOptions
@@ -547,11 +547,11 @@ func (o *Orchestrator) RejectAccess(projectID, reason string) error {
 	return nil
 }
 
-// SubmitAnswers records the customer's answers and chosen design direction,
-// then proceeds to plan→gate→build.
+// SubmitAnswers records the customer's answers and broad design direction,
+// then creates two concrete hero concepts before planning can begin.
 func (o *Orchestrator) SubmitAnswers(projectID, answers, design string) {
 	// Save the answers and flip out of needs_input synchronously, so the
-	// customer's redirect immediately shows planning underway — otherwise the
+	// customer's redirect immediately shows concept work underway — otherwise the
 	// redirected page re-renders the (now empty) questions form until the async
 	// pipeline gets around to saving, which reads as "the click did nothing and
 	// ate my answers". Also makes a double-submit a clean no-op.
@@ -566,14 +566,65 @@ func (o *Orchestrator) SubmitAnswers(projectID, answers, design string) {
 	}
 	p.Answers = answers
 	p.DesignBrief = design
-	p.Status = project.StatusPlanning // runPlanGateBuild re-sets this; flipping now updates the UI
+	p.Status = project.StatusConcepting // flipping synchronously makes the redirect feel immediate
 	if err := o.save(ctx, p); err != nil {
 		o.log.Error("submit answers: save", "err", err)
 		return
 	}
 	o.async(projectID, func(ctx context.Context) error {
+		return o.runConcepts(ctx, projectID)
+	})
+}
+
+func (o *Orchestrator) runConcepts(ctx context.Context, projectID string) error {
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if p.Status != project.StatusConcepting {
+		return nil
+	}
+	brief := p.Brief
+	if p.Answers != "" {
+		brief += "\n\nClarifications from the customer:\n" + p.Answers
+	}
+	res, err := o.intakeFor(p).Concepts(ctx, brief, p.DesignBrief, p.Locale)
+	if err != nil {
+		return err
+	}
+	if len(res.Concepts) != 2 {
+		return fmt.Errorf("concept generation returned %d concepts, want 2", len(res.Concepts))
+	}
+	p.SetHeroConcepts(res.Concepts)
+	p.Status = project.StatusNeedsConcept
+	return o.save(ctx, p)
+}
+
+// SelectConcept binds one of the generated compositions and its shared image
+// art direction to the project, then releases planning. The state flip happens
+// synchronously so a double-submit cannot start two plans.
+func (o *Orchestrator) SelectConcept(projectID, conceptID string) error {
+	ctx := context.Background()
+	p, err := o.store.ProjectByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if p.Status != project.StatusNeedsConcept {
+		return nil
+	}
+	concept, ok := p.SelectHeroConcept(conceptID)
+	if !ok {
+		return errors.New("unknown hero concept")
+	}
+	p.DesignBrief = strings.TrimSpace(p.DesignBrief + "\n\n" + concept.Brief())
+	p.Status = project.StatusPlanning
+	if err := o.save(ctx, p); err != nil {
+		return err
+	}
+	o.async(projectID, func(ctx context.Context) error {
 		return o.runPlanGateBuild(ctx, projectID)
 	})
+	return nil
 }
 
 // Reiterate runs another build pass against a customer change request. The
@@ -635,11 +686,19 @@ func (o *Orchestrator) RetryBuild(projectID string) {
 		return // already recovered or not in a retryable state
 	}
 	p.RejectReason = ""
-	if err := o.setStatus(ctx, p, project.StatusBuilding); err != nil {
+	retryConcepts := p.Plan == "" && len(p.HeroConcepts()) == 0 && p.DesignBrief != ""
+	nextStatus := project.StatusBuilding
+	if retryConcepts {
+		nextStatus = project.StatusConcepting
+	}
+	if err := o.setStatus(ctx, p, nextStatus); err != nil {
 		o.log.Error("retry: set building", "err", err)
 		return
 	}
 	o.async(projectID, func(ctx context.Context) error {
+		if retryConcepts {
+			return o.runConcepts(ctx, projectID)
+		}
 		// Defensive sweep: a crash race can leave a previous attempt 'building'
 		// with a live sandbox. Starting a new build then double-builds the same
 		// app and collides on the deterministic machine name (seen live as a

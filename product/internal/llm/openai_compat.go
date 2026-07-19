@@ -272,6 +272,17 @@ func (o *OpenAICompat) Questions(ctx context.Context, brief, lang string) (Intak
 	return parseIntakeJSON(out)
 }
 
+// Concepts implements the second, visual intake gate. It deliberately uses
+// structured JSON instead of accepting model-written HTML/CSS into Forge.
+func (o *OpenAICompat) Concepts(ctx context.Context, brief, design, lang string) (ConceptResult, error) {
+	user := "Customer brief:\n" + brief + "\n\nChosen design direction:\n" + design
+	out, err := o.complete(ctx, ConceptSystemPrompt+conceptLangDirective(lang), user, 4000)
+	if err != nil {
+		return ConceptResult{}, err
+	}
+	return parseConceptJSON(out)
+}
+
 // parseIntakeJSON extracts the intake JSON object (questions + design options)
 // from a model response, capping both defensively. Shared by all LLM clients.
 func parseIntakeJSON(out string) (IntakeResult, error) {
@@ -281,11 +292,8 @@ func parseIntakeJSON(out string) (IntakeResult, error) {
 		return IntakeResult{}, nil
 	}
 	var parsed struct {
-		Questions     []string `json:"questions"`
-		DesignOptions []struct {
-			Name        string `json:"name"`
-			Description string `json:"description"`
-		} `json:"design_options"`
+		Questions     []string               `json:"questions"`
+		DesignOptions []project.DesignOption `json:"design_options"`
 	}
 	if err := json.Unmarshal([]byte(out[start:end+1]), &parsed); err != nil {
 		return IntakeResult{}, fmt.Errorf("intake: bad JSON: %w", err)
@@ -298,10 +306,106 @@ func parseIntakeJSON(out string) (IntakeResult, error) {
 		if i == 3 || d.Name == "" {
 			break
 		}
-		res.DesignOptions = append(res.DesignOptions,
-			project.DesignOption{Name: d.Name, Description: d.Description})
+		d.Name = cleanConceptText(d.Name, 80)
+		d.Description = cleanConceptText(d.Description, 300)
+		d.Palette = cleanPalette(d.Palette)
+		d.DisplayFont = cleanConceptText(d.DisplayFont, 80)
+		d.BodyFont = cleanConceptText(d.BodyFont, 80)
+		d.HeroLayout = cleanEnum(d.HeroLayout, []string{"split", "editorial", "immersive", "framed", "asymmetric"}, "split")
+		d.ImageStyle = cleanConceptText(d.ImageStyle, 400)
+		d.Signature = cleanConceptText(d.Signature, 300)
+		d.Boldness = cleanEnum(d.Boldness, []string{"restrained", "balanced", "bold"}, "balanced")
+		d.HeroConcepts = nil // intake cannot smuggle a pre-selected concept
+		res.DesignOptions = append(res.DesignOptions, d)
 	}
 	return res, nil
+}
+
+func parseConceptJSON(out string) (ConceptResult, error) {
+	start := strings.Index(out, "{")
+	end := strings.LastIndex(out, "}")
+	if start < 0 || end < start {
+		return ConceptResult{}, fmt.Errorf("concepts: missing JSON")
+	}
+	var parsed ConceptResult
+	if err := json.Unmarshal([]byte(out[start:end+1]), &parsed); err != nil {
+		return ConceptResult{}, fmt.Errorf("concepts: bad JSON: %w", err)
+	}
+	if len(parsed.Concepts) < 2 {
+		return ConceptResult{}, fmt.Errorf("concepts: wanted two concepts, got %d", len(parsed.Concepts))
+	}
+	parsed.Concepts = parsed.Concepts[:2]
+	for i := range parsed.Concepts {
+		c := &parsed.Concepts[i]
+		c.ID = []string{"concept-a", "concept-b"}[i]
+		c.Name = cleanConceptText(c.Name, 80)
+		c.Rationale = cleanConceptText(c.Rationale, 300)
+		c.Eyebrow = cleanConceptText(c.Eyebrow, 100)
+		c.Headline = cleanConceptText(c.Headline, 160)
+		c.Subhead = cleanConceptText(c.Subhead, 320)
+		c.CTA = cleanConceptText(c.CTA, 80)
+		c.Layout = cleanEnum(c.Layout, []string{"split", "editorial", "immersive", "framed", "asymmetric"}, []string{"split", "editorial"}[i])
+		c.Palette = cleanPalette(c.Palette)
+		c.DisplayFont = cleanConceptText(c.DisplayFont, 80)
+		c.BodyFont = cleanConceptText(c.BodyFont, 80)
+		c.ImageDirection = cleanConceptText(c.ImageDirection, 600)
+		c.Signature = cleanConceptText(c.Signature, 300)
+		c.Selected = false
+		if c.Name == "" || c.Headline == "" || c.CTA == "" || c.ImageDirection == "" {
+			return ConceptResult{}, fmt.Errorf("concepts: concept %d is incomplete", i+1)
+		}
+	}
+	if parsed.Concepts[0].Layout == parsed.Concepts[1].Layout {
+		if parsed.Concepts[0].Layout == "editorial" {
+			parsed.Concepts[1].Layout = "split"
+		} else {
+			parsed.Concepts[1].Layout = "editorial"
+		}
+	}
+	return parsed, nil
+}
+
+func cleanConceptText(s string, max int) string {
+	s = strings.TrimSpace(strings.Join(strings.Fields(s), " "))
+	runes := []rune(s)
+	if len(runes) > max {
+		s = string(runes[:max])
+	}
+	return s
+}
+
+func cleanEnum(value string, allowed []string, fallback string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	for _, candidate := range allowed {
+		if value == candidate {
+			return value
+		}
+	}
+	return fallback
+}
+
+func cleanPalette(values []string) []string {
+	out := make([]string, 0, 5)
+	for _, value := range values {
+		value = strings.ToUpper(strings.TrimSpace(value))
+		if len(value) != 7 || value[0] != '#' {
+			continue
+		}
+		valid := true
+		for _, ch := range value[1:] {
+			if !strings.ContainsRune("0123456789ABCDEF", ch) {
+				valid = false
+				break
+			}
+		}
+		if valid {
+			out = append(out, value)
+		}
+		if len(out) == 5 {
+			break
+		}
+	}
+	return out
 }
 
 // Plan implements Planner.

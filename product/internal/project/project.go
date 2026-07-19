@@ -2,8 +2,8 @@
 //
 // A project moves through a fixed lifecycle driven by the orchestrator:
 //
-//	created → planning → screening → (rejected | building) → preview_ready
-//	                                                       ↘ failed
+//	created → clarifying → needs_input → concepting → needs_concept → planning
+//	→ screening → awaiting_approval → building → preview_ready → accepted → delivered
 //
 // From preview_ready the customer may request up to MaxIterations-1 further
 // builds (reiterations); each reiteration loops building → preview_ready.
@@ -23,6 +23,8 @@ const (
 	StatusPendingAccessApproval Status = "pending_access_approval" // first project; waiting for operator to approve the customer
 	StatusClarifying            Status = "clarifying"              // intake agent is generating clarifying questions
 	StatusNeedsInput            Status = "needs_input"             // waiting for the customer to answer questions
+	StatusConcepting            Status = "concepting"              // art director is producing two concrete hero concepts
+	StatusNeedsConcept          Status = "needs_concept"           // waiting for the customer to choose a hero concept
 	StatusPlanning              Status = "planning"                // LLM is turning the brief into a plan
 	StatusScreening             Status = "screening"               // safety gate is evaluating the request
 	StatusAwaitingApproval      Status = "awaiting_approval"       // plan ready; waiting for the customer to approve the scope
@@ -81,8 +83,82 @@ type DomainRecord struct {
 // DesignOption is one suggested visual direction from the intake step. The
 // customer picks one — or states their own preference — before building.
 type DesignOption struct {
-	Name        string `json:"name"`        // short label, e.g. "Varmt & rustikt"
-	Description string `json:"description"` // one sentence: mood, colors, typography
+	Name         string        `json:"name"`                    // short label, e.g. "Varmt & rustikt"
+	Description  string        `json:"description"`             // one sentence: mood and brand fit
+	Palette      []string      `json:"palette,omitempty"`       // 4–5 validated #RRGGBB colors
+	DisplayFont  string        `json:"display_font,omitempty"`  // characterful heading family/category
+	BodyFont     string        `json:"body_font,omitempty"`     // readable body family/category
+	HeroLayout   string        `json:"hero_layout,omitempty"`   // split|editorial|immersive|framed|asymmetric
+	ImageStyle   string        `json:"image_style,omitempty"`   // one coherent photographic/illustrative direction
+	Signature    string        `json:"signature,omitempty"`     // one memorable visual device
+	Boldness     string        `json:"boldness,omitempty"`      // restrained|balanced|bold
+	HeroConcepts []HeroConcept `json:"hero_concepts,omitempty"` // generated after this direction is chosen
+}
+
+// Brief turns the structured style tile into the exact art-direction context
+// passed to concept generation and planning. Older projects only have the first
+// two fields and continue to produce a useful brief.
+func (d DesignOption) Brief() string {
+	var parts []string
+	if d.Name != "" || d.Description != "" {
+		parts = append(parts, strings.TrimSpace(d.Name+" — "+d.Description))
+	}
+	if len(d.Palette) > 0 {
+		parts = append(parts, "Palette: "+strings.Join(d.Palette, ", "))
+	}
+	if d.DisplayFont != "" || d.BodyFont != "" {
+		parts = append(parts, "Typography: "+strings.TrimSpace(d.DisplayFont+" display / "+d.BodyFont+" body"))
+	}
+	if d.HeroLayout != "" {
+		parts = append(parts, "Hero composition: "+d.HeroLayout)
+	}
+	if d.ImageStyle != "" {
+		parts = append(parts, "Image art direction: "+d.ImageStyle)
+	}
+	if d.Signature != "" {
+		parts = append(parts, "Signature element: "+d.Signature)
+	}
+	if d.Boldness != "" {
+		parts = append(parts, "Boldness: "+d.Boldness)
+	}
+	return strings.Join(parts, "\n")
+}
+
+// HeroConcept is one of two concrete above-the-fold compositions generated
+// after the customer chooses a broad design direction. The control plane turns
+// this structured data into honest desktop/mobile visual mockups; the selected
+// concept then becomes a binding part of the build brief.
+type HeroConcept struct {
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	Rationale      string   `json:"rationale"`
+	Eyebrow        string   `json:"eyebrow,omitempty"`
+	Headline       string   `json:"headline"`
+	Subhead        string   `json:"subhead"`
+	CTA            string   `json:"cta"`
+	Layout         string   `json:"layout"` // split|editorial|immersive|framed|asymmetric
+	Palette        []string `json:"palette"`
+	DisplayFont    string   `json:"display_font"`
+	BodyFont       string   `json:"body_font"`
+	ImageDirection string   `json:"image_direction"`
+	Signature      string   `json:"signature"`
+	Selected       bool     `json:"selected,omitempty"`
+}
+
+// Brief is appended to Project.DesignBrief when the customer chooses this
+// concept, so both the planner and implementation agent receive the exact same
+// composition and image-series direction.
+func (h HeroConcept) Brief() string {
+	return strings.Join([]string{
+		"Chosen hero concept: " + h.Name,
+		"Why it fits: " + h.Rationale,
+		"Hero copy: " + strings.TrimSpace(h.Eyebrow+" / "+h.Headline+" / "+h.Subhead+" / CTA: "+h.CTA),
+		"Hero composition: " + h.Layout,
+		"Palette: " + strings.Join(h.Palette, ", "),
+		"Typography: " + strings.TrimSpace(h.DisplayFont+" display / "+h.BodyFont+" body"),
+		"Signature element: " + h.Signature,
+		"Cohesive image art direction: " + h.ImageDirection,
+	}, "\n")
 }
 
 // Screenshot is a captured page/viewport of a deployed site: its labelled URL
@@ -305,6 +381,60 @@ type Project struct {
 	Version   int64 // optimistic-lock revision; incremented on every persisted update
 }
 
+// HeroConcepts returns the generated pair regardless of which design option
+// carries it. The concepts live inside the existing design-options JSON column,
+// keeping the feature backwards-compatible without another project-table field.
+func (p *Project) HeroConcepts() []HeroConcept {
+	for _, option := range p.DesignOptions {
+		if len(option.HeroConcepts) > 0 {
+			return option.HeroConcepts
+		}
+	}
+	return nil
+}
+
+// SetHeroConcepts persists a newly generated pair in the first option. At this
+// point the broad direction is already captured in DesignBrief; the container
+// option is merely a version-compatible place to store the structured mockups.
+func (p *Project) SetHeroConcepts(concepts []HeroConcept) {
+	if len(p.DesignOptions) == 0 {
+		p.DesignOptions = []DesignOption{{Name: "Custom direction", Description: p.DesignBrief}}
+	}
+	for i := range p.DesignOptions {
+		p.DesignOptions[i].HeroConcepts = nil
+	}
+	p.DesignOptions[0].HeroConcepts = concepts
+}
+
+// SelectHeroConcept marks exactly one concept and returns its full binding
+// brief. False means the posted ID was not one of the generated choices.
+func (p *Project) SelectHeroConcept(conceptID string) (HeroConcept, bool) {
+	var selected HeroConcept
+	found := false
+	for oi := range p.DesignOptions {
+		for ci := range p.DesignOptions[oi].HeroConcepts {
+			concept := &p.DesignOptions[oi].HeroConcepts[ci]
+			concept.Selected = concept.ID == conceptID
+			if concept.Selected {
+				selected, found = *concept, true
+			}
+		}
+	}
+	return selected, found
+}
+
+// ImageArtDirection is the selected project's shared visual anchor for every
+// AI-generated photo/illustration. Returning only a selected concept prevents
+// unchosen ideas from contaminating the image series.
+func (p *Project) ImageArtDirection() string {
+	for _, concept := range p.HeroConcepts() {
+		if concept.Selected {
+			return concept.ImageDirection
+		}
+	}
+	return ""
+}
+
 // EffectiveBrief is the brief enriched with the customer's clarifying answers
 // and chosen design direction, as fed to the planner and safety gate.
 func (p *Project) EffectiveBrief() string {
@@ -412,22 +542,24 @@ func (p *Project) TimelineStep() int {
 		return 0
 	case StatusClarifying, StatusNeedsInput:
 		return 1
-	case StatusPlanning, StatusScreening, StatusAwaitingApproval, StatusEscalated, StatusRejected:
+	case StatusConcepting, StatusNeedsConcept:
 		return 2
-	case StatusBuilding, StatusFailed:
+	case StatusPlanning, StatusScreening, StatusAwaitingApproval, StatusEscalated, StatusRejected:
 		return 3
-	case StatusPreviewReady, StatusAccepted, StatusExpired:
+	case StatusBuilding, StatusFailed:
 		return 4
-	case StatusDelivered:
+	case StatusPreviewReady, StatusAccepted, StatusExpired:
 		return 5
+	case StatusDelivered:
+		return 6
 	default:
 		return 0
 	}
 }
 
-// TimelineSteps are the six customer-facing milestones, by i18n key suffix
+// TimelineSteps are the seven customer-facing milestones, by i18n key suffix
 // (rendered as "timeline.<key>"). "review" is the deliberate human checkpoint.
-var TimelineSteps = []string{"brief", "questions", "plan", "building", "review", "live"}
+var TimelineSteps = []string{"brief", "questions", "concept", "plan", "building", "review", "live"}
 
 // CanAccept reports whether the customer may accept the current preview and
 // send it to Rasmus for final review.

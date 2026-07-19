@@ -165,10 +165,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /projects/new", s.requireUser(s.handleNewProjectForm))
 	mux.HandleFunc("POST /projects", s.requireUser(s.handleCreateProject))
 	mux.HandleFunc("GET /projects/{id}", s.requireUser(s.handleProject))
+	mux.HandleFunc("GET /projects/{id}/palette.css", s.requireUser(s.handleProjectPaletteCSS))
 	mux.HandleFunc("GET /projects/{id}/status", s.requireUser(s.handleProjectStatus))
 	mux.HandleFunc("GET /projects/{id}/shots/{i}", s.requireUser(s.handleShot))
 	mux.HandleFunc("GET /projects/{id}/stream", s.requireUser(s.handleProjectStream))
 	mux.HandleFunc("POST /projects/{id}/answer", s.requireUser(s.handleAnswer))
+	mux.HandleFunc("POST /projects/{id}/concept", s.requireUser(s.handleConceptChoice))
 	mux.HandleFunc("POST /projects/{id}/approve-plan", s.requireUser(s.handleApprovePlan))
 	mux.HandleFunc("POST /projects/{id}/assets", limitBody(maxUpload+(1<<20), s.requireUser(s.handleUploadAsset)))
 	mux.HandleFunc("POST /projects/{id}/assets/{assetID}/caption", s.requireUser(s.handleCaptionAsset))
@@ -291,6 +293,10 @@ type View struct {
 	Flash   string
 	Lang    string // resolved UI language ("en", "sv", "ru")
 	Data    any
+	// ExtraStylesheet is a same-origin, CSP-compatible page stylesheet. The
+	// project view uses it for its validated model-generated palette variables;
+	// inline style attributes remain forbidden by the control plane's CSP.
+	ExtraStylesheet string
 
 	// SEO — rendered into <head> by partials.html; filled by s.view (see
 	// seo.go). Canonical pins every page to BaseURL, so the fly.dev host never
@@ -512,6 +518,10 @@ func statusLabel(s project.Status) string {
 		return "Reading your brief…"
 	case project.StatusNeedsInput:
 		return "A few quick questions"
+	case project.StatusConcepting:
+		return "Creating two design concepts…"
+	case project.StatusNeedsConcept:
+		return "Choose your hero concept"
 	case project.StatusPlanning:
 		return "Planning your site…"
 	case project.StatusScreening:
@@ -539,14 +549,12 @@ func statusLabel(s project.Status) string {
 	}
 }
 
-// polling reports whether the dashboard should keep polling this project.
-// It stops on resting states: waiting on the customer, the operator, or done.
 // polling reports whether the project page should keep refreshing its status.
 // Escalated projects poll too (slowly) so the page moves on its own once the
 // operator approves or declines — see pollEvery.
 func polling(p *project.Project) bool {
 	switch p.Status {
-	case project.StatusNeedsInput, project.StatusAwaitingApproval, project.StatusPreviewReady,
+	case project.StatusNeedsInput, project.StatusNeedsConcept, project.StatusAwaitingApproval, project.StatusPreviewReady,
 		project.StatusDelivered, project.StatusRejected, project.StatusFailed, project.StatusExpired:
 		return false
 	default:

@@ -267,6 +267,39 @@ func TestPublicLayoutCarriesQualityBaseline(t *testing.T) {
 	}
 }
 
+// Form alignment is structural, not per-project styling. The starter markup
+// and locked stylesheet must keep required markers beside the field name and
+// choices beside their checkbox/radio instead of letting a generic label rule
+// stack each part on a separate row.
+func TestPublicFormsCarryAlignmentContract(t *testing.T) {
+	srv := newTestServer(t, "")
+	defer srv.Close()
+	c := &http.Client{}
+
+	landing, _ := get(t, c, srv.URL+"/")
+	login, _ := get(t, c, srv.URL+"/login")
+	for name, page := range map[string]string{"landing": landing, "login": login} {
+		if !strings.Contains(page, `class="field-label"`) || !strings.Contains(page, `class="required-mark" aria-hidden="true">*</span>`) {
+			t.Errorf("%s required fields do not use the inline field-label/required-mark contract", name)
+		}
+	}
+
+	css, resp := get(t, c, srv.URL+"/static/components.css")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("components.css = %d, want 200", resp.StatusCode)
+	}
+	for _, want := range []string{
+		`label:has(> input[type="checkbox"])`,
+		`label:has(> input[type="radio"])`,
+		`.required-mark`,
+		`.choice-group`,
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("components.css missing form-alignment primitive %q", want)
+		}
+	}
+}
+
 func TestCanonicalUsesBrandedForwardedHost(t *testing.T) {
 	srv := newTestServer(t, "")
 	defer srv.Close()

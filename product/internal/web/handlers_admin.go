@@ -296,7 +296,7 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, _ *user.Use
 			previews = append(previews, s.withScreenshots(ctx, p))
 		case project.StatusAccepted:
 			accepted = append(accepted, s.withScreenshots(ctx, p))
-		case project.StatusNeedsInput, project.StatusAwaitingApproval:
+		case project.StatusNeedsInput, project.StatusNeedsConcept, project.StatusAwaitingApproval:
 			// The customer's turn — the operator can't act, but seeing these
 			// lets Rasmus nudge a stalled project instead of it going quiet.
 			waiting = append(waiting, waitingItem{

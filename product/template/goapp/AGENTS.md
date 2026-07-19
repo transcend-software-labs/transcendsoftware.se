@@ -98,6 +98,10 @@ Forge-specific rules layered on top of it.
   buttons; the component pins button ink so section link-colors can't make
   button text invisible (a bug that shipped once — never again).
 - Redesign the landing page structure freely (hero, sections, imagery).
+- When the plan includes a chosen concept and shared image art direction, treat
+  it as binding across the whole site. All photos, generated illustrations,
+  crops, overlays and placeholders must read as one commissioned series; never
+  mix lighting, color grading, lens language or illustration styles.
 - **Do NOT touch the site admin's look**: `static/admin.css`, `admin_layout.html`,
   or the `admin*.html` templates are Forge-provided and intentionally styled
   separately from the public site — leave them exactly as they are. Your
@@ -185,6 +189,16 @@ fails these is not done. Walk this list before you deploy.
   until submission starts — don't pre-disable it on "invalid"; instead show the
   error next to the offending field and move focus to the first one. Placeholders
   are example values ending with "…" (`e.g. you@example.com`), not instructions.
+  Form geometry is owned by locked `components.css`: **never write a bare
+  `label { display: … }` rule in `app.css`**. It is a recurring source of broken
+  checkbox/radio rows and required stars stranded on their own line. For a
+  required field use `<label><span class="field-label">Name <span
+  class="required-mark" aria-hidden="true">*</span></span><input …
+  required></label>`. For a choice use `<label><input type="checkbox" …><span>…
+  </span></label>` (same for radio), grouped in `.choice-group` and a
+  `<fieldset>`/`<legend>` when several options answer one question. The locked
+  CSS keeps each choice atomic and ≥44px; the rendered audit measures the actual
+  label/control geometry and fails the build if they land on different rows.
 - **Copy & typography.** Curly quotes (“ ” ‘ ’) and the ellipsis character (…),
   never straight quotes or `...`. Each page sets an accurate, specific
   `<title>`. Put `font-variant-numeric: tabular-nums` on any run of numbers

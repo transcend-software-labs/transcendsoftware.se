@@ -38,6 +38,8 @@ Then review that plan against the brief before building: if any part of it reads
 
 When writing the code, be careful of structuring your CSS selector specificities. It's easy to generate CSS classes that cancel each other out (especially with a type-based selector like .section and a element-based selector like .cta). This can happen often with paddings/margins between sections.
 
+Treat form geometry as craft, not decoration. A required marker belongs on the same baseline as its field name, and a checkbox/radio plus its text is one horizontal, clickable choice row even when the text wraps. In the Forge starter `components.css` owns those mechanics; never override bare `label`, checkbox, or radio layout in project CSS. Use the shipped `.field-label`, `.required-mark`, `.choice-label`, and `.choice-group` primitives and inspect the rendered form, not just its source.
+
 Try to do a lot of this planning and iteration in your thinking, and only show ideas to the user when you have higher confidence it'll delight them.
 
 ## Restraint and self-critique

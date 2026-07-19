@@ -46,13 +46,25 @@
     <h3>{{$.T "prj.q.design_h3"}}</h3>
     <p class="muted small">{{$.T "prj.q.design_intro"}}</p>
     <div class="design-options">
-      {{range .DesignOptions}}
-      <label class="design-option">
-        <input type="radio" name="design_choice" value="{{.Name}}">
-        <span><strong>{{.Name}}</strong> — {{.Description}}</span>
+      {{range $.Data.DesignOptions}}
+      <label class="design-option design-tile {{.PaletteClass}}">
+        <input type="radio" name="design_choice" value="{{.Name}}" required>
+        <span class="design-tile-preview {{.LayoutClass}} {{.FontClass}}" aria-hidden="true">
+          <span class="dt-nav"><i></i><i></i><i></i></span>
+          <span class="dt-copy"><b>{{.Name}}</b><em></em><small></small></span>
+          <span class="dt-art"><i></i></span>
+        </span>
+        <span class="design-tile-copy">
+          <strong>{{.Name}}</strong>
+          <span>{{.Description}}</span>
+          <span class="design-swatches" aria-label="{{$.T "prj.q.palette"}}"><i></i><i></i><i></i><i></i></span>
+          <span class="design-meta"><b>{{.DisplayFont}}</b> · {{.BodyFont}} · {{.Boldness}}</span>
+          {{if .ImageStyle}}<span class="design-detail"><b>{{$.T "prj.q.image_style"}}</b> {{.ImageStyle}}</span>{{end}}
+          {{if .Signature}}<span class="design-detail"><b>{{$.T "prj.q.signature"}}</b> {{.Signature}}</span>{{end}}
+        </span>
       </label>
       {{end}}
-      <label class="design-option">
+      <label class="design-option design-custom">
         <input type="radio" name="design_choice" value="__custom">
         <span><strong>{{$.T "prj.q.own"}}</strong></span>
       </label>
@@ -61,6 +73,57 @@
     </div>
     {{end}}
     <button class="btn" type="submit">{{$.T "prj.q.submit"}}</button>
+  </form>
+</section>
+{{end}}
+
+{{if eq .Status "needs_concept"}}
+<section class="panel concept-gate">
+  <div class="concept-intro">
+    <span class="badge badge-accent">{{$.T "prj.concept.badge"}}</span>
+    <h2>{{$.T "prj.concept.h2"}}</h2>
+    <p class="muted">{{$.T "prj.concept.intro"}}</p>
+  </div>
+  <form method="post" action="/projects/{{.ID}}/concept" class="stack">
+    <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+    <div class="hero-concepts">
+      {{range $.Data.HeroConcepts}}
+      <label class="hero-concept {{.PaletteClass}}">
+        <input type="radio" name="concept_id" value="{{.ID}}" required>
+        <span class="hero-concept-head">
+          <strong>{{.Name}}</strong>
+          <span>{{.Rationale}}</span>
+        </span>
+        <span class="concept-device-pair {{.LayoutClass}} {{.FontClass}}" aria-hidden="true">
+          <span class="concept-desktop">
+            <span class="concept-nav"><b>{{$.Data.Project.Name}}</b><i></i><i></i></span>
+            <span class="concept-hero-copy">
+              {{if .Eyebrow}}<small>{{.Eyebrow}}</small>{{end}}
+              <strong>{{.Headline}}</strong>
+              <span>{{.Subhead}}</span>
+              <em>{{.CTA}}</em>
+            </span>
+            <span class="concept-visual"><i></i></span>
+          </span>
+          <span class="concept-mobile">
+            <span class="concept-nav"><b>{{$.Data.Project.Name}}</b><i></i></span>
+            <span class="concept-hero-copy">
+              {{if .Eyebrow}}<small>{{.Eyebrow}}</small>{{end}}
+              <strong>{{.Headline}}</strong>
+              <span>{{.Subhead}}</span>
+              <em>{{.CTA}}</em>
+            </span>
+            <span class="concept-visual"><i></i></span>
+          </span>
+        </span>
+        <span class="concept-notes">
+          <span><b>{{$.T "prj.concept.signature"}}</b> {{.Signature}}</span>
+          <span><b>{{$.T "prj.concept.images"}}</b> {{.ImageDirection}}</span>
+        </span>
+      </label>
+      {{end}}
+    </div>
+    <button class="btn" type="submit">{{$.T "prj.concept.submit"}}</button>
   </form>
 </section>
 {{end}}

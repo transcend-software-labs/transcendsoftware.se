@@ -35,7 +35,7 @@ const STARTER_FAVICON_SHA256 = 'cc89472f7ac89404405941713fc4fdd3539f6eb9d60395b0
 // nav visibility and button readability can't regress per project. Restyle via
 // tokens.css + app.css. (Maintainers: template-push refuses to ship if this
 // constant doesn't match the file — update both together, deliberately.)
-const COMPONENTS_SHA256 = '74141466e58b0d65de473cf89ae3418b3df685c7f85b8fd9c1a9b7264fd39033';
+const COMPONENTS_SHA256 = '88cf8d3514ac78c1717ada8f24e2f47e41095d4a672744c6e10c0250e6f01ad1';
 
 async function get(url) {
   try { const r = await fetch(url); return r.ok ? await r.text() : ''; } catch { return ''; }
@@ -132,6 +132,44 @@ async function runtimeAudit(routes) {
         await page.goto(BASE + route, { waitUntil: 'networkidle', timeout: 20000 });
         const state = await page.evaluate(({ vh }) => {
           const visible = (el) => { const s = getComputedStyle(el), r = el.getBoundingClientRect(); return s.display !== 'none' && s.visibility !== 'hidden' && r.width > 0 && r.height > 0; };
+          const firstLabelTextRect = (label) => {
+            const walker = document.createTreeWalker(label, NodeFilter.SHOW_TEXT);
+            let node;
+            while ((node = walker.nextNode())) {
+              if (!node.textContent.trim()) continue;
+              const parent = node.parentElement;
+              if (parent?.closest('input, textarea, select, option, .field-hint, .field-error, .hint, .req, .required-mark, .required-indicator, [data-required-marker]')) continue;
+              const range = document.createRange();
+              range.selectNodeContents(node);
+              const rect = [...range.getClientRects()].find((r) => r.width > 0 && r.height > 0);
+              if (rect) return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+            }
+            return null;
+          };
+          const formAlignment = [];
+          const markers = [...document.querySelectorAll('label :is(.req, .required-mark, .required-indicator, [data-required-marker]), label [aria-hidden="true"]')]
+            .filter((el) => /^(\*|∗)$/.test(el.textContent.trim()) && visible(el));
+          for (const marker of markers) {
+            const label = marker.closest('label');
+            const text = label && firstLabelTextRect(label);
+            if (!text) continue;
+            const r = marker.getBoundingClientRect();
+            const delta = Math.abs((text.y + text.height / 2) - (r.y + Math.min(r.height, text.height) / 2));
+            if (delta > Math.max(6, text.height * .45)) {
+              formAlignment.push({ kind: 'required marker', name: (label.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 70), delta: Math.round(delta) });
+            }
+          }
+          for (const control of document.querySelectorAll('input[type="checkbox"], input[type="radio"]')) {
+            if (!visible(control) || control.classList.contains('nav-toggle')) continue;
+            const label = [...control.labels].find(visible);
+            const text = label && firstLabelTextRect(label);
+            if (!text) continue;
+            const r = control.getBoundingClientRect();
+            const delta = Math.abs((text.y + text.height / 2) - (r.y + Math.min(r.height, text.height) / 2));
+            if (delta > Math.max(7, text.height * .55)) {
+              formAlignment.push({ kind: control.type, name: (label.textContent || control.name || '').trim().replace(/\s+/g, ' ').slice(0, 70), delta: Math.round(delta) });
+            }
+          }
           const images = [...document.images].filter(visible).map((img) => {
             const r = img.getBoundingClientRect();
             const near = img.closest('article, li, figure, section, header');
@@ -145,7 +183,11 @@ async function runtimeAudit(routes) {
             };
           });
           const smallTargets = [...document.querySelectorAll('button, a.btn, input:not([type=hidden]):not(.nav-toggle), select, textarea, .navlinks a, .nav-burger')]
-            .filter(visible).map((el) => { const r = el.getBoundingClientRect(); return { tag: el.tagName, text: (el.textContent || el.getAttribute('aria-label') || el.getAttribute('name') || '').trim().slice(0, 50), w: Math.round(r.width), h: Math.round(r.height) }; })
+            .filter(visible).map((el) => {
+              const choiceLabel = el.matches('input[type="checkbox"], input[type="radio"]') ? [...el.labels].find(visible) : null;
+              const r = (choiceLabel || el).getBoundingClientRect();
+              return { tag: el.tagName, text: ((choiceLabel?.textContent) || el.textContent || el.getAttribute('aria-label') || el.getAttribute('name') || '').trim().slice(0, 50), w: Math.round(r.width), h: Math.round(r.height) };
+            })
             .filter((x) => x.w < 44 || x.h < 44);
           const canonical = document.querySelector('link[rel=canonical]')?.href || '';
           const ogURL = document.querySelector('meta[property="og:url"]')?.content || '';
@@ -160,7 +202,7 @@ async function runtimeAudit(routes) {
             h1: document.querySelectorAll('main h1').length,
             skip: document.querySelector('a[href="#main-content"]') !== null,
             overflow: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth) - innerWidth,
-            pageHeight: document.documentElement.scrollHeight, images, smallTargets,
+            pageHeight: document.documentElement.scrollHeight, images, smallTargets, formAlignment,
             hasBurger: document.querySelector('.nav-burger') !== null,
             toggleFocusable: (() => { const el = document.querySelector('.nav-toggle'); return !el || (!el.hidden && el.tabIndex >= 0 && getComputedStyle(el).display !== 'none'); })(),
           };
@@ -181,6 +223,9 @@ async function runtimeAudit(routes) {
           if (!state.skip) findings.push(customFinding('missing-skip-link', 'Missing skip link', 'error', 'Keep the starter skip-to-content link when redesigning the header.', scope, route));
         }
         if (state.overflow > 2) findings.push(customFinding('horizontal-overflow', 'Horizontal overflow', 'error', 'The page is wider than the viewport; fix the overflowing element.', `${scope}: ${state.overflow}px overflow`, route));
+        for (const issue of state.formAlignment.slice(0, 12)) {
+          findings.push(customFinding('form-label-alignment', 'Form label parts are on different rows', 'error', 'Keep required markers inline with their field name, and keep each checkbox/radio control aligned with its label text. Use the locked field-label and choice-row primitives.', `${scope}: ${issue.kind} “${issue.name}” is displaced by ${issue.delta}px`, route));
+        }
         if (viewport.name === 'desktop' && route === '/' && state.pageHeight > viewport.height * 6) findings.push(customFinding('overlong-home', 'Homepage is excessively long', 'warning', 'Feature a focused selection and link to full detail pages instead of reproducing a catalogue on the home page.', `${state.pageHeight}px tall at ${viewport.height}px viewport`, route));
         if (viewport.name === 'mobile') {
           for (const t of state.smallTargets.slice(0, 8)) findings.push(customFinding('small-touch-target', 'Touch target below 44px', 'error', 'Increase the interactive target to at least 44×44px on mobile.', `${scope}: ${t.tag} “${t.text}” is ${t.w}×${t.h}`, route));

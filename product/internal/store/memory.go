@@ -384,6 +384,13 @@ func cloneProject(in *project.Project) *project.Project {
 	out := *in
 	out.Questions = cloneSlice(in.Questions)
 	out.DesignOptions = cloneSlice(in.DesignOptions)
+	for i := range out.DesignOptions {
+		out.DesignOptions[i].Palette = cloneSlice(in.DesignOptions[i].Palette)
+		out.DesignOptions[i].HeroConcepts = cloneSlice(in.DesignOptions[i].HeroConcepts)
+		for j := range out.DesignOptions[i].HeroConcepts {
+			out.DesignOptions[i].HeroConcepts[j].Palette = cloneSlice(in.DesignOptions[i].HeroConcepts[j].Palette)
+		}
+	}
 	out.Screenshots = cloneSlice(in.Screenshots)
 	out.Findings = cloneSlice(in.Findings) // nil vs empty is semantically significant
 	out.DomainRecords = cloneSlice(in.DomainRecords)

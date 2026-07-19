@@ -151,17 +151,47 @@ func defaultImagePrompt(p *project.Project, c project.ContentItem, lang string) 
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf(i18n.T(lang, "gen.prompt.lead"), c.Name(lang)))
 	if brief := strings.TrimSpace(p.Brief); brief != "" {
-		if len(brief) > 300 {
-			brief = brief[:300]
-		}
+		brief = truncateImagePrompt(brief, 300)
 		b.WriteString(" " + i18n.T(lang, "gen.prompt.business") + brief)
 	}
-	if p.DesignBrief != "" {
-		b.WriteString(" " + i18n.T(lang, "gen.prompt.direction") + p.DesignBrief + ".")
+	if design := imageDesignContext(p.DesignBrief); design != "" {
+		b.WriteString(" " + i18n.T(lang, "gen.prompt.direction") + design + ".")
 	}
+	b.WriteString(imageArtDirectionPrompt(p, lang))
 	b.WriteString(" " + i18n.T(lang, "gen.prompt.style"))
 	b.WriteString(" " + imagePromptGuard(p, c, lang))
 	return b.String()
+}
+
+// imageDesignContext retains the broad style tile while dropping the selected
+// concept's full copy/composition brief. Image prompts receive the selected
+// shared art direction separately below; repeating the entire hero rationale
+// dilutes the image request and can bury the actual subject.
+func imageDesignContext(brief string) string {
+	brief = strings.TrimSpace(brief)
+	if i := strings.Index(brief, "\n\nChosen hero concept:"); i >= 0 {
+		brief = strings.TrimSpace(brief[:i])
+	}
+	return truncateImagePrompt(brief, 1200)
+}
+
+func truncateImagePrompt(value string, maxRunes int) string {
+	runes := []rune(value)
+	if len(runes) > maxRunes {
+		return string(runes[:maxRunes])
+	}
+	return value
+}
+
+// imageArtDirectionPrompt keeps every generated asset in the same visual
+// world. It is appended even to customer-written prompts and later edits, so
+// one isolated generation cannot drift away from the chosen concept.
+func imageArtDirectionPrompt(p *project.Project, lang string) string {
+	direction := strings.TrimSpace(p.ImageArtDirection())
+	if direction == "" {
+		return ""
+	}
+	return " " + i18n.T(lang, "gen.prompt.art_direction") + direction + "."
 }
 
 func imagePromptGuard(p *project.Project, c project.ContentItem, lang string) string {
@@ -189,10 +219,8 @@ func (s *Server) handleGenerateImage(w http.ResponseWriter, r *http.Request, u *
 	if prompt == "" {
 		prompt = defaultImagePrompt(p, c, lang)
 	} else {
-		if len(prompt) > 1000 {
-			prompt = prompt[:1000]
-		}
-		prompt += " " + imagePromptGuard(p, c, lang)
+		prompt = truncateImagePrompt(prompt, 1000)
+		prompt += imageArtDirectionPrompt(p, lang) + " " + imagePromptGuard(p, c, lang)
 	}
 	p, jobID, outcome, err := s.reserveImageJob(r.Context(), p.ID, slot, prompt)
 	if err != nil {
@@ -331,10 +359,8 @@ func (s *Server) handleImproveImage(w http.ResponseWriter, r *http.Request, u *u
 		http.Redirect(w, r, "/projects/"+p.ID, http.StatusSeeOther)
 		return
 	}
-	if len(instruction) > 1000 {
-		instruction = instruction[:1000]
-	}
-	instruction += " " + fmt.Sprintf(i18n.T(lang, "gen.prompt.improve_guard"), c.Name(lang)) + " " + imagePromptGuard(p, c, lang)
+	instruction = truncateImagePrompt(instruction, 1000)
+	instruction += imageArtDirectionPrompt(p, lang) + " " + fmt.Sprintf(i18n.T(lang, "gen.prompt.improve_guard"), c.Name(lang)) + " " + imagePromptGuard(p, c, lang)
 	// The image to improve: the slot's most recent generated asset.
 	assets, err := s.store.AssetsByProject(r.Context(), p.ID)
 	if err != nil {

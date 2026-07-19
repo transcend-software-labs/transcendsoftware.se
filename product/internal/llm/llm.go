@@ -38,12 +38,21 @@ type IntakeResult struct {
 	DesignOptions []project.DesignOption
 }
 
+// ConceptResult is the concrete visual bridge between a broad style tile and
+// the implementation plan: exactly two meaningfully different hero concepts.
+type ConceptResult struct {
+	Concepts []project.HeroConcept
+}
+
 // Intake produces PO-level clarifying questions and design suggestions for a
 // brief, asked before any planning or building happens.
 type Intake interface {
 	// lang is the customer's UI language ("en"/"sv"/"ru", "" = English) — the
 	// questions and design options come back in it, since the customer reads them.
 	Questions(ctx context.Context, brief, lang string) (IntakeResult, error)
+	// Concepts turns the chosen direction into two concrete above-the-fold
+	// compositions. The customer selects one before planning starts.
+	Concepts(ctx context.Context, brief, design, lang string) (ConceptResult, error)
 }
 
 // intakeLangDirective steers the intake model to write the questions + design
@@ -57,6 +66,16 @@ func intakeLangDirective(lang string) string {
 	return "\n\nIMPORTANT: Write every question and all design-option names and " +
 		"descriptions in " + name + " (the customer's language). Keep the JSON " +
 		"structure and field names exactly as specified — translate only the values."
+}
+
+func conceptLangDirective(lang string) string {
+	name := map[string]string{"sv": "Swedish", "ru": "Russian"}[lang]
+	if name == "" {
+		return ""
+	}
+	return "\n\nIMPORTANT: Write concept names, rationales, eyebrow, headline, " +
+		"subhead, CTA, image direction and signature in " + name + ". Keep JSON " +
+		"field names and enum values in English."
 }
 
 // Planner turns a brief into a build plan.
@@ -247,14 +266,53 @@ has described a website they want. Two jobs:
 
 2. design_options: 2-3 distinct visual directions FOR THIS SPECIFIC SITE that
    the customer will choose between (they may also state their own). Each has
-   a short evocative name and one sentence covering mood, colors, typography,
-   layout and one possible signature element. Make them genuinely different
-   from each other in composition as well as palette, and fitting for the
-   business. Always provide these.
+   a short evocative name plus STRUCTURED art direction. Make them genuinely
+   different in composition, type, image treatment and palette — not three
+   adjectives applied to the same card layout. Palette contains 4–5 #RRGGBB
+   colors in order: background, ink, primary accent, surface, optional second
+   accent. display_font/body_font name real font families or clear categories
+   with the intended character. hero_layout is exactly split, editorial,
+   immersive, framed or asymmetric. boldness is restrained, balanced or bold.
+   image_style is one coherent photographic/illustrative direction that could
+   govern a complete image series. signature is one memorable visual device.
+   Always provide these fields for every option.
 
 Write questions and design options in the customer's language.
 Respond with STRICT JSON and nothing else, exactly this shape:
-{"questions":["..."],"design_options":[{"name":"...","description":"..."}]}`
+{"questions":["..."],"design_options":[{"name":"...","description":"...","palette":["#F4F0E8","#171713","#C64A2E","#FFFFFF"],"display_font":"Fraunces","body_font":"Manrope","hero_layout":"asymmetric","image_style":"Directional natural-light photography with tactile close crops and warm restrained grain","signature":"A cropped circular product window crossing the hero grid","boldness":"bold"}]}`
+
+// ConceptSystemPrompt creates the actual pixel-facing choice between a broad
+// direction and the full build. The control plane renders this structured JSON
+// into desktop/mobile hero mockups; no arbitrary HTML/CSS from the model enters
+// Forge itself.
+const ConceptSystemPrompt = `You are the art director at a premium web studio.
+The customer has chosen a broad visual direction. Produce EXACTLY TWO concrete,
+meaningfully different homepage hero concepts for that SAME direction before
+implementation begins.
+
+Both concepts must fit the real business and preserve the chosen palette/type/
+image mood, but differ clearly in composition and visual thesis. The first two
+screenfuls must communicate who/what/where, one primary action and one honest
+reason to trust or choose the business. Do not invent testimonials, awards,
+statistics, prices, certifications, opening hours or response times.
+
+Write actual concise hero copy in the customer's language. Each concept needs:
+- a memorable name and one-sentence rationale;
+- optional eyebrow, strong headline, short subhead and one CTA;
+- layout: exactly split, editorial, immersive, framed or asymmetric;
+- 4–5 #RRGGBB colors ordered background, ink, accent, surface, optional accent;
+- display_font and body_font;
+- image_direction: a precise SHARED art direction for the entire future image
+  series (subject framing, light, palette, lens/texture and exclusions), not a
+  single stock-photo search phrase;
+- signature: one business-specific visual device visible above the fold.
+
+Avoid generic SaaS gradients, floating cards, meaningless stats, centred
+everything and two concepts that are merely color swaps. Text must be truthful
+to the supplied brief.
+
+Respond with STRICT JSON only:
+{"concepts":[{"id":"concept-a","name":"...","rationale":"...","eyebrow":"...","headline":"...","subhead":"...","cta":"...","layout":"split","palette":["#...","#...","#...","#..."],"display_font":"...","body_font":"...","image_direction":"...","signature":"..."},{"id":"concept-b",...}]}`
 
 // BuildSystemPrompt drives the build agent (opencode) inside the sandbox: build
 // the site from the plan, then deploy it. The FLY_APP/FLY_DEPLOY_TOKEN env vars
@@ -296,6 +354,12 @@ How to build:
     empty voids. Consistent radii, real hover/focus states, clear rhythm.
   - Replace the starter favicon.svg with a simple, project-specific SVG mark
     that remains recognizable at 16px; do not put a tiny raster wordmark in it.
+  - Treat form alignment as non-negotiable craft. Leave the locked starter's
+    bare label/checkbox/radio geometry intact; never override it with a generic
+    label { display:flex; flex-direction:column } rule in app.css. Use its
+    field-label + required-mark primitives so * stays beside the field name,
+    and its choice-label/choice-group primitives so every checkbox or radio and
+    its text remain one aligned, fully clickable row. Verify every real form.
   It must look intentionally designed by a person, not scaffolded. (This is
   correctness, not the gold-plating warned about later — that is about extra
   features, never about design quality on the pages the plan calls for.)
@@ -305,6 +369,10 @@ How to build:
   photo in the hero). Copy the ones you use into the site. Only use
   placeholders if assets/ is empty. Match every image to its exact labelled
   subject — a croissant image must visibly be a croissant, not a generic pastry.
+  Treat the chosen concept's cohesive image art direction as a binding system:
+  every photo, illustration, crop, overlay and placeholder must look like part
+  of one deliberately commissioned series. Do not mix lighting, lens language,
+  illustration styles, color grading or corner treatments across sections.
   Never accept garbled AI text, a misspelled wordmark, unsupported technical or
   certification claims, or a diagram where the slot calls for a real photo.
 - Put public PNG/JPEG originals under internal/web/static and let make test
@@ -458,6 +526,16 @@ type Fake struct{}
 // NewFake returns a deterministic dev planner/gate.
 func NewFake() *Fake { return &Fake{} }
 
+// FallbackDesignOptions keeps the visual gate present if an intake model
+// returns questions but omits its design array. They are intentionally broad;
+// the following concept pass still makes the selected direction business-specific.
+func FallbackDesignOptions() []project.DesignOption {
+	return []project.DesignOption{
+		{Name: "Clear & distinctive", Description: "Confident hierarchy, crisp spacing and one memorable visual move.", Palette: []string{"#F7F8F5", "#151713", "#2457D6", "#FFFFFF"}, DisplayFont: "Characterful grotesk", BodyFont: "Humanist sans", HeroLayout: "split", ImageStyle: "Honest directional daylight photography with precise, business-specific framing", Signature: "One bold graphic crop tied to the subject", Boldness: "balanced"},
+		{Name: "Editorial & expressive", Description: "Stronger type, asymmetric rhythm and tactile image treatment.", Palette: []string{"#F2EBDD", "#241C16", "#B9472D", "#FFF9EE"}, DisplayFont: "Expressive editorial serif", BodyFont: "Clean contemporary sans", HeroLayout: "editorial", ImageStyle: "A cohesive tactile documentary series with natural light and restrained grain", Signature: "An oversized typographic gesture intersecting the image grid", Boldness: "bold"},
+	}
+}
+
 func (Fake) Questions(_ context.Context, _, _ string) (IntakeResult, error) {
 	return IntakeResult{
 		Questions: []string{
@@ -465,11 +543,16 @@ func (Fake) Questions(_ context.Context, _, _ string) (IntakeResult, error) {
 			"Do you have your own photos and logo, or should we use placeholders for now?",
 			"What language(s) should the site be in?",
 		},
-		DesignOptions: []project.DesignOption{
-			{Name: "Clean & minimal", Description: "Lots of white space, dark text, a single accent color, modern sans-serif."},
-			{Name: "Warm & rustic", Description: "Cream tones, earthy accents, serif headings — handmade and inviting."},
-		},
+		DesignOptions: FallbackDesignOptions(),
 	}, nil
+}
+
+func (Fake) Concepts(_ context.Context, brief, _, _ string) (ConceptResult, error) {
+	name := deriveName(brief)
+	return ConceptResult{Concepts: []project.HeroConcept{
+		{ID: "concept-a", Name: "Focused split", Rationale: "Puts the promise and primary action first while one tactile image carries the personality.", Eyebrow: name, Headline: "A clearer way to choose what comes next.", Subhead: "A concise, specific introduction shaped around the real business and its location.", CTA: "Get started", Layout: "split", Palette: []string{"#F2EBDD", "#241C16", "#B9472D", "#FFF9EE"}, DisplayFont: "Fraunces", BodyFont: "Manrope", ImageDirection: "A coherent natural-light documentary series with tactile close crops, warm neutral shadows, restrained grain, no text or stock-photo gestures", Signature: "A circular close-up crossing the split grid"},
+		{ID: "concept-b", Name: "Editorial statement", Rationale: "Uses expressive type and an edge-to-edge visual rhythm for a more memorable first impression.", Eyebrow: name, Headline: "Made distinct. Made easy to understand.", Subhead: "One strong proposition, one honest reason to choose it and one unmistakable next step.", CTA: "See the offer", Layout: "editorial", Palette: []string{"#F2EBDD", "#241C16", "#B9472D", "#FFF9EE"}, DisplayFont: "Fraunces", BodyFont: "Manrope", ImageDirection: "A coherent natural-light documentary series with wider environmental frames, warm restrained grain, honest materials and no embedded text or logos", Signature: "An oversized editorial headline intersected by a narrow image strip"},
+	}}, nil
 }
 
 func (Fake) Plan(_ context.Context, brief string) (PlanResult, error) {
@@ -536,7 +619,9 @@ template. Compare against the stated direction — is it realised, or did the
 build drift into a default look? Inspect imagery as content: every product or
 project image must match its nearby label; garbled/misspelled text, accidental
 logos, wrong products, unsafe technical details and unsupported certification
-claims require POLISH.
+claims require POLISH. Inspect basic form craft too: a required marker stranded
+on its own row, or checkbox/radio text not aligned with its control, always
+requires POLISH.
 
 Reply in EXACTLY one of these two forms:
 

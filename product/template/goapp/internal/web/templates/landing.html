@@ -11,9 +11,9 @@
     <div class="panel">
       <h2>Contact us</h2>
       <form method="post" action="/contact" class="stack">
-        <label>Name <input type="text" name="name" required maxlength="200" autocomplete="name"></label>
+        <label><span class="field-label">Name <span class="required-mark" aria-hidden="true">*</span></span><input type="text" name="name" required maxlength="200" autocomplete="name"></label>
         <label>Email <input type="email" name="email" maxlength="200" autocomplete="email" spellcheck="false"></label>
-        <label>Message <textarea name="message" rows="5" required maxlength="4000"></textarea></label>
+        <label><span class="field-label">Message <span class="required-mark" aria-hidden="true">*</span></span><textarea name="message" rows="5" required maxlength="4000"></textarea></label>
         <button class="btn" type="submit">Send</button>
       </form>
     </div>

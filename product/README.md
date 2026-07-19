@@ -28,8 +28,9 @@ What works today:
 - **Privacy-friendly marketing funnel**: anonymous daily landing/start/signup
   totals and UTM labels appear in `/admin`; no analytics script, tracking cookie,
   IP address, device identifier or account-level attribution is stored
-- Start a project → orchestrator runs **intake (clarifying questions) → plan →
-  safety gate → build**
+- Start a project → orchestrator runs **intake (clarifying questions + visual
+  style tiles) → two responsive hero concepts → customer concept choice → plan
+  → safety gate → build**
 - **Live build streaming**: the dashboard shows the agent's tool activity as it
   happens (opencode SSE `/event` → broker → HTMX SSE)
 - **Deploy verification**: the preview URL is smoke-checked (HTTP 200 +
@@ -144,7 +145,7 @@ mode.** Each variable independently switches one piece from fake to real:
 Browser ──► web (landing, auth, dashboard, /admin; HTMX, CSRF)
               │  start project
               ▼
-          orchestrator ── intake ─► llm.Intake       (clarifying questions)
+          orchestrator ── intake ─► llm.Intake       (questions, style tiles, concepts)
               │          ── plan ──► llm.Planner      (Anthropic | fake)
               │          ── gate ──► llm.SafetyGate   (tool-less; Anthropic | fake)
               │                          └─ escalate → /admin operator review
