@@ -21,8 +21,8 @@ the open decisions.
 
 What works today:
 
-- Landing page + email/password, magic-link and OAuth auth (bcrypt, hashed
-  server-side sessions, **CSRF-protected** forms, throttled email endpoints)
+- Landing page + passwordless magic-link, Google and LinkedIn OAuth auth
+  (hashed server-side sessions, **CSRF-protected** forms, throttled email endpoints)
 - **First-project approval**: a new customer’s first brief waits in `/admin`
   before any AI work starts; approval permanently unlocks their future projects
 - **Privacy-friendly marketing funnel**: anonymous daily landing/start/signup
@@ -163,7 +163,7 @@ Packages (`internal/`):
 
 - `project` — domain types + the lifecycle state machine
 - `store` — `Store` interface, `Memory` (dev) and `Postgres` (pgx) impls
-- `auth` — bcrypt + hashed server-side cookie sessions
+- `auth` — hashed server-side cookie sessions
 - `llm` — `Planner` + `SafetyGate`, with the Anthropic client and a Fake; the
   operating spec ("Rasmus's decisions") lives in `PlannerSystemPrompt`
 - `opencode` — driver to run a build via an opencode server (HTTP + Fake)

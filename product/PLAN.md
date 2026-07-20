@@ -319,7 +319,7 @@ Milestones:
 - [x] Live pricing, localized terms/privacy pages, explicit early-performance
       acknowledgement and a durable online withdrawal function (S–M)
 - [ ] Production build model — decision §5.5; env-only switch (S)
-- [x] Email verification at signup before builds or payment (S)
+- [x] Passwordless authentication: magic link, Google and LinkedIn OAuth (S)
 - [x] Retry-once on transient LLM/API failures in intake/plan/gate: the
       OpenAI-compatible (Kimi) client retries network blips, 429s, 5xx and
       empty 200s once; permanent 4xx are not retried. Tested (S). _(Anthropic
@@ -328,9 +328,8 @@ Milestones:
 ### Added along the way (2026-07-06)
 **Login (Google + magic-link) + attenuation per-app tokens: DEPLOYED & LIVE.**
 Google login verified end-to-end up to Google's consent screen at
-forge.transcendsoftware.se; migration 0008 applied; magic-link UI gated off via
-MAGIC_LINK_ENABLED=false until Resend sender domain verified. GitHub mirror
-still inert (no GITHUB_TOKEN).
+forge.transcendsoftware.se; migration 0008 applied. GitHub mirror still inert
+(no GITHUB_TOKEN).
 
 
 - [x] **GitHub source mirror + CI deploy** (Rasmus's direction): each build
@@ -341,15 +340,12 @@ still inert (no GITHUB_TOKEN).
       (interface+fake+REST). Validated the full REST flow against real GitHub.
       **Activate:** `GITHUB_TOKEN` (needs `repo` + **`workflow`** scopes) +
       `GITHUB_ORG`. Not deployed yet. (~14 throwaway test repos to delete.)
-- [x] **Login: magic link + Google (LinkedIn-ready)** (Rasmus's direction):
+- [x] **Login: magic link + Google + LinkedIn** (Rasmus's direction):
       passwordless email login (single-use 20-min link, migration 0008) +
-      provider-generic OAuth2 (`internal/oauth`); email/password kept as a
-      collapsed fallback; accounts link by email. Tested (magic-link E2E, oauth
-      unit). **Activate:** `GOOGLE_CLIENT_ID/SECRET` (redirect
-      `<BASE_URL>/auth/google/callback`); magic-link delivery to *customers*
-      also needs the Resend domain verified. **Hold prod deploy** of this until
-      Resend domain is verified, else the magic-link-first login page can't
-      actually email customers.
+      provider-generic OAuth2 (`internal/oauth`); accounts link by normalized
+      email. Tested (magic-link E2E, OAuth unit). **Activate:** each provider’s
+      client ID/secret with redirect `<BASE_URL>/auth/<provider>/callback`;
+      magic-link delivery to customers requires the verified Resend sender.
 
 ### Added along the way
 - [x] **Per-project design choice** (2026-07-06, Rasmus's direction): intake

@@ -221,6 +221,15 @@ h3 {
 .hero .lead { animation: rise .5s .08s var(--ease) both; }
 .hero .btn-lg { animation: rise .5s .16s var(--ease) both; }
 .hero .small { animation: rise .5s .24s var(--ease) both; margin-top: var(--sp-4); }
+/* Hero artifact: the product's own concept mockup, dogfooded as the demo.
+   Palette scoped here (CSP bans inline styles) — the Signal & paper values. */
+.hero-demo { margin-top: var(--sp-6); animation: rise .5s .32s var(--ease) both; }
+.hero-demo-badge { display: inline-block; margin-bottom: var(--sp-2); }
+.hero-demo .concept-device-pair {
+  --pv-bg: #F5F6F4; --pv-ink: #161A18; --pv-accent: #2457D6; --pv-surface: #FFFFFF;
+  --pv-accent-2: color-mix(in srgb, var(--pv-accent) 55%, var(--pv-bg));
+}
+.hero-demo .concept-desktop { min-height: 20rem; border-radius: var(--radius); }
 .steps { margin: var(--sp-4) 0 0 1.1rem; display: flex; flex-direction: column; gap: .6rem; color: var(--muted); }
 .steps strong { color: var(--text); font-weight: 500; }
 .how { margin-top: var(--sp-7); border-top: 1px solid var(--border); padding-top: var(--sp-6); }
@@ -264,7 +273,7 @@ h3 {
   grid-column: 1 / -1; padding-top: var(--sp-5); border-top: 1px solid var(--border);
   display: grid; grid-template-columns: minmax(12rem, .65fr) minmax(0, 1.35fr); gap: var(--sp-4) var(--sp-6); align-items: start;
 }
-.model-note .badge { margin-bottom: var(--sp-3); }
+.model-note .badge { margin-bottom: var(--sp-3); white-space: normal; }
 .model-note h3 { margin: 0; }
 .model-note p { color: var(--muted); max-width: 58ch; margin: 0; }
 .domain-callout {
@@ -392,6 +401,13 @@ textarea { resize: vertical; }
   color: var(--text);
 }
 .empty { margin-top: var(--sp-6); }
+.empty-state {
+  display: grid; justify-items: center; gap: var(--sp-3); text-align: center;
+  padding: var(--sp-7) var(--sp-5); margin-top: var(--sp-6);
+  border: 1px dashed var(--border-2); border-radius: var(--radius-lg); background: var(--surface);
+}
+.empty-state .empty-title { margin: 0; font-size: var(--fs-xl); font-weight: 600; color: var(--text); }
+.empty-state p { margin: 0; }
 
 /* Badges & status. ONE family: .badge is the pill base, modifiers recolor or
    resize it. The badge-<status> variants map to project statuses (rendered
@@ -468,7 +484,7 @@ button.is-busy::after {
   padding: var(--sp-5);
   background: var(--surface);
 }
-.brief { color: var(--muted); }
+.brief { color: var(--muted); white-space: pre-line; }
 
 /* Intake: each clarifying question gets its own answer field, numbered. */
 .q-list { list-style: none; counter-reset: q; margin: var(--sp-3) 0 var(--sp-2); padding: 0;
@@ -721,8 +737,20 @@ label.design-option:has(input:checked), label.hero-concept:has(input:checked) {
 .dt-copy::after { content: ""; width: 2.8rem; height: .9rem; margin-top: .25rem; border-radius: 2rem; background: var(--pv-accent); }
 .dt-art { position: relative; min-height: 7rem; overflow: hidden; background: var(--pv-surface); }
 .dt-art::before, .dt-art::after, .dt-art i { content: ""; position: absolute; display: block; }
-.dt-art::before { inset: 12% 10% 25% 18%; border-radius: 50% 35% 48% 32%; background: var(--pv-accent); }
-.dt-art::after { width: 55%; aspect-ratio: 1; right: -12%; bottom: -8%; border-radius: 50%; background: var(--pv-accent-2); opacity: .75; }
+/* Duotone media panel + circular subject crop — the signature "commissioned
+   photo series" device, built only from the palette's own colors. */
+.dt-art::before {
+  inset: 10% 10% 22% 12%; border-radius: calc(var(--radius) - 4px);
+  background: linear-gradient(150deg,
+    color-mix(in srgb, var(--pv-accent) 84%, var(--pv-ink)),
+    color-mix(in srgb, var(--pv-accent) 28%, var(--pv-surface)));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pv-ink) 16%, transparent);
+}
+.dt-art::after {
+  width: 42%; aspect-ratio: 1; right: 5%; bottom: 4%; border-radius: 50%;
+  background: var(--pv-surface);
+  box-shadow: 0 0 0 .22rem var(--pv-accent-2), 0 .3rem .9rem color-mix(in srgb, var(--pv-ink) 35%, transparent);
+}
 .dt-art i { width: 58%; height: .3rem; left: 12%; bottom: 12%; background: var(--pv-ink); opacity: .35; }
 .preview-layout-editorial { grid-template-columns: 1fr; }
 .preview-layout-editorial .dt-copy { z-index: 1; max-width: 80%; }
@@ -790,8 +818,18 @@ label.hero-concept:hover { border-color: var(--accent); }
 .concept-hero-copy em { padding: .5rem .85rem; border-radius: 2rem; background: var(--pv-accent); color: var(--pv-bg); font-size: .65rem; font-style: normal; font-weight: 700; }
 .concept-visual { position: relative; min-height: 16rem; align-self: stretch; overflow: hidden; background: var(--pv-surface); }
 .concept-visual::before, .concept-visual::after, .concept-visual i { content: ""; position: absolute; display: block; }
-.concept-visual::before { inset: 9% 12% 18% 9%; border-radius: 48% 38% 52% 31%; background: var(--pv-accent); }
-.concept-visual::after { width: 55%; aspect-ratio: 1; right: -12%; bottom: -8%; border-radius: 50%; background: var(--pv-accent-2); opacity: .72; }
+.concept-visual::before {
+  inset: 9% 10% 20% 9%; border-radius: calc(var(--radius) - 4px);
+  background: linear-gradient(150deg,
+    color-mix(in srgb, var(--pv-accent) 84%, var(--pv-ink)),
+    color-mix(in srgb, var(--pv-accent) 28%, var(--pv-surface)));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pv-ink) 16%, transparent);
+}
+.concept-visual::after {
+  width: 40%; aspect-ratio: 1; right: 6%; bottom: 6%; border-radius: 50%;
+  background: var(--pv-surface);
+  box-shadow: 0 0 0 .22rem var(--pv-accent-2), 0 .3rem .9rem color-mix(in srgb, var(--pv-ink) 35%, transparent);
+}
 .concept-visual i { width: 63%; height: .45rem; left: 12%; bottom: 11%; background: var(--pv-ink); opacity: .3; }
 .concept-mobile .concept-nav i:last-child { display: none; }
 .concept-mobile .concept-hero-copy { padding: 1rem 0 .7rem; gap: .45rem; }
@@ -865,7 +903,7 @@ label.hero-concept:hover { border-color: var(--accent); }
 
 /* Auth pages use an explicit top-to-bottom rhythm. The global reset removes
    heading/paragraph margins, so each transition is owned here: heading →
-   notice → OAuth → divider → email/password → account link. */
+   notice → OAuth → divider → email link → account link. */
 .auth-page > h1 { margin-bottom: var(--sp-5); }
 .oauth-buttons {
   display: flex; flex-direction: column; gap: var(--sp-2);
@@ -878,9 +916,6 @@ label.hero-concept:hover { border-color: var(--accent); }
   color: var(--muted); font-size: var(--fs-md); margin: 0 0 var(--sp-5);
 }
 .or-divider::before, .or-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
-.password-login { margin: var(--sp-5) 0; }
-.password-login summary { cursor: pointer; }
-.password-login .stack { margin: var(--sp-3) 0 0; }
 
 /* Tables: one component. Wrap in .table-scroll when columns may overflow. */
 .table-scroll { overflow-x: auto; margin-top: var(--sp-4); }
@@ -889,7 +924,8 @@ label.hero-concept:hover { border-color: var(--accent); }
 .table th { color: var(--muted); font-weight: 500; }
 .table-nowrap th, .table-nowrap td { white-space: nowrap; }
 
-.foot { border-top: 1px solid var(--border); padding: 1.75rem 1.25rem; text-align: center; font-size: var(--fs-sm); flex-shrink: 0; }
+.foot { border-top: 1px solid var(--border); padding: 1.75rem 1.25rem; text-align: center; font-size: var(--fs-sm); flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); }
+.foot .lang-switch { border-top: 1px solid var(--border); padding-top: var(--sp-2); display: inline-flex; gap: var(--sp-3); }
 
 /* HTMX swap transitions (gentle; avoids flicker on polled swaps) */
 .htmx-indicator { opacity: 0; transition: opacity .2s var(--ease); }
@@ -1129,6 +1165,7 @@ label.ack-later { display: flex; flex-direction: row; align-items: flex-start; g
   .concept-hero-copy { padding: 1rem .65rem 1rem 0; }
   .concept-hero-copy strong { font-size: clamp(1.25rem, 7vw, 2rem); }
   .concept-notes { grid-template-columns: 1fr; }
+  .hero-demo .concept-desktop { min-height: 16rem; }
 
   .nav-burger {
     display: flex; flex-direction: column; justify-content: center; gap: 5px;

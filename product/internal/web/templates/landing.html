@@ -4,6 +4,31 @@
   <p class="lead">{{.T "landing.lead1"}}<strong>{{.T "landing.lead_strong"}}</strong>{{.T "landing.lead2"}}</p>
   <a class="btn btn-lg" href="{{.StartURL}}">{{.T "landing.cta"}}</a>
   <p class="muted small">{{with .Data}}{{if .DomainBuy}}{{$.T "landing.sub_domain"}}{{else}}{{$.T "landing.sub"}}{{end}}{{else}}{{.T "landing.sub"}}{{end}}</p>
+  <div class="hero-demo">
+    <span class="badge badge-accent hero-demo-badge">{{.T "landing.demo.badge"}}</span>
+    <span class="concept-device-pair preview-layout-split preview-type-sans" aria-hidden="true">
+      <span class="concept-desktop">
+        <span class="concept-nav"><b>Söder &amp; Surdeg</b><i></i><i></i></span>
+        <span class="concept-hero-copy">
+          <small>Bakery · Södermalm</small>
+          <strong>Sourdough, baked slow.</strong>
+          <span>Stone-oven loaves and cardamom buns. Order tonight, pick up warm tomorrow.</span>
+          <em>See the menu</em>
+        </span>
+        <span class="concept-visual"><i></i></span>
+      </span>
+      <span class="concept-mobile">
+        <span class="concept-nav"><b>Söder &amp; Surdeg</b><i></i></span>
+        <span class="concept-hero-copy">
+          <small>Bakery · Södermalm</small>
+          <strong>Sourdough, baked slow.</strong>
+          <span>Stone-oven loaves and cardamom buns.</span>
+          <em>See the menu</em>
+        </span>
+        <span class="concept-visual"><i></i></span>
+      </span>
+    </span>
+  </div>
 </section>
 
 <section class="how">

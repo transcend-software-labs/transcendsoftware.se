@@ -1,4 +1,4 @@
-// Package auth provides password hashing and cookie-based sessions.
+// Package auth provides cookie-based sessions.
 //
 // Sessions live in the store (Postgres in production), so logins survive
 // deploys and work across instances. The cookie holds a random token; the
@@ -15,22 +15,10 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/id"
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
 	"github.com/transcend-software-labs/rasmus-ai/internal/user"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // CookieName is the session cookie.
 const CookieName = "rasmus_session"
-
-// HashPassword returns a bcrypt hash of pw.
-func HashPassword(pw string) (string, error) {
-	b, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
-	return string(b), err
-}
-
-// CheckPassword reports whether pw matches the bcrypt hash.
-func CheckPassword(hash, pw string) bool {
-	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(pw)) == nil
-}
 
 // Sessions manages login sessions on top of the store.
 type Sessions struct {

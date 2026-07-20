@@ -155,17 +155,6 @@ func (m *Memory) DeleteUser(_ context.Context, id string) error {
 	return nil
 }
 
-func (m *Memory) MarkUserVerified(_ context.Context, email string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for _, u := range m.users {
-		if strings.EqualFold(u.Email, email) {
-			u.Verified = true
-		}
-	}
-	return nil
-}
-
 func (m *Memory) MarkUserApproved(_ context.Context, id string, approvedAt time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -176,18 +165,6 @@ func (m *Memory) MarkUserApproved(_ context.Context, id string, approvedAt time.
 	if u.ApprovedAt == nil {
 		t := approvedAt
 		u.ApprovedAt = &t
-	}
-	return nil
-}
-
-func (m *Memory) VerifyAndClearPassword(_ context.Context, email string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for _, u := range m.users {
-		if strings.EqualFold(u.Email, email) && !u.Verified {
-			u.Verified = true
-			u.PasswordHash = ""
-		}
 	}
 	return nil
 }

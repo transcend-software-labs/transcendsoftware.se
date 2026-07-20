@@ -25,29 +25,15 @@ func hashToken(t string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// findOrCreateUser returns the account for email, creating a passwordless one
-// (empty hash) if new. The first-ever account becomes admin. Social/magic-link
-// logins land in an existing same-email account, so a customer keeps one
-// identity across methods.
+// findOrCreateUser returns the account for email, creating it if needed.
+// Social and magic-link logins land in the same account by normalized email,
+// so a customer keeps one identity across methods.
 func (s *Server) findOrCreateUser(r *http.Request, email string) (*user.User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if u, err := s.store.UserByEmail(r.Context(), email); err == nil {
-		// This login proves control of the address. If the account is still
-		// unverified, any password on it was set by someone who never proved
-		// ownership — a pre-hijack: attacker password-signs-up as the victim,
-		// waits for the victim to log in via Google/magic link, then logs in with
-		// the password they set. Wipe that password and verify the account now.
-		if !u.Verified {
-			if err := s.store.VerifyAndClearPassword(r.Context(), email); err != nil {
-				return nil, err
-			}
-			u.Verified, u.PasswordHash = true, ""
-		}
 		return u, nil
 	}
-	// Social login and magic links both prove the address is reachable, so these
-	// accounts are created already verified.
-	u := &user.User{ID: id.New(), Email: email, Verified: true, CreatedAt: time.Now().UTC()}
+	u := &user.User{ID: id.New(), Email: email, CreatedAt: time.Now().UTC()}
 	if err := s.store.CreateUser(r.Context(), u); err != nil {
 		return nil, err
 	}

@@ -34,13 +34,13 @@ const webhookSecret = "whsec_test"
 
 func mustUser(id, email string) *user.User {
 	now := time.Now().UTC()
-	return &user.User{ID: id, Email: email, Verified: true, ApprovedAt: &now, CreatedAt: now}
+	return &user.User{ID: id, Email: email, ApprovedAt: &now, CreatedAt: now}
 }
 
 // storeFor returns the memory store registered for a test server's URL.
 func storeFor(base string) store.Store {
 	v, _ := testStores.Load(base)
-	return v.(store.Store)
+	return v.(testAuthState).store
 }
 
 // fakeStripe stands in for the Stripe API: checkout/portal sessions and price.
@@ -87,7 +87,7 @@ func newBillingServer(t *testing.T, stripeURL string) (*httptest.Server, store.S
 	}
 	srv.SetBilling(billing.New(stripeURL, "sk_test_x"))
 	ts := httptest.NewServer(srv.Handler())
-	testStores.Store(ts.URL, st)
+	testStores.Store(ts.URL, testAuthState{store: st, sessions: sessions})
 	return ts, st
 }
 

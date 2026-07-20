@@ -2,8 +2,6 @@ package web_test
 
 import (
 	"net/http"
-	"net/http/cookiejar"
-	"net/url"
 	"strings"
 	"testing"
 
@@ -51,12 +49,8 @@ func TestShotRedirect_FreshAndAuthorized(t *testing.T) {
 
 	// A different signed-in user cannot see someone else's shots (404, not 403,
 	// so the project's existence isn't revealed).
-	jar, _ := cookiejar.New(nil)
-	stranger := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	if _, err := stranger.PostForm(srv.URL+"/signup", url.Values{"email": {"stranger@example.com"}, "password": {"grapes123456"}}); err != nil {
-		t.Fatalf("stranger signup: %v", err)
-	}
-	verifyTestUser(srv.URL, "stranger@example.com")
+	stranger := signedInAs(t, srv.URL, "stranger@example.com", true)
+	stranger.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	if resp, _ := stranger.Get(srv.URL + "/projects/shot1/shots/0"); resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("stranger shot status = %d, want 404", resp.StatusCode)
 	}

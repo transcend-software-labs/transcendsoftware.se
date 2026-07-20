@@ -133,8 +133,8 @@ func isUniqueViolation(err error) bool {
 
 func (p *Postgres) CreateUser(ctx context.Context, u *user.User) error {
 	_, err := p.pool.Exec(ctx,
-		`INSERT INTO users (id, email, password_hash, verified, approved_at, created_at) VALUES ($1, $2, $3, $4, $5, $6)`,
-		u.ID, u.Email, u.PasswordHash, u.Verified, nullableTimePtr(u.ApprovedAt), u.CreatedAt)
+		`INSERT INTO users (id, email, approved_at, created_at) VALUES ($1, $2, $3, $4)`,
+		u.ID, u.Email, nullableTimePtr(u.ApprovedAt), u.CreatedAt)
 	if isUniqueViolation(err) {
 		return ErrEmailTaken
 	}
@@ -144,8 +144,8 @@ func (p *Postgres) CreateUser(ctx context.Context, u *user.User) error {
 func (p *Postgres) UserByEmail(ctx context.Context, email string) (*user.User, error) {
 	var u user.User
 	err := p.pool.QueryRow(ctx,
-		`SELECT id, email, password_hash, verified, approved_at, created_at FROM users WHERE lower(email) = lower($1)`, email).
-		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Verified, &u.ApprovedAt, &u.CreatedAt)
+		`SELECT id, email, approved_at, created_at FROM users WHERE lower(email) = lower($1)`, email).
+		Scan(&u.ID, &u.Email, &u.ApprovedAt, &u.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, project.ErrNotFound
 	}
@@ -158,8 +158,8 @@ func (p *Postgres) UserByEmail(ctx context.Context, email string) (*user.User, e
 func (p *Postgres) UserByID(ctx context.Context, id string) (*user.User, error) {
 	var u user.User
 	err := p.pool.QueryRow(ctx,
-		`SELECT id, email, password_hash, verified, approved_at, created_at FROM users WHERE id = $1`, id).
-		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Verified, &u.ApprovedAt, &u.CreatedAt)
+		`SELECT id, email, approved_at, created_at FROM users WHERE id = $1`, id).
+		Scan(&u.ID, &u.Email, &u.ApprovedAt, &u.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, project.ErrNotFound
 	}
@@ -191,13 +191,6 @@ func (p *Postgres) DeleteUser(ctx context.Context, id string) error {
 	return tx.Commit(ctx)
 }
 
-// MarkUserVerified flips the verified flag for the account with this email.
-func (p *Postgres) MarkUserVerified(ctx context.Context, email string) error {
-	_, err := p.pool.Exec(ctx,
-		`UPDATE users SET verified = true WHERE lower(email) = lower($1)`, email)
-	return err
-}
-
 func (p *Postgres) MarkUserApproved(ctx context.Context, id string, approvedAt time.Time) error {
 	tag, err := p.pool.Exec(ctx,
 		`UPDATE users SET approved_at = COALESCE(approved_at, $2) WHERE id = $1`, id, approvedAt)
@@ -208,15 +201,6 @@ func (p *Postgres) MarkUserApproved(ctx context.Context, id string, approvedAt t
 		return project.ErrNotFound
 	}
 	return nil
-}
-
-// VerifyAndClearPassword verifies the account and wipes its password in one
-// statement, guarded on verified = false so a verified password user who later
-// uses a magic link keeps their password. See the interface doc for why.
-func (p *Postgres) VerifyAndClearPassword(ctx context.Context, email string) error {
-	_, err := p.pool.Exec(ctx,
-		`UPDATE users SET verified = true, password_hash = '' WHERE lower(email) = lower($1) AND verified = false`, email)
-	return err
 }
 
 func (p *Postgres) CreateSession(ctx context.Context, s *user.Session) error {

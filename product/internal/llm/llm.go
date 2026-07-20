@@ -189,7 +189,11 @@ Return markdown with these sections:
    equally fitting direction from THIS business's specifics (its materials,
    era, neighborhood, product colors). The builder runs a "frontend-design"
    skill to EXECUTE the look well; your job is to hand it a distinctive,
-   specific direction worth executing.
+   specific direction worth executing. If the customer's chosen direction
+   itself matches one of these clusters, their choice wins — keep their
+   palette and type, but realize it distinctively through composition, the
+   signature and the image treatment rather than reproducing the cluster's
+   stock look.
 ## Content & assets — the real copy/photos/logo the customer must provide, plus
    sensible, on-brand placeholder copy to ship meanwhile (never lorem ipsum).
    Ask for concrete proof appropriate to the business (real certifications,
@@ -277,9 +281,31 @@ has described a website they want. Two jobs:
    govern a complete image series. signature is one memorable visual device.
    Always provide these fields for every option.
 
+Deriving the options (this is what keeps generated sites from looking alike):
+- Ground each option in THIS business's own world — its materials, era,
+  neighborhood, clientele, product colors — and name the specific you derived
+  it from in the description. A direction that would fit any business fits
+  none.
+- The options must be different worlds, not one look in three colorways:
+  they must differ on AT LEAST THREE of these axes — light vs dark
+  background; warm vs cool palette; display-font genre (oldstyle serif /
+  slab / geometric or grotesk sans / expressive display); accent hue family;
+  era & temper (heritage, contemporary, playful, utilitarian, …).
+- Never offer these three overused AI-default looks unless the customer
+  explicitly asked for one: (1) cream background + terracotta/rust accent +
+  oldstyle serif display (Fraunces, Cormorant); (2) near-black background +
+  acid-green or vermilion accent; (3) broadsheet hairline-rules layout at
+  zero radius. Purple/violet gradients and cyan-on-dark are banned outright.
+- Pick display/body faces that actually cover the site's script — many
+  display faces are Latin-only, and this agency ships Swedish and Russian
+  sites. When unsure, choose faces with documented Cyrillic support.
+
 Write questions and design options in the customer's language.
-Respond with STRICT JSON and nothing else, exactly this shape:
-{"questions":["..."],"design_options":[{"name":"...","description":"...","palette":["#F4F0E8","#171713","#C64A2E","#FFFFFF"],"display_font":"Fraunces","body_font":"Manrope","hero_layout":"asymmetric","image_style":"Directional natural-light photography with tactile close crops and warm restrained grain","signature":"A cropped circular product window crossing the hero grid","boldness":"bold"}]}`
+Respond with STRICT JSON and nothing else, exactly this shape. The example
+values show the SHAPE for one specific business (an urban bike workshop) —
+note how every field derives from that business's world. Derive yours the
+same way; never copy these values:
+{"questions":["..."],"design_options":[{"name":"Workshop steel","description":"Industrial warmth drawn from the workshop itself — concrete floor, steel frames, one safety-orange accent","palette":["#EEF0EE","#1B2A33","#C74512","#FFFFFF"],"display_font":"Sora","body_font":"IBM Plex Sans","hero_layout":"split","image_style":"Documentary workshop photography with hard side light, honest grit and a consistent cool-neutral grade; no staged stock smiles, no text overlays","signature":"A frame-geometry dimension drawing crossing the hero (head-tube angle, chainstay length)","boldness":"balanced"}]}`
 
 // ConceptSystemPrompt creates the actual pixel-facing choice between a broad
 // direction and the full build. The control plane renders this structured JSON
@@ -310,6 +336,13 @@ Write actual concise hero copy in the customer's language. Each concept needs:
 Avoid generic SaaS gradients, floating cards, meaningless stats, centred
 everything and two concepts that are merely color swaps. Text must be truthful
 to the supplied brief.
+
+Guardrails: no purple/violet gradients and no cyan-on-dark. Unless the chosen
+direction itself is one of these, do not drift the concepts into the three
+overused AI defaults (cream + terracotta + oldstyle serif; near-black +
+acid-green/vermilion; broadsheet hairlines at zero radius). If the chosen
+direction IS one of them — the customer's choice always wins — differentiate
+the two concepts through composition and signature, never just color.
 
 Respond with STRICT JSON only:
 {"concepts":[{"id":"concept-a","name":"...","rationale":"...","eyebrow":"...","headline":"...","subhead":"...","cta":"...","layout":"split","palette":["#...","#...","#...","#..."],"display_font":"...","body_font":"...","image_direction":"...","signature":"..."},{"id":"concept-b",...}]}`
@@ -531,8 +564,8 @@ func NewFake() *Fake { return &Fake{} }
 // the following concept pass still makes the selected direction business-specific.
 func FallbackDesignOptions() []project.DesignOption {
 	return []project.DesignOption{
-		{Name: "Clear & distinctive", Description: "Confident hierarchy, crisp spacing and one memorable visual move.", Palette: []string{"#F7F8F5", "#151713", "#2457D6", "#FFFFFF"}, DisplayFont: "Characterful grotesk", BodyFont: "Humanist sans", HeroLayout: "split", ImageStyle: "Honest directional daylight photography with precise, business-specific framing", Signature: "One bold graphic crop tied to the subject", Boldness: "balanced"},
-		{Name: "Editorial & expressive", Description: "Stronger type, asymmetric rhythm and tactile image treatment.", Palette: []string{"#F2EBDD", "#241C16", "#B9472D", "#FFF9EE"}, DisplayFont: "Expressive editorial serif", BodyFont: "Clean contemporary sans", HeroLayout: "editorial", ImageStyle: "A cohesive tactile documentary series with natural light and restrained grain", Signature: "An oversized typographic gesture intersecting the image grid", Boldness: "bold"},
+		{Name: "Signal & paper", Description: "Light, cool and contemporary: crisp grotesk headings, quiet spacing, one cobalt signal color.", Palette: []string{"#F5F6F4", "#161A18", "#2457D6", "#FFFFFF"}, DisplayFont: "Characterful grotesk (Sora-class)", BodyFont: "Humanist sans (Source Sans-class)", HeroLayout: "split", ImageStyle: "Direct daylight documentation with a cool neutral grade and precise, business-specific framing", Signature: "One bold graphic crop tied to the subject", Boldness: "balanced"},
+		{Name: "Night market", Description: "Warm-dark and bold: condensed uppercase display, tungsten-warm imagery, goldenrod on deep espresso.", Palette: []string{"#241D16", "#F4E9D8", "#E3A72F", "#33281B"}, DisplayFont: "Expressive condensed display (Oswald-class)", BodyFont: "Clean contemporary sans (PT Sans-class)", HeroLayout: "immersive", ImageStyle: "A warm tungsten-lit evening series with deep shadows and one consistent amber grade", Signature: "A full-bleed duotone photo band cut by oversized condensed type", Boldness: "bold"},
 	}
 }
 
@@ -550,8 +583,8 @@ func (Fake) Questions(_ context.Context, _, _ string) (IntakeResult, error) {
 func (Fake) Concepts(_ context.Context, brief, _, _ string) (ConceptResult, error) {
 	name := deriveName(brief)
 	return ConceptResult{Concepts: []project.HeroConcept{
-		{ID: "concept-a", Name: "Focused split", Rationale: "Puts the promise and primary action first while one tactile image carries the personality.", Eyebrow: name, Headline: "A clearer way to choose what comes next.", Subhead: "A concise, specific introduction shaped around the real business and its location.", CTA: "Get started", Layout: "split", Palette: []string{"#F2EBDD", "#241C16", "#B9472D", "#FFF9EE"}, DisplayFont: "Fraunces", BodyFont: "Manrope", ImageDirection: "A coherent natural-light documentary series with tactile close crops, warm neutral shadows, restrained grain, no text or stock-photo gestures", Signature: "A circular close-up crossing the split grid"},
-		{ID: "concept-b", Name: "Editorial statement", Rationale: "Uses expressive type and an edge-to-edge visual rhythm for a more memorable first impression.", Eyebrow: name, Headline: "Made distinct. Made easy to understand.", Subhead: "One strong proposition, one honest reason to choose it and one unmistakable next step.", CTA: "See the offer", Layout: "editorial", Palette: []string{"#F2EBDD", "#241C16", "#B9472D", "#FFF9EE"}, DisplayFont: "Fraunces", BodyFont: "Manrope", ImageDirection: "A coherent natural-light documentary series with wider environmental frames, warm restrained grain, honest materials and no embedded text or logos", Signature: "An oversized editorial headline intersected by a narrow image strip"},
+		{ID: "concept-a", Name: "Focused split", Rationale: "Puts the promise and primary action first while one tactile image carries the personality.", Eyebrow: name, Headline: "A clearer way to choose what comes next.", Subhead: "A concise, specific introduction shaped around the real business and its location.", CTA: "Get started", Layout: "split", Palette: []string{"#F5F6F4", "#161A18", "#2457D6", "#FFFFFF"}, DisplayFont: "Sora", BodyFont: "IBM Plex Sans", ImageDirection: "A coherent natural-light documentary series with tactile close crops, warm neutral shadows, restrained grain, no text or stock-photo gestures", Signature: "A circular close-up crossing the split grid"},
+		{ID: "concept-b", Name: "Editorial statement", Rationale: "Uses expressive type and an edge-to-edge visual rhythm for a more memorable first impression.", Eyebrow: name, Headline: "Made distinct. Made easy to understand.", Subhead: "One strong proposition, one honest reason to choose it and one unmistakable next step.", CTA: "See the offer", Layout: "editorial", Palette: []string{"#241D16", "#F4E9D8", "#E3A72F", "#33281B"}, DisplayFont: "Oswald", BodyFont: "PT Sans", ImageDirection: "A coherent natural-light documentary series with wider environmental frames, warm restrained grain, honest materials and no embedded text or logos", Signature: "An oversized editorial headline intersected by a narrow image strip"},
 	}}, nil
 }
 

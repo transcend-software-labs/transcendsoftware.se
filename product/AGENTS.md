@@ -57,6 +57,14 @@ Everything visual comes from `:root` in `app.css`:
   surface. Compose (`class="panel card"`) — never re-add source-order override
   hacks. `.sub-panel`/`.statusbox` etc. only layer identity on top.
 - **Tables**: `.table` inside `.table-scroll` (+ `.table-nowrap`).
+- **Empty states**: `.empty-state` (dashed card, centered) with `.empty-title`;
+  recompose per surface, don't invent parallel empty-box styles.
+- **Preview mockups**: the intake/concept previews (`.design-tile-preview`,
+  `.concept-device-pair`) get their palette from `--pv-*` vars (derived in
+  `handlers_projects.go previewPaletteVars` — never inject hues the model
+  didn't choose) and their art from ONE device: duotone media panel + circular
+  crop (`.dt-art`/`.concept-visual` `::before/::after`). The landing's
+  `.hero-demo` dogfoods the same mockup with a scoped sample palette.
 - **Notices**: `.notice` (+ a keeper class for layout extras).
 - **Forms**: inputs style themselves from the base `input, textarea` rule —
   component rules add flex-sizing only. Every control has a `<label>`,
@@ -98,7 +106,7 @@ Everything visual comes from `:root` in `app.css`:
 ### Guardrails when changing templates
 
 Some tests assert on rendered strings — grep `internal/web/*_test.go` before
-rewording: `password-login`, `id="livelog"`, `sse-connect=`, "Design audit",
+rewording: `id="livelog"`, `sse-connect=`, "Design audit",
 "Danger zone", "Unpaid", price strings ("99 kr", "29 kr/mo", "49 kr"),
 `name="domain_mode"`. htmx swap targets (`#domain-panel`,
 `#sub-domain-results`, `#domain-results`, the status poll) are load-bearing ids.

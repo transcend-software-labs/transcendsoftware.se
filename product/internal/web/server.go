@@ -147,17 +147,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /sitemap.xml", s.handleSitemap)
 	mux.HandleFunc("GET /robots.txt", s.handleRobots)
 	mux.HandleFunc("GET /login", s.handleLoginForm)
-	mux.HandleFunc("POST /login", s.handleLogin)
 	mux.HandleFunc("GET /signup", s.handleSignupForm)
-	mux.HandleFunc("POST /signup", s.handleSignup)
 	mux.HandleFunc("POST /logout", s.handleLogout)
 	mux.HandleFunc("POST /account/delete", s.requireUser(s.handleDeleteAccount))
 
-	// Passwordless + social login.
+	// Passwordless email + social login.
 	mux.HandleFunc("POST /auth/magic", s.handleMagicRequest)
 	mux.HandleFunc("GET /auth/magic", s.handleMagicConsume)
-	mux.HandleFunc("GET /verify", s.handleVerify)
-	mux.HandleFunc("POST /verify/resend", s.requireUser(s.handleResendVerification))
 	mux.HandleFunc("GET /auth/{provider}", s.handleOAuthStart)
 	mux.HandleFunc("GET /auth/{provider}/callback", s.handleOAuthCallback)
 
@@ -305,8 +301,6 @@ type View struct {
 	OGImage    string
 	JSONLD     template.JS
 	Providers  []oauth.Provider // social-login buttons on auth pages
-	MagicLink  bool             // advertise passwordless email login
-	Unverified bool             // logged in but email not yet confirmed → show the verify banner
 	Nonce      string           // per-response CSP nonce for the inline JSON-LD and helper script
 	StartURL   string           // tracked public signup entry; landing preserves campaign labels
 	Alternates []alternateLink  // translated public-page URLs for search engines
@@ -373,9 +367,9 @@ func (s *Server) view(r *http.Request, title string, data any) View {
 		canonical = localizedPublicURL(origin, r.URL.Path, lang)
 	}
 	return View{Title: title, User: u, IsAdmin: s.isAdmin(u), CSRF: s.csrfToken(r), Lang: s.lang(r),
-		Data: data, Providers: s.oauth.Enabled(), MagicLink: s.cfg.MagicLinkEnabled,
+		Data: data, Providers: s.oauth.Enabled(),
 		Canonical: canonical, OGImage: origin + "/static/og.png", JSONLD: s.siteJSONLD(r), Alternates: s.alternateLinks(r),
-		Unverified: u != nil && !u.Verified, Nonce: nonceFrom(r.Context()), StartURL: "/start"}
+		Nonce: nonceFrom(r.Context()), StartURL: "/start"}
 }
 
 // mutateProject applies one web-owned field change to the latest row. Customer

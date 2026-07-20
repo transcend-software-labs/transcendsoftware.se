@@ -22,6 +22,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/builder"
 	"github.com/transcend-software-labs/rasmus-ai/internal/config"
 	"github.com/transcend-software-labs/rasmus-ai/internal/fly"
+	"github.com/transcend-software-labs/rasmus-ai/internal/id"
 	"github.com/transcend-software-labs/rasmus-ai/internal/imagegen"
 	"github.com/transcend-software-labs/rasmus-ai/internal/llm"
 	"github.com/transcend-software-labs/rasmus-ai/internal/notify"
@@ -32,6 +33,7 @@ import (
 	"github.com/transcend-software-labs/rasmus-ai/internal/storage"
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
 	"github.com/transcend-software-labs/rasmus-ai/internal/stream"
+	"github.com/transcend-software-labs/rasmus-ai/internal/user"
 	"github.com/transcend-software-labs/rasmus-ai/internal/web"
 )
 
@@ -79,10 +81,10 @@ func newTestServerAuthImageGen(t *testing.T, cfg config.Config, notifier *recNot
 	if images != nil {
 		srv.SetImageGen(images)
 	}
-	var reg *oauth.Registry
-	if cfg.GoogleClientID != "" {
-		reg = oauth.NewRegistry(oauth.Google(cfg.GoogleClientID, cfg.GoogleClientSecret))
-	}
+	reg := oauth.NewRegistry(
+		oauth.Google(cfg.GoogleClientID, cfg.GoogleClientSecret),
+		oauth.LinkedIn(cfg.LinkedInClientID, cfg.LinkedInClientSecret),
+	)
 	if notifier != nil || reg != nil {
 		var n notify.Notifier
 		if notifier != nil {
@@ -91,25 +93,18 @@ func newTestServerAuthImageGen(t *testing.T, cfg config.Config, notifier *recNot
 		srv.SetAuth(reg, n)
 	}
 	ts := httptest.NewServer(srv.Handler())
-	testStores.Store(ts.URL, st) // let sign-in helpers confirm the user's email
+	testStores.Store(ts.URL, testAuthState{store: st, sessions: sessions})
 	return ts, st, notifier
 }
 
-// testStores maps a running test server's URL to its backing store, so the
-// sign-in helpers can mark the freshly-signed-up account verified without
-// threading the store through every call site. (Email verification is exercised
-// on its own in the TestVerify_* tests.)
-var testStores sync.Map // base URL → store.Store
-
-func verifyTestUser(base, email string) {
-	if v, ok := testStores.Load(base); ok {
-		st := v.(store.Store)
-		_ = st.MarkUserVerified(context.Background(), email)
-		if u, err := st.UserByEmail(context.Background(), email); err == nil {
-			_ = st.MarkUserApproved(context.Background(), u.ID, time.Now().UTC())
-		}
-	}
+type testAuthState struct {
+	store    store.Store
+	sessions *auth.Sessions
 }
+
+// testStores lets feature tests establish a session directly. Authentication
+// itself is exercised separately through the magic-link and OAuth tests.
+var testStores sync.Map // base URL → testAuthState
 
 var csrfRe = regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
 
@@ -129,41 +124,45 @@ func csrfToken(t *testing.T, c *http.Client, base string) string {
 }
 
 func signedInClient(t *testing.T, base string) *http.Client {
-	t.Helper()
-	jar, _ := cookiejar.New(nil)
-	c := &http.Client{Jar: jar}
-	resp, err := c.PostForm(base+"/signup", url.Values{
-		"email": {"neighbour@example.com"}, "password": {"apples12345"},
-	})
-	if err != nil {
-		t.Fatalf("signup: %v", err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("signup status = %d", resp.StatusCode)
-	}
-	verifyTestUser(base, "neighbour@example.com")
-	return c
+	return signedInAs(t, base, "neighbour@example.com", true)
 }
 
 // signedInAdminClient signs up the configured operator (AdminEmail) and
 // returns a client whose session passes requireAdmin.
 func signedInAdminClient(t *testing.T, base string) *http.Client {
+	return signedInAs(t, base, "admin@example.com", true)
+}
+
+func signedInAs(t *testing.T, base, email string, approved bool) *http.Client {
 	t.Helper()
-	jar, _ := cookiejar.New(nil)
-	c := &http.Client{Jar: jar}
-	resp, err := c.PostForm(base+"/signup", url.Values{
-		"email": {"admin@example.com"}, "password": {"apples12345"},
-	})
+	v, ok := testStores.Load(base)
+	if !ok {
+		t.Fatalf("no auth state registered for %s", base)
+	}
+	state := v.(testAuthState)
+	u, err := state.store.UserByEmail(context.Background(), email)
 	if err != nil {
-		t.Fatalf("admin signup: %v", err)
+		u = &user.User{ID: id.New(), Email: email, CreatedAt: time.Now().UTC()}
+		if err := state.store.CreateUser(context.Background(), u); err != nil {
+			t.Fatalf("create test user: %v", err)
+		}
 	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("admin signup status = %d", resp.StatusCode)
+	if approved {
+		if err := state.store.MarkUserApproved(context.Background(), u.ID, time.Now().UTC()); err != nil {
+			t.Fatalf("approve test user: %v", err)
+		}
 	}
-	verifyTestUser(base, "admin@example.com")
-	return c
+	token, err := state.sessions.Create(context.Background(), u.ID)
+	if err != nil {
+		t.Fatalf("create test session: %v", err)
+	}
+	jar, _ := cookiejar.New(nil)
+	origin, err := url.Parse(base)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	jar.SetCookies(origin, []*http.Cookie{{Name: auth.CookieName, Value: token, Path: "/"}})
+	return &http.Client{Jar: jar}
 }
 
 func TestQuota_DailyProjectCap(t *testing.T) {
@@ -238,7 +237,7 @@ func TestFullFlow_IntakeToPreview(t *testing.T) {
 	}
 	cssBody, _ := io.ReadAll(cssResp.Body)
 	cssResp.Body.Close()
-	if !strings.Contains(cssResp.Header.Get("Content-Type"), "text/css") || !strings.Contains(string(cssBody), ".palette-option-0{--pv-bg:#F7F8F5") {
+	if !strings.Contains(cssResp.Header.Get("Content-Type"), "text/css") || !strings.Contains(string(cssBody), ".palette-option-0{--pv-bg:#F5F6F4") {
 		t.Fatalf("palette stylesheet did not contain the validated tile colours: %s", cssBody)
 	}
 
@@ -246,7 +245,7 @@ func TestFullFlow_IntakeToPreview(t *testing.T) {
 	// intake asks three), picking a suggested visual direction.
 	resp, err = c.PostForm(srv.URL+"/projects/"+pid+"/answer", url.Values{
 		"answer":        {"brochure only", "I have my own photos", "Swedish"},
-		"design_choice": {"Clear & distinctive"},
+		"design_choice": {"Signal & paper"},
 		"csrf_token":    {tok},
 	})
 	if err != nil {
@@ -327,58 +326,64 @@ func TestFullFlow_IntakeToPreview(t *testing.T) {
 	if !strings.Contains(page, "Preview ready") {
 		t.Fatal("project page does not show preview ready after build")
 	}
-	if !strings.Contains(page, "Design direction") || !strings.Contains(page, "Clear &amp; distinctive") || !strings.Contains(page, "Focused split") {
+	if !strings.Contains(page, "Design direction") || !strings.Contains(page, "Signal &amp; paper") || !strings.Contains(page, "Focused split") {
 		t.Fatal("project page does not show the chosen style tile and hero concept")
 	}
 }
 
-func TestLoginPage_MethodGating(t *testing.T) {
+func TestAuthPages_OnlyShowPasswordlessMethods(t *testing.T) {
 	cases := []struct {
-		name              string
-		cfg               config.Config
-		wantGoogle        bool
-		wantMagic         bool
-		wantVisiblePwForm bool // password form shown directly (not in <details>)
+		name         string
+		cfg          config.Config
+		wantGoogle   bool
+		wantLinkedIn bool
 	}{
 		{
-			name:              "google on, magic off",
-			cfg:               config.Config{GoogleClientID: "gid", GoogleClientSecret: "gsec"},
-			wantGoogle:        true,
-			wantMagic:         false,
-			wantVisiblePwForm: true,
+			name: "email only",
 		},
 		{
-			name:       "google on, magic on",
-			cfg:        config.Config{GoogleClientID: "gid", GoogleClientSecret: "gsec", MagicLinkEnabled: true},
-			wantGoogle: true,
-			wantMagic:  true,
-		},
-		{
-			name:       "no google, magic on",
-			cfg:        config.Config{MagicLinkEnabled: true},
-			wantGoogle: false,
-			wantMagic:  true,
+			name: "all methods",
+			cfg: config.Config{
+				GoogleClientID: "gid", GoogleClientSecret: "gsec",
+				LinkedInClientID: "lid", LinkedInClientSecret: "lsec",
+			},
+			wantGoogle: true, wantLinkedIn: true,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := newTestServerWithConfig(t, tc.cfg)
 			defer srv.Close()
-			resp, err := http.Get(srv.URL + "/login")
-			if err != nil {
-				t.Fatal(err)
-			}
-			b, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			body := string(b)
-			if got := strings.Contains(body, "Continue with Google"); got != tc.wantGoogle {
-				t.Errorf("Google button present=%v, want %v", got, tc.wantGoogle)
-			}
-			if got := strings.Contains(body, "Email me a login link"); got != tc.wantMagic {
-				t.Errorf("magic-link form present=%v, want %v", got, tc.wantMagic)
-			}
-			if tc.wantVisiblePwForm && strings.Contains(body, "password-login") {
-				t.Error("password form should be shown directly when magic-link is off, not tucked in <details>")
+			for _, page := range []string{"/login", "/signup"} {
+				resp, err := http.Get(srv.URL + page)
+				if err != nil {
+					t.Fatal(err)
+				}
+				b, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				body := string(b)
+				if got := strings.Contains(body, "Continue with Google"); got != tc.wantGoogle {
+					t.Errorf("%s Google button present=%v, want %v", page, got, tc.wantGoogle)
+				}
+				if got := strings.Contains(body, "Continue with LinkedIn"); got != tc.wantLinkedIn {
+					t.Errorf("%s LinkedIn button present=%v, want %v", page, got, tc.wantLinkedIn)
+				}
+				if !strings.Contains(body, `/auth/magic`) {
+					t.Errorf("%s is missing magic-link form", page)
+				}
+				if strings.Contains(body, `type="password"`) || strings.Contains(body, "password-login") {
+					t.Errorf("%s exposes password authentication", page)
+				}
+				legacy, err := http.PostForm(srv.URL+page, url.Values{
+					"email": {"person@example.com"}, "password": {"unused"},
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				legacy.Body.Close()
+				if legacy.StatusCode != http.StatusMethodNotAllowed {
+					t.Errorf("POST %s status = %d, want 405", page, legacy.StatusCode)
+				}
 			}
 		})
 	}
@@ -549,109 +554,14 @@ func TestMagicLink_RequestConsumeLogsIn(t *testing.T) {
 	}
 }
 
-// signupRaw signs up without confirming the email (unlike signedInClient), so
-// the account stays unverified — for exercising the verification gate.
-func signupRaw(t *testing.T, base, email string) *http.Client {
-	t.Helper()
-	jar, _ := cookiejar.New(nil)
-	c := &http.Client{Jar: jar}
-	resp, err := c.PostForm(base+"/signup", url.Values{"email": {email}, "password": {"apples12345"}})
-	if err != nil {
-		t.Fatalf("signup: %v", err)
-	}
-	resp.Body.Close()
-	return c
-}
-
-func TestVerify_UnverifiedBlockedFromCreate(t *testing.T) {
-	srv := newTestServer(t)
-	defer srv.Close()
-	c := signupRaw(t, srv.URL, "unverified@example.com")
-
-	// The dashboard nudges them to confirm their email.
-	dash, _ := c.Get(srv.URL + "/dashboard")
-	db, _ := io.ReadAll(dash.Body)
-	dash.Body.Close()
-	if !strings.Contains(string(db), "confirm your email") {
-		t.Error("expected the verify banner on the dashboard for an unverified user")
-	}
-
-	// Creating a project is refused until the email is confirmed.
-	tok := csrfToken(t, c, srv.URL)
-	resp, err := c.PostForm(srv.URL+"/projects", url.Values{
-		"brief": {"A brochure site for an apple farm selling juice"}, "csrf_token": {tok},
-	})
-	if err != nil {
-		t.Fatalf("create: %v", err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("unverified create should be 403, got %d", resp.StatusCode)
-	}
-}
-
-func TestVerify_ConfirmLinkUnlocksFirstProjectSubmission(t *testing.T) {
-	rec := &recNotifier{}
-	srv, st, _ := newTestServerAuth(t, config.Config{AdminEmail: "admin@example.com", BaseURL: "http://app.example"}, rec)
-	defer srv.Close()
-	c := signupRaw(t, srv.URL, "newbie@example.com")
-
-	// Signup sent a verification email carrying a /verify link.
-	if len(rec.bodies) == 0 {
-		t.Fatal("no verification email sent on signup")
-	}
-	m := regexp.MustCompile(`/verify\?token=[a-f0-9]+`).FindString(rec.bodies[len(rec.bodies)-1])
-	if m == "" {
-		t.Fatalf("no verify link in email: %q", rec.bodies)
-	}
-
-	// Follow the confirmation link → the account is now verified.
-	resp, err := c.Get(srv.URL + m)
-	if err != nil {
-		t.Fatalf("verify: %v", err)
-	}
-	resp.Body.Close()
-	u, err := st.UserByEmail(context.Background(), "newbie@example.com")
-	if err != nil || !u.Verified {
-		t.Fatalf("account should be verified after the link, got %+v (err %v)", u, err)
-	}
-
-	// The verified customer may submit a project, but no AI work starts until
-	// the operator approves this first brief.
-	tok := csrfToken(t, c, srv.URL)
-	resp, err = c.PostForm(srv.URL+"/projects", url.Values{
-		"brief": {"A brochure site for an apple farm selling juice"}, "csrf_token": {tok},
-	})
-	if err != nil {
-		t.Fatalf("create after verify: %v", err)
-	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "Waiting for Rasmus’s approval") {
-		t.Fatalf("verified first project should wait for approval, got %d", resp.StatusCode)
-	}
-	pid := path.Base(resp.Request.URL.Path)
-	p, err := st.ProjectByID(context.Background(), pid)
-	if err != nil || p.Status != project.StatusPendingAccessApproval || len(p.Questions) != 0 {
-		t.Fatalf("project should be resting before intake, got %+v (err %v)", p, err)
-	}
-	u, _ = st.UserByEmail(context.Background(), "newbie@example.com")
-	if u.Approved() {
-		t.Fatal("email verification must not implicitly approve project access")
-	}
-}
-
 func TestFirstProject_AdminApprovalStartsIntakeAndApprovesUser(t *testing.T) {
 	srv, st, _ := newTestServerAuth(t, config.Config{AdminEmail: "admin@example.com"}, nil)
 	defer srv.Close()
 	ctx := context.Background()
 
-	// Sign up and verify a new customer without using signedInClient: that
-	// helper represents an established approved account for the older tests.
-	customer := signupRaw(t, srv.URL, "first-project@example.com")
-	if err := st.MarkUserVerified(ctx, "first-project@example.com"); err != nil {
-		t.Fatal(err)
-	}
+	// This customer authenticated through a passwordless method but has not yet
+	// received the operator's one-time project approval.
+	customer := signedInAs(t, srv.URL, "first-project@example.com", false)
 	tok := csrfToken(t, customer, srv.URL)
 	resp, err := customer.PostForm(srv.URL+"/projects", url.Values{
 		"name": {"First Bakery"}, "brief": {"A welcoming website for a neighbourhood bakery with opening hours and a menu"},

@@ -1,15 +1,11 @@
 package web
 
 import (
-	"errors"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/transcend-software-labs/rasmus-ai/internal/auth"
-	"github.com/transcend-software-labs/rasmus-ai/internal/id"
 	"github.com/transcend-software-labs/rasmus-ai/internal/store"
-	"github.com/transcend-software-labs/rasmus-ai/internal/user"
 )
 
 // landingView carries the public pricing block: the monthly base price (from
@@ -73,72 +69,11 @@ func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, "login", s.view(r, s.t(r, "login.h1"), nil))
 }
 
-func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
-	password := r.FormValue("password")
-	if !s.allowAuth(r, "login", email, 12, 6, 15*time.Minute) {
-		s.render(w, http.StatusTooManyRequests, "login", s.authView(r, s.t(r, "login.h1"), s.t(r, "flash.try_later")))
-		return
-	}
-
-	u, err := s.store.UserByEmail(r.Context(), email)
-	if err != nil || !auth.CheckPassword(u.PasswordHash, password) {
-		s.render(w, http.StatusUnauthorized, "login", s.authView(r, s.t(r, "login.h1"), s.t(r, "flash.wrong_login")))
-		return
-	}
-	if !s.startSession(w, r, u.ID) {
-		return
-	}
-	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
-}
-
 func (s *Server) handleSignupForm(w http.ResponseWriter, r *http.Request) {
 	if s.currentUser(r) == nil {
 		s.recordMarketing(r, store.MarketingSignupView)
 	}
 	s.render(w, http.StatusOK, "signup", s.view(r, s.t(r, "signup.h1"), nil))
-}
-
-func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
-	// Store lowercased: the users table's UNIQUE(email) is case-sensitive, so
-	// without this "Victim@x.com" would slip past a "victim@x.com" row (every
-	// lookup uses lower(email)) and create a colliding duplicate account.
-	email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
-	password := r.FormValue("password")
-	if !s.allowAuth(r, "signup", email, 8, 3, time.Hour) {
-		s.render(w, http.StatusTooManyRequests, "signup", s.authView(r, s.t(r, "signup.h1"), s.t(r, "flash.try_later")))
-		return
-	}
-
-	if !strings.Contains(email, "@") || len(password) < 8 {
-		s.render(w, http.StatusBadRequest, "signup", s.authView(r, s.t(r, "signup.h1"), s.t(r, "flash.signup_invalid")))
-		return
-	}
-
-	hash, err := auth.HashPassword(password)
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	// Password signups start unverified — they must confirm the address before
-	// they can spend money (create a project). Social/magic-link logins prove
-	// the address inherently and are created verified elsewhere.
-	u := &user.User{ID: id.New(), Email: email, PasswordHash: hash, Verified: false, CreatedAt: time.Now().UTC()}
-	if err := s.store.CreateUser(r.Context(), u); err != nil {
-		if errors.Is(err, store.ErrEmailTaken) {
-			s.render(w, http.StatusConflict, "signup", s.authView(r, s.t(r, "signup.h1"), s.t(r, "flash.email_taken")))
-			return
-		}
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	s.sendVerificationEmail(r.Context(), u.Email, s.lang(r))
-	if !s.startSession(w, r, u.ID) {
-		return
-	}
-	// Signed in, but the dashboard shows a "confirm your email" banner and
-	// project creation stays blocked until they do.
-	http.Redirect(w, r, "/dashboard?verify_sent=1", http.StatusSeeOther)
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {

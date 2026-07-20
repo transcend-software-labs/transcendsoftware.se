@@ -17,7 +17,11 @@
   {{end}}
 </ul>
 {{else}}
-<p class="muted empty">{{.T "dash.empty"}} <a href="/projects/new">{{.T "dash.empty_link"}}</a></p>
+<div class="empty-state">
+  <p class="empty-title">{{.T "dash.empty"}}</p>
+  <p class="muted">{{.T "dash.empty_sub"}}</p>
+  <a class="btn" href="/projects/new">{{.T "dash.empty_link"}}</a>
+</div>
 {{end}}
 
 <section class="panel danger-zone">

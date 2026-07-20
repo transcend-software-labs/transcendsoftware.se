@@ -65,7 +65,7 @@ func newBundleServer(t *testing.T) (*httptest.Server, store.Store) {
 	}
 	srv.SetBilling(bill)
 	ts := httptest.NewServer(srv.Handler())
-	testStores.Store(ts.URL, st)
+	testStores.Store(ts.URL, testAuthState{store: st, sessions: sessions})
 	return ts, st
 }
 

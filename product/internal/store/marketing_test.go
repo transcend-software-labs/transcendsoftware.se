@@ -21,7 +21,7 @@ func TestMarketingFunnelAggregatesWithoutVisitorIdentifiers(t *testing.T) {
 			}
 		}
 		approved := now
-		u := &user.User{ID: "marketing-user", Email: "marketing-user@utest.example", Verified: true, ApprovedAt: &approved, CreatedAt: now}
+		u := &user.User{ID: "marketing-user", Email: "marketing-user@utest.example", ApprovedAt: &approved, CreatedAt: now}
 		if err := st.CreateUser(ctx, u); err != nil {
 			t.Fatal(err)
 		}

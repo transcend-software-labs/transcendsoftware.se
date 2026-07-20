@@ -9,3 +9,4 @@ dist/
 # …but the Forge social card is a real asset, not a stray screenshot
 !product/internal/web/static/og.png
 .idea
+.superpowers

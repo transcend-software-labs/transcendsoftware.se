@@ -24,7 +24,7 @@ func TestPostgresProjectBindings(t *testing.T) {
 	defer st.Close()
 
 	now := time.Now().UTC()
-	u := &user.User{ID: "bind-u1", Email: "bind@example.com", Verified: true, CreatedAt: now}
+	u := &user.User{ID: "bind-u1", Email: "bind@example.com", CreatedAt: now}
 	_ = st.CreateUser(ctx, u) // ignore "already exists" on reruns
 
 	p := &project.Project{

@@ -75,18 +75,10 @@ type Store interface {
 	// purge each project through the orchestrator first so external resources and
 	// object-storage data are removed before the database cascade.
 	DeleteUser(ctx context.Context, id string) error
-	// MarkUserVerified confirms a password-signup account's email.
-	MarkUserVerified(ctx context.Context, email string) error
 	// MarkUserApproved permanently clears a customer to start projects after
 	// the operator reviews their first brief. It preserves the first approval
 	// timestamp when called more than once.
 	MarkUserApproved(ctx context.Context, id string, approvedAt time.Time) error
-	// VerifyAndClearPassword marks an account verified and drops its password,
-	// but only while it is still unverified. Called when a social/magic login
-	// adopts a pre-existing account: a password set on an unverified address was
-	// set by someone who never proved they own it, so it must not grant login.
-	// A no-op on already-verified accounts.
-	VerifyAndClearPassword(ctx context.Context, email string) error
 
 	// Sessions (cookie tokens are stored hashed; see user.Session)
 	CreateSession(ctx context.Context, s *user.Session) error

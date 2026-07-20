@@ -36,12 +36,6 @@ type Config struct {
 	LinkedInClientID     string
 	LinkedInClientSecret string
 
-	// MagicLinkEnabled advertises passwordless email login on the auth pages.
-	// Off until email can actually be delivered to arbitrary customers (a
-	// verified sender domain) — otherwise the page offers a method that
-	// silently fails. Default on; set MAGIC_LINK_ENABLED=false to hide it.
-	MagicLinkEnabled bool
-
 	// Quotas — every build spends real money (sandbox machine + LLM tokens).
 	MaxProjectsPerDay   int // per user, rolling 24h (default 3)
 	MaxConcurrentBuilds int // across all users (default 3)
@@ -210,18 +204,16 @@ func Load() Config {
 		GoogleClientSecret:   os.Getenv("GOOGLE_CLIENT_SECRET"),
 		LinkedInClientID:     os.Getenv("LINKEDIN_CLIENT_ID"),
 		LinkedInClientSecret: os.Getenv("LINKEDIN_CLIENT_SECRET"),
-		MagicLinkEnabled:     os.Getenv("MAGIC_LINK_ENABLED") != "false",
-
-		MaxProjectsPerDay:   envIntOr("MAX_PROJECTS_PER_DAY", 3),
-		MaxConcurrentBuilds: envIntOr("MAX_CONCURRENT_BUILDS", 3),
-		MaxBuildsPerDay:     envIntOr("MAX_BUILDS_PER_DAY", 20),
-		ChangesPerMonth:     envIntOr("FORGE_CHANGES_PER_MONTH", 3),
-		OverageOre:          envIntOr("FORGE_OVERAGE_SEK", 49) * 100,
-		PreviewTTL:          time.Duration(envIntOr("PREVIEW_TTL_DAYS", 14)) * 24 * time.Hour,
-		PreviewDomain:       strings.TrimSuffix(strings.ToLower(os.Getenv("PREVIEW_DOMAIN")), "."),
-		FlyAppName:          os.Getenv("FLY_APP_NAME"),
-		SandboxCostPerHour:  envFloatOr("SANDBOX_COST_PER_HOUR", 0.02),
-		TemplateKey:         os.Getenv("TEMPLATE_KEY"),
+		MaxProjectsPerDay:    envIntOr("MAX_PROJECTS_PER_DAY", 3),
+		MaxConcurrentBuilds:  envIntOr("MAX_CONCURRENT_BUILDS", 3),
+		MaxBuildsPerDay:      envIntOr("MAX_BUILDS_PER_DAY", 20),
+		ChangesPerMonth:      envIntOr("FORGE_CHANGES_PER_MONTH", 3),
+		OverageOre:           envIntOr("FORGE_OVERAGE_SEK", 49) * 100,
+		PreviewTTL:           time.Duration(envIntOr("PREVIEW_TTL_DAYS", 14)) * 24 * time.Hour,
+		PreviewDomain:        strings.TrimSuffix(strings.ToLower(os.Getenv("PREVIEW_DOMAIN")), "."),
+		FlyAppName:           os.Getenv("FLY_APP_NAME"),
+		SandboxCostPerHour:   envFloatOr("SANDBOX_COST_PER_HOUR", 0.02),
+		TemplateKey:          os.Getenv("TEMPLATE_KEY"),
 
 		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
 		AnthropicModel:  os.Getenv("ANTHROPIC_MODEL"),

@@ -274,7 +274,7 @@ func TestAccessApproval_NotifiesAndStartsIntake(t *testing.T) {
 	orch.SetNotifications(n, "admin@example.com", "https://forge.example")
 	ctx := context.Background()
 	now := time.Now().UTC()
-	u := &user.User{ID: "access-u", Email: "new-customer@example.com", Verified: true, CreatedAt: now}
+	u := &user.User{ID: "access-u", Email: "new-customer@example.com", CreatedAt: now}
 	if err := st.CreateUser(ctx, u); err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +310,7 @@ func TestAccessApproval_RejectLeavesUserUnapproved(t *testing.T) {
 	orch.SetNotifications(n, "admin@example.com", "https://forge.example")
 	ctx := context.Background()
 	now := time.Now().UTC()
-	u := &user.User{ID: "reject-u", Email: "rejected@example.com", Verified: true, CreatedAt: now}
+	u := &user.User{ID: "reject-u", Email: "rejected@example.com", CreatedAt: now}
 	_ = st.CreateUser(ctx, u)
 	p := &project.Project{ID: "reject-p", UserID: u.ID, Name: "Rejected request",
 		Brief: "A request outside the service scope", Status: project.StatusPendingAccessApproval,

@@ -5,12 +5,10 @@ import "time"
 
 // User is a customer account on forge.transcendsoftware.se.
 type User struct {
-	ID           string
-	Email        string
-	PasswordHash string
-	Verified     bool       // email confirmed (password signups); magic-link/OAuth are inherently verified
-	ApprovedAt   *time.Time // operator approved this customer to start projects; nil until first-project review
-	CreatedAt    time.Time
+	ID         string
+	Email      string
+	ApprovedAt *time.Time // operator approved this customer to start projects; nil until first-project review
+	CreatedAt  time.Time
 }
 
 // Approved reports whether the operator has cleared this account to start

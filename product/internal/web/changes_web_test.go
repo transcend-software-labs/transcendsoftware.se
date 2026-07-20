@@ -43,7 +43,7 @@ func newChangeServer(t *testing.T, perMonth, overageOre int) (*httptest.Server, 
 		t.Fatalf("NewServer: %v", err)
 	}
 	ts := httptest.NewServer(srv.Handler())
-	testStores.Store(ts.URL, st)
+	testStores.Store(ts.URL, testAuthState{store: st, sessions: sessions})
 	return ts, st
 }
 

@@ -31,10 +31,6 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request, u *user
 	}
 	v := s.view(r, s.t(r, "nav.dashboard"), projects)
 	switch {
-	case r.URL.Query().Get("verified") != "":
-		v.Flash = s.t(r, "flash.verified")
-	case r.URL.Query().Get("verify_sent") != "":
-		v.Flash = s.t(r, "flash.verify_sent")
 	case r.URL.Query().Get("account") == "managed":
 		v.Flash = s.t(r, "flash.account_managed")
 	case r.URL.Query().Get("account") == "busy":
@@ -153,14 +149,6 @@ const maxBriefLen = 4000
 func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request, u *user.User) {
 	s.accountMu.Lock()
 	defer s.accountMu.Unlock()
-	// Email must be confirmed before a project can be created — building spends
-	// real money, so we don't let unverified addresses trigger it.
-	if !u.Verified {
-		v := s.view(r, s.t(r, "new.h1"), s.newProjectData(u))
-		v.Flash = s.t(r, "flash.verify_required")
-		s.render(w, http.StatusForbidden, "new_project", v)
-		return
-	}
 	brief := strings.TrimSpace(r.FormValue("brief"))
 	name := strings.TrimSpace(r.FormValue("name"))
 	if len(brief) < 10 {
@@ -430,8 +418,13 @@ type heroConceptView struct {
 
 var previewHex = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
+// previewPaletteVars renders a tile/concept palette into inline CSS custom
+// properties. Missing slots fall back to a neutral, non-cluster set (never the
+// AI tells: no cream/terracotta, acid-green, or purple), and a missing second
+// accent DERIVES from the palette itself — a foreign hue can never leak into
+// the previews the customer judges our taste by.
 func previewPaletteVars(palette []string) string {
-	fallback := []string{"#F5F1E8", "#171713", "#D4FF3F", "#FFFFFF", "#8277FF"}
+	fallback := []string{"#F5F6F4", "#161A18", "#2457D6", "#FFFFFF", ""}
 	colors := append([]string(nil), fallback...)
 	for i, color := range palette {
 		if i == len(colors) {
@@ -441,7 +434,11 @@ func previewPaletteVars(palette []string) string {
 			colors[i] = strings.ToUpper(color)
 		}
 	}
-	return fmt.Sprintf("--pv-bg:%s;--pv-ink:%s;--pv-accent:%s;--pv-surface:%s;--pv-accent-2:%s", colors[0], colors[1], colors[2], colors[3], colors[4])
+	accent2 := colors[4]
+	if accent2 == "" {
+		accent2 = "color-mix(in srgb, var(--pv-accent) 55%, var(--pv-bg))"
+	}
+	return fmt.Sprintf("--pv-bg:%s;--pv-ink:%s;--pv-accent:%s;--pv-surface:%s;--pv-accent-2:%s", colors[0], colors[1], colors[2], colors[3], accent2)
 }
 
 func previewLayoutClass(layout string) string {
